@@ -40,7 +40,10 @@ than accumulating as fork policy. The PAL and C backends belong to the parent;
 the [architecture](design.md) selects static Emacs/musl with a limited Linux
 x86-64 compatibility adapter over a typed PAL. The [runtime-port contract](runtime-port.md)
 records required bootstrap capabilities; concrete implementation remains future
-work. Read-only runtime files precede writable system/user files.
+work. Read-only runtime files precede writable system/user files. Future trusted
+application management policy belongs to parent system Lisp; kernel execution,
+scheduling and enforced process ownership belong to parent kernel code.
+[The process model](process-model.md) defines their distinct phases.
 
 A submodule normally checks out a detached commit. For a fork change, create an
 explicit branch in `emacs/`, validate and publish that commit first, then stage

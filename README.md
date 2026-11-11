@@ -42,13 +42,15 @@ this initialization. These commands do not build or launch Emacs.
 
 Read the [overall architecture](docs/design.md),
 [first runtime-port contract](docs/runtime-port.md),
+[application/process model](docs/process-model.md),
 [public programming interface](docs/programming-interface.md),
 [roadmap](docs/roadmap.md) and [source layout](docs/source-layout.md).
 The proposed route is standard Elisp APIs over GNU Emacs, static musl and a
 limited Linux x86-64 ABI adapter, backed by a small typed PAL and our C kernel.
 Architecture review comes first; no PAL or runtime port is implemented here.
 Interactive evaluation, volatile file APIs, persistence and networking follow
-as separate stages.
+as separate stages. Trusted application instances and later independent kernel
+processes have an explicit model; neither is implemented by this proposal.
 
 `main` starts with one initial commit. Previous implementations and their PR
 history are outside this repository and do not establish capabilities here.

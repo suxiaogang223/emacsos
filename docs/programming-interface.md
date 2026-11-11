@@ -20,6 +20,21 @@ the handle even if final cleanup fails; duplicated descriptors share an open
 description/offset, separate opens do not. Precise types/bounds are P1 work.
 Neither a handle nor an Emacs process object establishes isolation.
 
+## Application management
+
+[Applications and processes](process-model.md) are distinct from buffers and
+GNU connection objects. A0 adds start/list/inspect/request-stop/finish/wait and
+restart-as-new-run contracts after interactive E0. Managed callback entry carries
+a run identity/context and restores its caller on unwind; owned/shared/borrowed
+resource adoption and late-event suppression are explicit.
+
+Wait is nonblocking inspection/polling in the initial runtime. Cancellation is
+cooperative, resource tracking is not enforcement over ambient standard APIs,
+and the shared heap has no per-app isolation/precise memory accounting. Bounded
+value messages require explicit serialization before future protected process
+boundaries. Kernel processes and forced termination are a later K0 implementation;
+file/network APIs do not depend on that implementation or an app framework.
+
 ## File APIs
 
 F0 supports explicitly volatile working files after read-only runtime loading

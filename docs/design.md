@@ -195,9 +195,31 @@ supply isolation. A runtime fault can stop the system; explicit errors and
 resource cleanup cover only paths that retain control.
 
 Accounts, service managers, durable startup snapshots, scheduling experiments,
-protected workers and a browser product are deferred. Do not restore their
-previous implementations implicitly. Buffers should be clients of working APIs
+protected-process implementation and a browser product are later stages.
+Do not restore their previous implementations implicitly. Buffers should be clients of working APIs
 when those tools are introduced.
+
+## Application and process model
+
+Applications have code/entry contracts; each managed invocation has a distinct
+run identity, lifecycle, context and explicit owned/borrowed/shared resources.
+Entry return ends startup; explicit finish and a callback-unwind cleanup barrier
+determine terminal completion. Stop request is not completed exit.
+A0 adds trusted cooperative instances after E0. A buffer is their tool/view,
+not an execution unit; GNU network process objects are connections rather than
+kernel processes. Standard file/network APIs remain the common public surface.
+
+The architecture also reserves a real kernel process model: execution context,
+address-space identity, scheduling, enforced limits and exit reclamation. K0
+implements it later; only independent execution can forcibly stop a hung app
+without relying on its returning Lisp callback. The first shared privileged
+runtime provides none of those boundaries. Instance tracking is cleanup policy,
+not authority over ambient APIs or the shared heap.
+
+[The application/process model](process-model.md) defines minimal management,
+context propagation, late-event suppression, bounded communication and the
+planned `*Processes*` client. It adds no automatic services or startup framework
+and does not gate basic file/network capability work.
 
 ## Decisions and open gates
 
@@ -210,7 +232,9 @@ when those tools are introduced.
 | Open: P1/E0 | Runtime artifacts | Build/toolchain, ELF/startup/thread-local storage details, memory budget, dump manifest and terminal/wait integration. |
 | Open: F1 | Durability | Format, synchronization and recovery model after volatile file behavior is correct. |
 | Open: N0 | Network transport | Prove native and future Wasm feasibility, including any explicit host bridge, before selecting device/stack. |
-| Deferred | Runtime/process changes | Direct libc replacement, preemption, isolation, external processes and service frameworks. |
+| Planned: A0 | Trusted application instances | After E0: lifecycle/context, explicit ownership, bounded messages and truthful management; no isolation. |
+| Planned: K0 | Kernel processes | After runtime/ownership contracts: independent execution/address spaces, scheduling, enforced limits and exit cleanup; no implementation yet. |
+| Deferred | Other expansion | Direct libc replacement, runtime latency optimization, broad Unix subprocess compatibility and service frameworks. |
 
 [The roadmap](roadmap.md) turns these gates into staged work. PAL implementation
 and the Emacs port remain future tasks.

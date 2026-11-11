@@ -109,8 +109,10 @@ opens remain independent. Resource identity must survive path changes rather
 than using a path string as identity. Reject stale readiness after close/reuse.
 
 The first port runs one trusted Emacs, without promised process/thread isolation
-or external subprocess execution. ABI calls needed only by unsupported features
-must fail clearly. Network process objects remain connections in the same
+or external subprocess execution. The [application/process model](process-model.md)
+adds later A0 instance tracking and K0 kernel execution; neither is required by
+the initial PAL or basic file/network APIs. ABI calls needed only by unsupported
+features must fail clearly. Network process objects remain connections in the same
 runtime. Even a connection created with `:nowait` does not make every later
 `process-send-string` nonblocking; document the supported send/progress behavior.
 Correct cleanup implies neither protection nor rollback of completed I/O.
