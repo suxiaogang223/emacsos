@@ -110,13 +110,12 @@ Correct cleanup implies neither protection nor rollback of completed I/O.
 
 ## Future E0 evidence
 
-When implementation is authorized, record parent/fork commits, build options,
+For the implementation task, record parent/fork commits, build options,
 compiler/libc identity and hashes of executable, dump, Lisp/runtime data and
 boot image in one manifest. Verify sufficient mappings and reserved ranges,
 artifact consistency, controlled initialization, actual terminal interaction and
 Elisp evaluation. Trace unsupported calls and real errors rather than broadening
 compatibility by assumption.
 
-That future evidence must distinguish host builds, static/component checks,
-emulator startup and interactive guest behavior. This documentation change
-runs no build, boot, runtime or file/network functional tests.
+Future evidence must distinguish host builds, static/component checks, emulator
+startup and interactive guest behavior.

@@ -2,8 +2,8 @@
 
 Design the overall architecture before implementing the PAL or runtime port.
 The current source is a minimal boot/serial scaffold with an Emacs source
-submodule. Emacs, files and networking do not run here. This planning change
-performs documentation/static checks only, with no build or boot execution.
+submodule. Emacs, files and networking do not run here. The architecture is documented first; PAL/runtime implementation remains a
+separate task.
 
 ## Staged work and dependencies
 
@@ -11,7 +11,7 @@ performs documentation/static checks only, with no build or boot execution.
 | --- | --- | --- |
 | B0 | Minimal BIOS/x86-64 kernel and serial scaffold. | Source/build foundation present; boot behavior remains unexecuted in this architecture work. |
 | P0 | [Architecture](design.md), [runtime-port](runtime-port.md) and public interface contracts. | This documentation proposal; complete only after review/merge. No implemented PAL is implied. |
-| P1 | Bootstrap runtime support over a small PAL. | After P0 and separate implementation authorization: pin Emacs/musl build, derive ABI subset; implement memory, console, time/wait, read-only runtime files and static ELF/startup support. |
+| P1 | Bootstrap runtime support over a small PAL. | After P0 in a separate implementation task: pin Emacs/musl build, derive ABI subset; implement memory, console, time/wait, read-only runtime files and static ELF/startup support. |
 | E0 | Interactive Emacs and Elisp evaluation. | P1; matching executable/dump/Lisp/data manifest, controlled base initialization and actual command-loop interaction. Validate the chosen compatibility route. |
 | F0 | Standard file APIs over volatile working files. | E0 and typed file/directory backend. Preserve ordinary saves, backups, locks and original errors; document supported options and limits. |
 | F1 | Minimal persistent file backend. | F0; choose format, sync/recovery and error contracts, then prove retained data separately. No service/startup manager prerequisite. |
@@ -19,11 +19,10 @@ performs documentation/static checks only, with no build or boot execution.
 | N1 | Guest outbound TCP. | N0 and E0; connection/readiness integration, numeric-address connect, send/receive, EOF, timeout, error and leak-free close on the supported transport. |
 | N2 | DNS and controlled HTTP-to-file example. | N1 and F0. Receive/save/read in the guest; retained source/results require F1. Assess TLS separately. |
 
-Implementation tasks remain future work and need a deliberate reviewable scope;
-merging design does not authorize automatic expansion into a full runtime port.
+Implementation tasks remain future work and need a deliberate reviewable scope.
 F0 and N0 can proceed independently once their shared handle/error/event contracts
-are settled. Networking research must address both native QEMU and the pinned
-future Wasm target before promising equivalent guest capabilities.
+are settled. Networking research must address both native QEMU and a future Wasm
+target selected and pinned by N0 before promising equivalent guest capabilities.
 
 ## Deferred scope
 

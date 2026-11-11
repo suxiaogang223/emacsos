@@ -78,7 +78,7 @@ does not change source ownership; see [source layout](source-layout.md).
 
 Start with the capabilities needed before interactive Emacs; grow typed file
 and network operations from working backends. Exact C signatures, numeric ABI
-assignments and handle representation remain P0 design work.
+assignments and handle representation are finalized in P1.
 
 | Capability | Required semantics |
 | --- | --- |
@@ -110,8 +110,8 @@ close_file / close_directory / close_stream
 Every acquired handle has one recorded owner and defined transfer/duplication
 rules. Borrowed buffers remain valid for the operation's documented duration;
 asynchronous ownership must be explicit. Events carry identity/generation sufficient to reject stale events after close
-or handle reuse. The first port can keep simple owned
-synchronous operations and nonblocking readiness rather than hidden background
+or handle reuse. The first port can keep simple owned synchronous operations
+and nonblocking readiness rather than hidden background
 pointer retention. Bound handle counts and queues; failed acquisition releases
 partial resources.
 
@@ -202,6 +202,5 @@ when those tools are introduced.
 | Open: N0 | Network transport | Prove native and future Wasm feasibility, including any explicit host bridge, before selecting device/stack. |
 | Deferred | Runtime/process changes | Direct libc replacement, preemption, isolation, external processes and service frameworks. |
 
-[The roadmap](roadmap.md) turns these gates into staged work. This architecture
-PR changes documentation only: no PAL implementation, Emacs port, boot execution
-or functional acceptance is part of it.
+[The roadmap](roadmap.md) turns these gates into staged work. PAL implementation
+and the Emacs port remain future tasks.
