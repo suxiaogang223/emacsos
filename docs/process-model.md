@@ -160,7 +160,10 @@ never claim cooperative cancellation can force it to stop.
 
 K0 later implements kernel process execution/protection after the runtime and
 ownership contracts. Validate separate mappings, checked entry/access, real
-scheduling/limits, process faults/exit and final-resource reclamation. Forced
+scheduling/limits, process faults/exit and final-resource reclamation. A worker
+must not write kernel/main-Emacs memory or execute privileged operations; the
+kernel validates caller identity and owned or explicitly delegated resources,
+rather than treating separate mappings alone as isolation. Forced
 termination of a hung worker must leave kernel/main Emacs progressing. Define
 supported spawn/communication operations without promising Unix fork/exec or
 all extensions in separate processes. F0/F1 and N0/N1 do not depend on A0 or K0.
