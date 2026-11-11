@@ -37,7 +37,10 @@ installation are future work.
 Necessary Emacs runtime/platform modifications belong to the fork. Ordinary
 system Elisp and its tests should belong to the parent when introduced, rather
 than accumulating as fork policy. The PAL and C backends belong to the parent;
-the precise runtime/compatibility boundary must be designed first.
+the [architecture](design.md) selects static Emacs/musl with a limited Linux
+x86-64 compatibility adapter over a typed PAL. The [runtime-port contract](runtime-port.md)
+records required bootstrap capabilities; concrete implementation remains future
+work. Read-only runtime files precede writable system/user files.
 
 A submodule normally checks out a detached commit. For a fork change, create an
 explicit branch in `emacs/`, validate and publish that commit first, then stage
@@ -46,6 +49,7 @@ not a reproducible handoff. Identify both revisions in reviews. Stage an updated
 gitlink before running contribution checks; CI requires the initialized checkout
 to match the pin and remain clean.
 
-The initial baseline has one root commit and only the `main` branch. Previous
+The source was initialized with one root commit; architecture changes and later
+implementation use ordinary reviewed branches/PRs. Previous
 implementations and reports are outside this repository; reuse requires explicit
 design and review rather than assuming retired features still exist.
