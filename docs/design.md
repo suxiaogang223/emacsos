@@ -64,8 +64,8 @@ and maintenance work. See [runtime-port requirements](runtime-port.md).
 The adapter translates syscall arguments, descriptors and error numbers into
 PAL operations. It must not hide unsupported behavior with success-only stubs.
 Kernel/backends expose typed operations without Linux syscall layouts; the
-adapter consumes those operations. New Elisp wrappers are unnecessary when standard functions can
-use the supported runtime path.
+adapter consumes those operations. New Elisp wrappers are unnecessary when
+standard functions can use the supported runtime path.
 
 ## Layer ownership
 
@@ -116,9 +116,10 @@ close_file / close_directory / close_stream
 Every acquired handle has one recorded owner and defined transfer/duplication
 rules. Borrowed buffers remain valid for the operation's documented duration;
 asynchronous ownership must be explicit. Events carry identity/generation
-sufficient to reject stale events after close or handle reuse. The first port can keep simple owned synchronous operations
-and nonblocking readiness rather than hidden background
-pointer retention. Bound handle counts and queues; failed acquisition releases
+sufficient to reject stale events after close or handle reuse. The first port
+can keep simple owned synchronous operations and nonblocking readiness rather
+than hidden background pointer retention. Bound handle counts and queues;
+failed acquisition releases
 partial resources.
 
 A positive byte count reports progress and can be shorter than requested.
