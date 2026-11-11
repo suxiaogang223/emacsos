@@ -24,7 +24,7 @@ or proof of the musl CRT call set. No toolchain/libc build is pinned yet.
 Running Emacs requires substantially more than dispatching syscalls.
 
 P1 pins a terminal-only static build with interpreted/bytecompiled Lisp. GUI,
-native compilation, Lisp threads, TLS and external helpers are deferred; audit
+native compilation, Lisp threads, TLS/HTTPS and external helpers are deferred; audit
 exact configure flags and remaining call paths rather than assuming all
 unsupported function names disappear.
 
@@ -32,7 +32,7 @@ unsupported function names disappear.
 
 | Area | Required decision and behavior |
 | --- | --- |
-| Executable/startup | Supported static ELF form and segments; initial stack/alignment, argv/env/auxv, libc entry, TLS and errno requirements. No dynamic linker or exec subprocess promise. |
+| Executable/startup | Supported static ELF form and segments; initial stack/alignment, argv/env/auxv, libc entry, thread-local storage (TLS) and errno requirements. No dynamic linker or exec subprocess promise. |
 | Memory | RAM discovery/bounds, reserved ranges, runtime maps/heap, alignment, overflow checks and exact release/lifetime rules. Define protection behavior; reject unsupported semantics. |
 | Console | Serial input/output, termios/ioctl subset actually needed by terminal Emacs, short I/O and readiness. |
 | Time/wait | Monotonic clock, deadline units and readiness integration compatible with Emacs's configured wait path. Audit timer descriptors/signals if the selected build uses them. |
@@ -59,13 +59,15 @@ terminal capability data. [process.c](https://github.com/suxiaogang223/emacs/blo
 with terminal/network readiness, timers and redisplay; [atimer.c](https://github.com/suxiaogang223/emacs/blob/73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5/src/atimer.c)
 needs real timer/signal behavior or an explicit targeted adaptation. Wall-clock
 time and entropy quality must be stated honestly; neither a fake clock nor a
-constant random result supplies a capability, TLS or strong entropy.
+constant random result supplies transport encryption or strong entropy.
 
 Musl design references are [x86-64 syscalls](https://git.musl-libc.org/cgit/musl/tree/arch/x86_64/syscall_arch.h),
 [libc startup](https://git.musl-libc.org/cgit/musl/tree/src/env/__libc_start_main.c)
-and [TLS initialization](https://git.musl-libc.org/cgit/musl/tree/src/env/__init_tls.c).
+and [thread-local storage initialization](https://git.musl-libc.org/cgit/musl/tree/src/env/__init_tls.c).
 These upstream HEAD links are not a pinned build; select a revision/configuration
 and derive its actual syscall closure before implementation.
+Disabling Lisp threads or TLS/HTTPS does not eliminate libc thread-local storage
+and errno initialization from the runtime startup contract.
 
 The ABI adapter owns Linux-shaped argument/error translation and descriptor
 mapping. The PAL owns backend capability semantics and must not depend on Lisp

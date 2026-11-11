@@ -17,7 +17,7 @@ separate task.
 | F1 | Minimal persistent file backend. | F0; choose format, sync/recovery and error contracts, then prove retained data separately. No service/startup manager prerequisite. |
 | N0 | Native and future browser transport feasibility. | After P0 event/ownership contracts, research may run alongside P1/F0. Prove available transport before selecting NIC/stack/bridge; no browser product is implied. |
 | N1 | Guest outbound TCP. | N0 and E0; connection/readiness integration, numeric-address connect, send/receive, EOF, timeout, error and leak-free close on the supported transport. |
-| N2 | DNS and controlled HTTP-to-file example. | N1 and F0. Receive/save/read in the guest; retained source/results require F1. Assess TLS separately. |
+| N2 | DNS and controlled HTTP-to-file example. | N1 and F0. Receive/save/read in the guest; retained source/results require F1. Assess TLS/HTTPS separately. |
 
 Implementation tasks remain future work and need a deliberate reviewable scope.
 F0 and N0 can proceed independently once their shared handle/error/event contracts

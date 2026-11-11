@@ -49,15 +49,18 @@ not a Linux kernel, full Linux userspace or general Unix process environment.
 The decision remains subject to actual E0 runtime validation.
 
 The initial build profile is terminal-only, using interpreted and bytecompiled
-Lisp. GUI, native compilation, Lisp threads, TLS and external helpers are
+Lisp. GUI, native compilation, Lisp threads, TLS/HTTPS and external helpers are
 deferred; P1 freezes the exact configure options and dependency versions.
 Functions remaining in a build still need a backend or explicit unsupported
 behavior; the profile does not imply all unsupported functions disappear.
 
 This route retains upstream libc/runtime startup and reduces the initial Emacs
-port surface. It still requires executable loading, startup-stack/TLS setup,
+port surface. It still requires executable loading, startup-stack and libc
+thread-local storage (TLS) setup,
 memory operations, readable runtime files, terminal behavior and event waits.
-A generic read/write interface cannot replace them. A direct Emacs C platform
+Disabling Lisp threads or transport encryption does not remove libc
+thread-local storage and errno initialization. A generic read/write interface
+cannot replace them. A direct Emacs C platform
 port or replacement libc is deferred because it expands the initial integration
 and maintenance work. See [runtime-port requirements](runtime-port.md).
 
@@ -146,7 +149,7 @@ The planned boot chain is:
    Establish console, memory, monotonic time/wait and read-only bootstrap files.
 3. Load a supported static Emacs ELF, validating segments, sizes, alignment,
    range arithmetic, overlap and entry placement. Define its initial ABI stack,
-   arguments/environment and required libc/TLS startup state.
+   arguments/environment and required libc thread-local storage startup state.
 4. Expose the matching portable dump, Lisp and runtime data through bootstrap
    file operations. A read-only image is required before writable user files;
    it is not a persistent working filesystem.
@@ -204,7 +207,7 @@ when those tools are introduced.
 | Selected | Public API | Standard Elisp evaluation/file/network APIs; document the supported subset. |
 | Selected | Bootstrap ordering | Read-only runtime files and memory/time/wait precede interactive Emacs; working files follow. |
 | Open: P1 | Concrete interfaces | C signatures, handle representation, bounds and required ABI operations from the selected runtime build. |
-| Open: P1/E0 | Runtime artifacts | Build/toolchain, ELF/startup/TLS details, memory budget, dump manifest and terminal/wait integration. |
+| Open: P1/E0 | Runtime artifacts | Build/toolchain, ELF/startup/thread-local storage details, memory budget, dump manifest and terminal/wait integration. |
 | Open: F1 | Durability | Format, synchronization and recovery model after volatile file behavior is correct. |
 | Open: N0 | Network transport | Prove native and future Wasm feasibility, including any explicit host bridge, before selecting device/stack. |
 | Deferred | Runtime/process changes | Direct libc replacement, preemption, isolation, external processes and service frameworks. |
