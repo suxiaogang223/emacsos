@@ -14,9 +14,9 @@ support and E0 proves the runtime.
   with interrupts disabled. It has no input, timer/event delivery or loader.
 - [kernel/kernel.ld](../kernel/kernel.ld) reserves the initial kernel/stack
   layout; it is not a runtime memory allocator or process map.
-- [emacs/EMACSOS.json](../emacs/EMACSOS.json) pins upstream provenance.
-  [emacs/src/emacs.c](../emacs/src/emacs.c) and
-  [emacs/src/pdumper.c](../emacs/src/pdumper.c) are upstream runtime/startup and
+- [emacs/EMACSOS.json](https://github.com/suxiaogang223/emacs/blob/73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5/EMACSOS.json) pins upstream provenance.
+  [emacs/src/emacs.c](https://github.com/suxiaogang223/emacs/blob/73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5/src/emacs.c) and
+  [emacs/src/pdumper.c](https://github.com/suxiaogang223/emacs/blob/73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5/src/pdumper.c) are upstream runtime/startup and
   dump implementation sources to audit, not emacsOS integration.
 
 These requirements derive from read-only source inspection, not syscall traces
@@ -46,17 +46,17 @@ startup/interaction paths. A successful placeholder for memory protection,
 signal delivery or descriptor behavior is not acceptable evidence. A supported
 no-op needs a deliberate bounded contract that is sufficient for this port.
 
-[pdumper.c](../emacs/src/pdumper.c) reserves/maps dump regions and validates
+[pdumper.c](https://github.com/suxiaogang223/emacs/blob/73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5/src/pdumper.c) reserves/maps dump regions and validates
 header/fingerprint and exact reads. Its contiguous-loading strategy is selected
 at compile time; failed mmap does not universally fall back to heap loading.
 Support the selected anonymous reservation, fixed file mappings, MAP_PRIVATE,
 zero-fill, permissions and failure rollback semantics, or fail the operation.
 Do not report successful memory protection without enforcing it.
 
-[sysdep.c](../emacs/src/sysdep.c) and [term.c](../emacs/src/term.c) require more
+[sysdep.c](https://github.com/suxiaogang223/emacs/blob/73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5/src/sysdep.c) and [term.c](https://github.com/suxiaogang223/emacs/blob/73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5/src/term.c) require more
 than a banner: audit terminal attributes, ISIG/C-g handling, window size and
-terminal capability data. [process.c](../emacs/src/process.c) integrates waits
-with terminal/network readiness, timers and redisplay; [atimer.c](../emacs/src/atimer.c)
+terminal capability data. [process.c](https://github.com/suxiaogang223/emacs/blob/73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5/src/process.c) integrates waits
+with terminal/network readiness, timers and redisplay; [atimer.c](https://github.com/suxiaogang223/emacs/blob/73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5/src/atimer.c)
 needs real timer/signal behavior or an explicit targeted adaptation. Wall-clock
 time and entropy quality must be stated honestly; neither a fake clock nor a
 constant random result supplies a capability, TLS or strong entropy.
@@ -86,9 +86,9 @@ adapter; do not require F0 writable files just to bootstrap Emacs.
 F0 later supplies explicitly volatile working files with ordinary Emacs file
 behavior. Directory enumeration, file position, creation flags, metadata,
 locking fallback requirements and rename semantics need concrete contracts.
-[filelock.c](../emacs/src/filelock.c) falls back to regular-file locks only for
+[filelock.c](https://github.com/suxiaogang223/emacs/blob/73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5/src/filelock.c) falls back to regular-file locks only for
 specific errors; indiscriminate EROFS or fake success changes normal behavior.
-[fileio.c](../emacs/src/fileio.c) propagates write/fsync/final-close failures, but
+[fileio.c](https://github.com/suxiaogang223/emacs/blob/73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5/src/fileio.c) propagates write/fsync/final-close failures, but
 `write-region-inhibit-fsync` normally defaults to true: ordinary save is not a
 durability boundary. No old save fixes or validated save contract is inherited
 by the clean fork. F1 alone introduces persistent media and defines sync/recovery. This architecture
