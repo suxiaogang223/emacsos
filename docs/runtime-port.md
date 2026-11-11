@@ -23,6 +23,11 @@ These requirements derive from read-only source inspection, not syscall traces
 or proof of the musl CRT call set. No toolchain/libc build is pinned yet.
 Running Emacs requires substantially more than dispatching syscalls.
 
+P1 pins a terminal-only static build with interpreted/bytecompiled Lisp. GUI,
+native compilation, Lisp threads, TLS and external helpers are deferred; audit
+exact configure flags and remaining call paths rather than assuming all
+unsupported function names disappear.
+
 ## Compatibility surface to establish
 
 | Area | Required decision and behavior |

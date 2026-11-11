@@ -48,6 +48,12 @@ adapter and defines backend semantics. This is a bounded compatibility target,
 not a Linux kernel, full Linux userspace or general Unix process environment.
 The decision remains subject to actual E0 runtime validation.
 
+The initial build profile is terminal-only, using interpreted and bytecompiled
+Lisp. GUI, native compilation, Lisp threads, TLS and external helpers are
+deferred; P1 freezes the exact configure options and dependency versions.
+Functions remaining in a build still need a backend or explicit unsupported
+behavior; the profile does not imply all unsupported functions disappear.
+
 This route retains upstream libc/runtime startup and reduces the initial Emacs
 port surface. It still requires executable loading, startup-stack/TLS setup,
 memory operations, readable runtime files, terminal behavior and event waits.
@@ -57,8 +63,8 @@ and maintenance work. See [runtime-port requirements](runtime-port.md).
 
 The adapter translates syscall arguments, descriptors and error numbers into
 PAL operations. It must not hide unsupported behavior with success-only stubs.
-The PAL should also be usable by kernel backends without going through Linux
-syscall shapes. New Elisp wrappers are unnecessary when standard functions can
+Kernel/backends expose typed operations without Linux syscall layouts; the
+adapter consumes those operations. New Elisp wrappers are unnecessary when standard functions can
 use the supported runtime path.
 
 ## Layer ownership
@@ -109,8 +115,8 @@ close_file / close_directory / close_stream
 
 Every acquired handle has one recorded owner and defined transfer/duplication
 rules. Borrowed buffers remain valid for the operation's documented duration;
-asynchronous ownership must be explicit. Events carry identity/generation sufficient to reject stale events after close
-or handle reuse. The first port can keep simple owned synchronous operations
+asynchronous ownership must be explicit. Events carry identity/generation
+sufficient to reject stale events after close or handle reuse. The first port can keep simple owned synchronous operations
 and nonblocking readiness rather than hidden background
 pointer retention. Bound handle counts and queues; failed acquisition releases
 partial resources.
