@@ -16,6 +16,7 @@ int main(void)
                                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (memory == MAP_FAILED) return 1;
     memory[4096] = 73;
+    if (mmap(0, 4096, PROT_READ | PROT_WRITE, MAP_PRIVATE, -1, 0) != MAP_FAILED || errno != EBADF) return 15;
     if (mmap(memory, 8192, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_FIXED, 23, 0) != MAP_FAILED || errno != EBADF || memory[4096] != 73) return 14;
     if (mprotect(memory, 8192, PROT_READ) || memory[4096] != 73) return 2;
 #ifdef PROBE_WRITE_PROTECTED

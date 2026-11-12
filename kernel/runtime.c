@@ -154,8 +154,10 @@ static long console_transfer(unsigned fd, void *buffer, size_t count,
   unsigned long arguments[6] = {fd, 3, 0, 0, 0, 0};
   long flags = fd == 0 ? 0 : 1;
   (void)abi_files(72, arguments, &flags);
+  if (flags < 0 || (flags & 0x200000))
+    return -9;
   if (writing) {
-    if ((flags & 3) == 0 && fd != 1 && fd != 2)
+    if ((flags & 3) == 0)
       return -9;
     console_write(buffer, count);
     return count;
@@ -276,7 +278,7 @@ long syscall_dispatch(unsigned long n, const unsigned long a[6]) {
   case 1:
     return console_transfer(a[0], (void *)a[1], a[2], true);
   case 9: {
-    if (a[4] != (unsigned long)-1 && !(a[3] & 0x20)) {
+    if (!(a[3] & 0x20)) {
       if (!(a[3] & 2))
         return -95;
       if (a[5] & (PAGE_SIZE - 1))
@@ -333,16 +335,23 @@ long syscall_dispatch(unsigned long n, const unsigned long a[6]) {
       void *base;
       size_t len;
     };
-    const struct iovec *v = (void *)a[1];
     if (a[2] > 1024)
       return -22;
+    long checked = console_transfer(a[0], 0, 0, n == 20);
+    if (checked < 0)
+      return checked;
+    if (a[2] && !a[1])
+      return -14;
     long total = 0;
     for (size_t i = 0; i < a[2]; i++) {
-      long nread = console_transfer(a[0], v[i].base, v[i].len, n == 20);
+      struct iovec vector;
+      memcpy(&vector, (const unsigned char *)a[1] + i * sizeof vector,
+             sizeof vector);
+      long nread = console_transfer(a[0], vector.base, vector.len, n == 20);
       if (nread < 0)
         return total ? total : nread;
       total += nread;
-      if ((size_t)nread < v[i].len)
+      if ((size_t)nread < vector.len)
         break;
       if (n == 19 && total && !console_ready())
         break;
