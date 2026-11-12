@@ -45,3 +45,10 @@ container-image:
 
 run: image
 	./scripts/run-qemu.sh
+
+.PHONY: runtime runtime-smoke
+runtime:
+	./scripts/build-runtime.sh
+
+runtime-smoke:
+	python3 scripts/smoke-runtime.py
