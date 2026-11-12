@@ -21,7 +21,7 @@ make run
 The first build compiles static Emacs and its matching portable dump in pinned
 containers. Later builds reuse the runtime build directory. The image is
 `build/mvp/emacsos.img`; the launcher uses QEMU's fixed PC profile, 1 GiB RAM,
-COM1 and no network. Exit QEMU with `C-a x`.
+COM1 and no network. Exit QEMU with `C-a x`; send Emacs a literal `C-a` with `C-a a`.
 
 In Emacs, use `M-:` to evaluate `(+ 20 22)`, `C-x C-f` to create
 `/work/example.el`, and `C-x C-s` to save. Load your code with `M-x load-file`.

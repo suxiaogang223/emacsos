@@ -21,7 +21,8 @@ Acceptance requires a clean committed parent and initialized submodule.
 `make mvp` builds the kernel and static runtime, installs parent-owned Lisp,
 packs the image and records build identity. `make check-mvp` rebuilds as needed
 and drives the real terminal command loop. `make run` launches the same image
-for manual interaction; `C-a x` exits QEMU.
+for manual interaction; `C-a x` exits QEMU and `C-a a` sends Emacs a literal
+`C-a`.
 
 The script enters normal terminal text and `M-:` forms. It creates
 `/work/mvp-program.el` with `find-file`, inserts source, saves, kills the buffer
