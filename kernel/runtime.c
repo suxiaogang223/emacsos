@@ -278,6 +278,9 @@ long syscall_dispatch(unsigned long n, const unsigned long a[6]) {
   case 1:
     return console_transfer(a[0], (void *)a[1], a[2], true);
   case 9: {
+    /* Validate full-width ABI fields before any fixed mapping is replaced. */
+    if ((a[2] & ~7UL) || (a[3] & ~0x32UL))
+      return -22;
     if (!(a[3] & 0x20)) {
       if (!(a[3] & 2))
         return -95;
@@ -301,6 +304,8 @@ long syscall_dispatch(unsigned long n, const unsigned long a[6]) {
     return memory_map(a[0], a[1], a[2], a[3]);
   }
   case 10:
+    if (a[2] & ~7UL)
+      return -22;
     return memory_protect(a[0], a[1], a[2]);
   case 11:
     return memory_unmap(a[0], a[1]);
