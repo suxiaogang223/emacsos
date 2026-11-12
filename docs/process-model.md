@@ -1,7 +1,9 @@
 # Applications, instances and processes
 
-This is the proposed execution/management model, not implemented functionality.
-The baseline remains a serial kernel scaffold and Emacs source dependency.
+This is the broader execution/management contract. The [application MVP](application-mvp.md)
+implements trusted instances; [guest acceptance](mvp.md) exercises its initial
+subset. Bounded messaging, completion subscriptions, deadline waits and
+protected kernel processes remain unimplemented.
 [The architecture](design.md) retains standard Elisp APIs and the small PAL;
 this model adds ownership and execution concepts without a new application
 framework or a second file/network API.

@@ -1,4 +1,4 @@
-.DEFAULT_GOAL := image
+.DEFAULT_GOAL := mvp
 CC := clang
 LD := ld.lld
 OBJCOPY := llvm-objcopy
@@ -46,7 +46,7 @@ $(OUT)/emacsos.img: $(OUT)/boot.bin $(OUT)/kernel.bin
 container-image:
 	./scripts/build-container.sh make image
 
-run: image
+run: mvp
 	./scripts/run-qemu.sh
 
 .PHONY: runtime runtime-smoke
@@ -55,3 +55,12 @@ runtime:
 
 runtime-smoke:
 	python3 scripts/smoke-runtime.py
+
+.PHONY: mvp check-mvp
+mvp: runtime container-image
+	mkdir -p build/mvp
+	python3 scripts/pack-runtime.py $(OUT)/emacsos.img build/runtime/emacs build/runtime/runtime.cpio build/mvp/emacsos.img
+	python3 scripts/mvp-manifest.py
+
+check-mvp: mvp
+	python3 scripts/check-mvp.py

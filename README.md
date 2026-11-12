@@ -1,60 +1,64 @@
 # emacsOS
 
-emacsOS is a fresh operating-system project built around GNU Emacs and Elisp.
-The intended public programming interface is standard Emacs Lisp, with file
-and network capabilities supplied through a small platform abstraction layer.
+emacsOS runs GNU Emacs 30.2 on its own x86-64 C kernel. Elisp is the public
+programming interface. The first MVP provides serial-terminal editing and
+evaluation, volatile working files, and trusted cooperative applications managed
+from `*Processes*`. Networking, persistent storage and isolated processes are
+future work.
 
-This initial source contains only a minimal BIOS/x86-64 C-kernel scaffold for
-serial output and a pinned GNU Emacs source submodule. **Emacs does not run on
-this kernel yet.** Files, networking, persistence, services and a browser product
-are not implemented. The scaffold is subject to compilation/static checks;
-no emulator boot or functional acceptance is claimed by this reset.
+## Build and run
 
-## Source
+Install Make, Python 3, Docker with Linux/amd64 support, and
+`qemu-system-x86_64`. Initialize the pinned source dependency:
 
 ```sh
 git clone --single-branch --branch main --recurse-submodules https://github.com/suxiaogang223/emacsos.git emacsos
 cd emacsos
-# After changing an existing checkout:
-git submodule update --init --recursive
+make mvp
+make run
 ```
 
-`emacs/` pins [our Emacs fork](https://github.com/suxiaogang223/emacs), currently
-GNU Emacs 30.2 plus provenance documentation. It carries no emacsOS runtime port.
-The parent repository owns the kernel, future platform layer and system code.
+The first build compiles static Emacs and its matching portable dump in pinned
+containers. Later builds reuse the runtime build directory. The image is
+`build/mvp/emacsos.img`; the launcher uses QEMU's fixed PC profile, 1 GiB RAM,
+COM1 and no network. Exit QEMU with `C-a x`.
 
-## Build the scaffold
+In Emacs, use `M-:` to evaluate `(+ 20 22)`, `C-x C-f` to create
+`/work/example.el`, and `C-x C-s` to save. Load your code with `M-x load-file`.
+Files under `/work`, `/tmp` and `/home/user` are writable **only until shutdown**.
+The installed runtime under `/usr` is read-only.
 
-Use Make and Docker with Linux/amd64 support:
+For the bundled application example, evaluate:
 
-```sh
-make container-image
+```elisp
+(require 'emacsos-counter)
+(emacsos-counter-start)
+(emacsos-counter-start)
+(emacsos-processes)
 ```
 
-With Clang, LLD, llvm-objcopy and NASM installed on the host, use `make image`.
-`make kernel` builds the kernel; `make image` packages
-`build/skeleton/emacsos.img`.
-The intended manual launcher is `./scripts/run-qemu.sh` (or `make run`) with
-`qemu-system-x86_64` installed. Boot execution has not been validated as part of
-this initialization. These commands do not build or launch Emacs.
+Use `s` to stop a selected run, `r` to restart it with a fresh identity, `RET`
+to inspect it, and `v` to visit its source. This is cooperative management in one
+trusted Emacs; a non-yielding callback can block every application and the UI.
 
-## Direction
+## Acceptance and architecture
 
-Read the [overall architecture](docs/design.md),
-[first runtime-port contract](docs/runtime-port.md),
-[application/process model](docs/process-model.md),
-[public programming interface](docs/programming-interface.md),
-[roadmap](docs/roadmap.md) and [source layout](docs/source-layout.md).
-The proposed route is standard Elisp APIs over GNU Emacs, static musl and a
-limited Linux x86-64 ABI adapter, backed by a small typed PAL and our C kernel.
-Architecture review comes first; no PAL or runtime port is implemented here.
-Interactive evaluation, volatile file APIs, persistence and networking follow
-as separate stages. Trusted application instances and later independent kernel
-processes have an explicit model; neither is implemented by this proposal.
+From a clean committed checkout, run `make check-mvp`. It boots the actual
+image, authors/saves/loads an Elisp application, checks normal backups, locks and
+errors, then exercises two instances through the manager. Build and acceptance
+manifests record source and artifact hashes. See [MVP acceptance](docs/mvp.md)
+for evidence and scope, and [runtime build](docs/runtime-build.md) for build details.
+Host checks and kernel probes remain separate from guest functional acceptance.
 
-`main` starts with one initial commit. Previous implementations and their PR
-history are outside this repository and do not establish capabilities here.
+Read the [architecture](docs/design.md), [runtime contract](docs/runtime-port.md),
+[public interface](docs/programming-interface.md), [application model](docs/process-model.md),
+[roadmap](docs/roadmap.md) and [source ownership](docs/source-layout.md).
+The runtime uses static musl and a bounded Linux x86-64 ABI adapter over the
+parent kernel and file backend. It does not provide general Linux compatibility.
 
-Public documentation, comments and community discussion use English. See
-[CONTRIBUTING.md](CONTRIBUTING.md). Private user discussion follows the user's
-language preference. GNU Emacs licensing remains in the submodule.
+`emacs/` pins [our GNU Emacs fork](https://github.com/suxiaogang223/emacs), whose
+only changes are provenance documentation. System policy stays in the parent.
+Public documentation, comments and community discussion use English; private
+user discussion follows the user's preference. See [CONTRIBUTING.md](CONTRIBUTING.md).
+GNU Emacs licensing remains in the submodule. Historical implementations and PRs
+outside this repository establish no current capabilities.

@@ -1,23 +1,28 @@
 # First runtime-port contract
 
 The architectural choice is a static GNU Emacs 30.2/musl runtime using a bounded
-Linux x86-64 ABI adapter over our typed PAL. It is a proposed first-port route,
-not implemented compatibility. [The architecture](design.md) is the canonical
+Linux x86-64 ABI adapter over our typed PAL. The [MVP](mvp.md) exercises this
+route for one fixed QEMU machine; it is not
+general Linux compatibility. [The architecture](design.md) is the canonical
 layer/ownership description. P0 documents the contracts; P1 implements bootstrap
 support and E0 proves the runtime.
 
 ## Current source evidence
 
-- [kernel/entry.asm](../kernel/entry.asm) builds one identity mapping for the
-  first 2 MiB, a fixed boot stack and the transition to C; SYSCALL stays disabled.
-- [kernel/main.c](../kernel/main.c) initializes COM1, polls for output and halts
-  with interrupts disabled. It has no input, timer/event delivery or loader.
-- [kernel/kernel.ld](../kernel/kernel.ld) reserves the initial kernel/stack
-  layout; it is not a runtime memory allocator or process map.
-- [emacs/EMACSOS.json](https://github.com/suxiaogang223/emacs/blob/73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5/EMACSOS.json) pins upstream provenance.
-  [emacs/src/emacs.c](https://github.com/suxiaogang223/emacs/blob/73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5/src/emacs.c) and
-  [emacs/src/pdumper.c](https://github.com/suxiaogang223/emacs/blob/73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5/src/pdumper.c) are upstream runtime/startup and
-  dump implementation sources to audit, not emacsOS integration.
+- `kernel/entry.asm`, `hardware.c` and `memory.c` establish the fixed memory
+  profile, real page permissions, serial interrupts and PIT/RTC time.
+- `kernel/loader.c` validates and loads the supported static ELF, builds its
+  initial stack and supplies controlled dump/environment startup.
+- `kernel/runtime.c` handles the exercised ABI subset, real timer descriptors
+  and readiness; unavailable calls return errors.
+- `kernel/files.c` and `file_abi.c` implement typed namespace/file operations
+  and ABI translation. See [file contracts](files.md).
+- The fork pin remains `73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5` (GNU Emacs
+  30.2 plus provenance only). No runtime source patches are needed for this MVP.
+
+[Kernel bootstrap](kernel-bootstrap.md) records concrete ranges, startup and
+unsupported semantics. No asynchronous signal delivery, secure entropy, dynamic
+linker or external subprocess execution is claimed.
 
 The [runtime build](runtime-build.md) now pins a terminal-only static musl
 profile and packages matching artifacts. Host PTY/trace validation can establish
@@ -119,14 +124,14 @@ runtime. Even a connection created with `:nowait` does not make every later
 `process-send-string` nonblocking; document the supported send/progress behavior.
 Correct cleanup implies neither protection nor rollback of completed I/O.
 
-## Future E0 evidence
+## E0 evidence
 
-For the implementation task, record parent/fork commits, build options,
+The [MVP tools](mvp.md) record parent/fork commits, build options,
 compiler/libc identity and hashes of executable, dump, Lisp/runtime data and
 boot image in one manifest. Verify sufficient mappings and reserved ranges,
 artifact consistency, controlled initialization, actual terminal interaction and
 Elisp evaluation. Trace unsupported calls and real errors rather than broadening
 compatibility by assumption.
 
-Future evidence must distinguish host builds, static/component checks, emulator
+Evidence must distinguish host builds, static/component checks, emulator
 startup and interactive guest behavior.
