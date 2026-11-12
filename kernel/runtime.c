@@ -144,6 +144,34 @@ static long descriptor_ready(unsigned fd, bool writing) {
   }
   return file_ready(fd, writing);
 }
+__attribute__((weak)) int file_fd_kind(int fd) {
+  return fd >= 0 && fd <= 2 ? 3 : -1;
+}
+static long console_transfer(unsigned fd, void *buffer, size_t count,
+                             bool writing) {
+  if (file_fd_kind(fd) != 3)
+    return -9;
+  unsigned long arguments[6] = {fd, 3, 0, 0, 0, 0};
+  long flags = fd == 0 ? 0 : 1;
+  (void)abi_files(72, arguments, &flags);
+  if (flags < 0 || (flags & 0x200000))
+    return -9;
+  if (writing) {
+    if ((flags & 3) == 0)
+      return -9;
+    console_write(buffer, count);
+    return count;
+  }
+  if ((flags & 3) == 1)
+    return -9;
+  long result;
+  while ((result = console_read(buffer, count)) == -11) {
+    if (flags & 0x800)
+      return -11;
+    wait_interrupt();
+  }
+  return result;
+}
 static long terminal_ioctl(unsigned long request, void *p) {
   static unsigned char termios[36] = {
       0,  0,   0,  0, 5, 0, 0, 0,  0xbf, 0,  0, 0,  0x3b, 0x8a, 0,  0, 0, 3,
@@ -246,20 +274,22 @@ long syscall_dispatch(unsigned long n, const unsigned long a[6]) {
     return result;
   switch (n) {
   case 0:
-    if (a[0] > 2)
-      return -9;
-    while ((result = console_read((void *)a[1], a[2])) == -11)
-      wait_interrupt();
-    return result;
+    return console_transfer(a[0], (void *)a[1], a[2], false);
   case 1:
-    if (a[0] > 2)
-      return -9;
-    console_write((void *)a[1], a[2]);
-    return a[2];
+    return console_transfer(a[0], (void *)a[1], a[2], true);
   case 9: {
-    if (a[4] != (unsigned long)-1 && !(a[3] & 0x20)) {
+    /* Validate full-width ABI fields before any fixed mapping is replaced. */
+    if ((a[2] & ~7UL) || (a[3] & ~0x32UL))
+      return -22;
+    if (!(a[3] & 0x20)) {
       if (!(a[3] & 2))
         return -95;
+      if (a[5] & (PAGE_SIZE - 1))
+        return -22;
+      /* Validate the descriptor before MAP_FIXED can replace existing bytes. */
+      long checked = file_map_read(a[4], a[5], 0, a[1]);
+      if (checked < 0)
+        return checked;
       long address = memory_map(a[0], a[1], 3, a[3]);
       if (address < 0)
         return address;
@@ -274,6 +304,8 @@ long syscall_dispatch(unsigned long n, const unsigned long a[6]) {
     return memory_map(a[0], a[1], a[2], a[3]);
   }
   case 10:
+    if (a[2] & ~7UL)
+      return -22;
     return memory_protect(a[0], a[1], a[2]);
   case 11:
     return memory_unmap(a[0], a[1]);
@@ -301,21 +333,33 @@ long syscall_dispatch(unsigned long n, const unsigned long a[6]) {
     }
     return 0;
   case 16:
-    return a[0] <= 2 ? terminal_ioctl(a[1], (void *)a[2]) : -25;
+    return file_fd_kind(a[0]) == 3 ? terminal_ioctl(a[1], (void *)a[2]) : -25;
+  case 19:
   case 20: {
     struct iovec {
       void *base;
       size_t len;
     };
-    struct iovec *v = (void *)a[1];
-    if (a[0] > 2)
-      return -9;
     if (a[2] > 1024)
       return -22;
-    size_t total = 0;
+    long checked = console_transfer(a[0], 0, 0, n == 20);
+    if (checked < 0)
+      return checked;
+    if (a[2] && !a[1])
+      return -14;
+    long total = 0;
     for (size_t i = 0; i < a[2]; i++) {
-      console_write(v[i].base, v[i].len);
-      total += v[i].len;
+      struct iovec vector;
+      memcpy(&vector, (const unsigned char *)a[1] + i * sizeof vector,
+             sizeof vector);
+      long nread = console_transfer(a[0], vector.base, vector.len, n == 20);
+      if (nread < 0)
+        return total ? total : nread;
+      total += nread;
+      if ((size_t)nread < vector.len)
+        break;
+      if (n == 19 && total && !console_ready())
+        break;
     }
     return total;
   }
@@ -331,6 +375,10 @@ long syscall_dispatch(unsigned long n, const unsigned long a[6]) {
       wait_interrupt();
     return 0;
   }
+  case 25: /* mremap is unavailable; musl can allocate/copy/free instead. */
+    return -38;
+  case 38: /* Signal-driven interval timers are unavailable. */
+    return -38;
   case 39:
   case 186:
     return 1;
@@ -365,6 +413,8 @@ long syscall_dispatch(unsigned long n, const unsigned long a[6]) {
     }
     return 0;
   }
+  case 99: /* Physical free-memory reporting is not implemented. */
+    return -38;
   case 102:
   case 104:
   case 107:
@@ -372,6 +422,18 @@ long syscall_dispatch(unsigned long n, const unsigned long a[6]) {
     return 0;
   case 110:
     return 0;
+  case 109:
+  case 111:
+    return 1;
+  case 121:
+    return a[0] <= 1 ? 1 : -3;
+  case 122:
+  case 123:
+    return 0; /* No alternate identity exists; report the unchanged previous ID.
+               */
+  case 68:
+    return (a[0] <= 1 && a[1] <= 1) ? 0 : -1;
+
   case 158:
     if (a[0] == 0x1002) {
       __asm__ volatile("wrmsr" ::"c"(0xc0000100), "a"((uint32_t)a[1]),
