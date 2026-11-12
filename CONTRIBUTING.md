@@ -6,9 +6,10 @@ user's language preference. Preserve imported upstream language resources,
 Unicode tables, names, test data and unchanged third-party sources.
 
 Read the [design](docs/design.md), [roadmap](docs/roadmap.md) and
-[source ownership](docs/source-layout.md) before architectural changes. This
-baseline contains a kernel/serial scaffold and an Emacs source dependency;
-it does not run Emacs. Describe implemented behavior separately from plans.
+[source ownership](docs/source-layout.md) before architectural changes. The
+MVP runs a trusted Emacs with volatile files and cooperative applications on
+the fixed QEMU profile. Describe that bounded behavior separately from planned
+networking, persistence and protected processes; see [acceptance](docs/mvp.md).
 
 ## Source ownership
 

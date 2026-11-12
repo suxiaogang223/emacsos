@@ -2,19 +2,21 @@
 
 emacsOS aims to make GNU Emacs the machine's programming and operating
 environment. Standard Elisp APIs are the public interface; file and network
-backends supply actual capabilities. This document selects an architecture for
-the first port. It does not implement that port.
+backends supply actual capabilities. This document describes the selected
+architecture. The first bounded port is
+implemented; [MVP acceptance](mvp.md) defines the exercised guest subset.
 
 ## Current source and proposed system
 
-The current parent contains a BIOS loader, x86-64 entry, a C kernel that polls
-COM1 for output, and build/launcher tools. The entry identity-maps only the first
-2 MiB; the kernel prints a message and halts with interrupts disabled. GNU Emacs
-30.2 is an unchanged source dependency apart from provenance documentation.
-Emacs does not execute here. There is no PAL, syscall handler, allocator,
-executable loader, input/event loop, file backend or network stack.
+The parent contains BIOS boot, static ELF loading, page mappings/protection,
+serial input/output, PIT/RTC time, readiness waits, a bounded syscall adapter,
+and read-only runtime plus volatile working files. GNU Emacs executes with its
+matching portable dump. Parent-owned Lisp provides cooperative application
+management. Networking, persistence and isolated execution are not implemented.
+The fixed-machine profile and limits are in [kernel bootstrap](kernel-bootstrap.md)
+and [files](files.md); the fork itself remains unchanged except provenance.
 
-The following diagram describes the **proposed** system, not present execution:
+The following diagram shows responsibilities; network streams remain future work:
 
 ```mermaid
 flowchart TB
@@ -30,7 +32,7 @@ flowchart TB
     end
     subgraph kernel["3. Own C kernel and backends"]
       core["Memory/resource ownership, events and actual device operations"]
-      backend["Console; read-only runtime image; later files and network"]
+      backend["Console; runtime image and volatile files; future network"]
       core --> backend
     end
     runtime --> adapter
@@ -46,11 +48,11 @@ Use a statically linked GNU Emacs with musl, served by a limited Linux x86-64
 syscall compatibility adapter in our own kernel. The PAL sits below that
 adapter and defines backend semantics. This is a bounded compatibility target,
 not a Linux kernel, full Linux userspace or general Unix process environment.
-The decision remains subject to actual E0 runtime validation.
+The MVP validates this route for its fixed machine and exercised paths.
 
 The initial build profile is terminal-only, using interpreted and bytecompiled
 Lisp. GUI, native compilation, Lisp threads, TLS/HTTPS and external helpers are
-deferred; P1 freezes the exact configure options and dependency versions.
+deferred; [runtime build](runtime-build.md) pins configure options and dependencies.
 Functions remaining in a build still need a backend or explicit unsupported
 behavior; the profile does not imply all unsupported functions disappear.
 
@@ -86,8 +88,9 @@ does not change source ownership; see [source layout](source-layout.md).
 ## Capability contracts
 
 Start with the capabilities needed before interactive Emacs; grow typed file
-and network operations from working backends. Exact C signatures, numeric ABI
-assignments and handle representation are finalized in P1.
+and network operations from working backends. Concrete bootstrap contracts and
+bounds are in the kernel/file headers and
+implementation documents; broader operations remain design requirements.
 
 | Capability | Required semantics |
 | --- | --- |
@@ -139,11 +142,10 @@ requires. File close is not inherently a durable-storage guarantee.
 
 ## Boot and runtime loading
 
-The planned boot chain is:
+The implemented fixed-machine boot chain follows these requirements:
 
-1. BIOS loads the kernel; x86-64 entry establishes an adequate memory map and
-   stack. The current 2 MiB mapping is insufficient as a runtime plan and must
-   be extended deliberately.
+1. BIOS loads the kernel; x86-64 entry establishes the fixed 1 GiB identity map
+   and stack. This is a QEMU machine contract, not general RAM discovery.
 2. Kernel initialization accounts for available RAM and reserves page tables,
    kernel sections, stacks, runtime-image backing and future loaded regions.
    Establish console, memory, monotonic time/wait and read-only bootstrap files.
@@ -164,7 +166,7 @@ the port. Do not combine an old dump with new dumped Lisp or a new executable.
 
 ## Data and event flow
 
-A future file read follows Elisp file API → Emacs/libc → supported ABI operation
+A supported file read follows Elisp file API → Emacs/libc → supported ABI operation
 → typed PAL file operation → backend. Data/count/error returns along that path;
 backend limits and original failures remain visible. F0 working files are
 explicitly volatile. F1 separately defines disk format, synchronization,
@@ -205,7 +207,8 @@ Applications have code/entry contracts; each managed invocation has a distinct
 run identity, lifecycle, context and explicit owned/borrowed/shared resources.
 Entry return ends startup; explicit finish and a callback-unwind cleanup barrier
 determine terminal completion. Stop request is not completed exit.
-A0 adds trusted cooperative instances after E0. A buffer is their tool/view,
+The A0 MVP adds trusted cooperative instances on the interactive runtime.
+A buffer is their tool/view,
 not an execution unit; GNU network process objects are connections rather than
 kernel processes. Standard file/network APIs remain the common public surface.
 
@@ -218,23 +221,24 @@ not authority over ambient APIs or the shared heap.
 
 [The application/process model](process-model.md) defines minimal management,
 context propagation, late-event suppression, bounded communication and the
-planned `*Processes*` client. It adds no automatic services or startup framework
+implemented `*Processes*` MVP client. It adds no automatic services or startup
+framework
 and does not gate basic file/network capability work.
 
 ## Decisions and open gates
 
 | Status | Topic | Decision or gate |
 | --- | --- | --- |
-| Selected, unvalidated | First runtime port | Static Emacs + musl + limited Linux x86-64 ABI adapter over typed PAL; validate through E0. |
+| MVP validated | First runtime port | Static Emacs + musl + bounded ABI adapter; actual guest acceptance, not general compatibility. |
 | Selected | Public API | Standard Elisp evaluation/file/network APIs; document the supported subset. |
 | Selected | Bootstrap ordering | Read-only runtime files and memory/time/wait precede interactive Emacs; working files follow. |
-| Open: P1 | Concrete interfaces | C signatures, handle representation, bounds and required ABI operations from the selected runtime build. |
-| Open: P1/E0 | Runtime artifacts | Build/toolchain, ELF/startup/thread-local storage details, memory budget, dump manifest and terminal/wait integration. |
+| Implemented subset | Concrete interfaces | Bootstrap operations and typed volatile file backend; see kernel-bootstrap.md and files.md. |
+| MVP validated | Runtime artifacts | Pinned build, matching executable/dump/archive, controlled startup, real terminal input and timers. |
 | Open: F1 | Durability | Format, synchronization and recovery model after volatile file behavior is correct. |
 | Open: N0 | Network transport | Prove native and future Wasm feasibility, including any explicit host bridge, before selecting device/stack. |
-| Planned: A0 | Trusted application instances | After E0: lifecycle/context, explicit ownership, bounded messages and truthful management; no isolation. |
+| MVP subset | Trusted application instances | Lifecycle/context, explicit ownership and management implemented; messaging/subscriptions/deadline waits remain future work. |
 | Planned: K0 | Kernel processes | After runtime/ownership contracts: independent execution/address spaces, scheduling, enforced limits and exit cleanup; no implementation yet. |
 | Deferred | Other expansion | Direct libc replacement, runtime latency optimization, broad Unix subprocess compatibility and service frameworks. |
 
-[The roadmap](roadmap.md) turns these gates into staged work. PAL implementation
-and the Emacs port remain future tasks.
+[The roadmap](roadmap.md) turns these gates into staged work. The MVP validates
+the initial port; later capabilities retain separate gates.

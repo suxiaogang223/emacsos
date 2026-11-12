@@ -7,8 +7,9 @@ and tests. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Read [design](docs/design.md), [roadmap](docs/roadmap.md) and
 [source ownership](docs/source-layout.md) before changing architecture. The
-baseline is a minimal boot/serial scaffold with an Emacs source submodule only.
-Do not imply that Emacs, file/network APIs, persistence or isolation work yet.
+MVP runs one trusted Emacs with volatile files and cooperative application
+management on the fixed QEMU profile. See docs/mvp.md for acceptance. Do not
+imply networking, persistence, isolation or general Linux compatibility.
 Compilation, boot execution and guest functional acceptance are different claims.
 
 Before preparing/updating a PR, read

@@ -2,9 +2,10 @@
 
 `lisp/emacsos-app.el` implements application policy for one trusted Emacs
 runtime. `lisp/emacsos-counter.el` demonstrates two independent invocations.
-The implementation is host-tested; it does not establish that Emacs, timers,
-files or this UI execute in the emacsOS guest. Runtime-image integration and
-guest functional acceptance are separate work.
+Host ERT checks the policy in detail. The integrated [guest acceptance](mvp.md)
+checks real timer delivery, saved application loading, two instances, manager
+source navigation, stop/restart and modified-buffer preservation. These are
+separate kinds of evidence; neither establishes protected execution.
 
 ## Try on host Emacs
 

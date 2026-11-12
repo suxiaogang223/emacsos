@@ -2,8 +2,9 @@
 
 Elisp is the intended public language. Reuse standard evaluation, library
 loading, buffers, file functions and network connection objects. Buffers and
-Eshell are tool clients of those APIs. **No guest Elisp runs on the current
-scaffold.** [The architecture](design.md) defines the implementation boundaries;
+Eshell are tool clients of those APIs. The [MVP](mvp.md) runs interactive guest
+Elisp and volatile file APIs; networking and external subprocesses remain
+unimplemented. [The architecture](design.md) defines the implementation boundaries;
 [runtime support](runtime-port.md) explains the first static Emacs/musl port.
 
 ## API and resource rules
@@ -17,7 +18,9 @@ The limited Linux ABI adapter translates to typed PAL operations. It preserves
 partial I/O, would-block, EOF, real errors and resource ownership. Readiness is
 level-style and rechecked after wake; deadlines are monotonic. Close consumes
 the handle even if final cleanup fails; duplicated descriptors share an open
-description/offset, separate opens do not. Precise types/bounds are P1 work.
+description/offset, separate opens do not. The implemented profile and bounds
+are recorded in [kernel bootstrap](kernel-bootstrap.md)
+and [files](files.md).
 Neither a handle nor an Emacs process object establishes isolation.
 
 ## Application management
@@ -46,8 +49,9 @@ flags, metadata, directory/namespace behavior and limits.
 Preserve normal encodings, backups, locks and modified-buffer/error behavior.
 Do not suppress ordinary mechanisms to pass tests. Cleanup/final-close errors
 must stay visible; a successful streaming write does not promise rollback on a
-later failure. The clean upstream fork has not inherited old save fixes or
-validated file behavior. Ordinary `write-region` can omit fsync, so saving is
+later failure. The unchanged runtime fork uses the parent file backend; the MVP
+validates ordinary saves, backups and locks in the actual guest. Ordinary
+`write-region` can omit fsync, so saving is
 not inherently a durability boundary.
 
 F1 separately decides persistent format, synchronization, recovery and honest
@@ -72,4 +76,4 @@ N2 adds DNS and a controlled HTTP-to-file program. TLS/HTTPS, strong entropy,
 listening sockets and UDP are separate decisions. The eventual program is
 authored inside emacsOS, receives data and saves/reads it through standard APIs;
 continuing from retained source requires F1. None of those capabilities is
-implemented by this architecture proposal.
+implemented by the MVP.

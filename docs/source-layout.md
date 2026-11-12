@@ -4,12 +4,16 @@
 emacsos/
 ├── emacs/                 # Pinned GNU Emacs fork submodule
 ├── kernel/
-│   ├── boot.asm           # BIOS loader scaffold
-│   ├── entry.asm          # x86-64 entry scaffold
-│   ├── main.c             # Minimal C/serial scaffold
+│   ├── boot.asm           # BIOS disk loader
+│   ├── entry.asm          # x86-64 entry and fixed memory map
+│   ├── main.c             # Kernel initialization and runtime entry
+│   ├── loader.c           # Static ELF and startup ABI
+│   ├── runtime.c          # Bounded syscall adapter and waits
+│   ├── files.c / file_abi.c # Typed volatile files and ABI translation
+│   ├── memory.c / hardware.c # Memory, serial and clocks
 │   └── kernel.ld          # Link layout
 ├── lisp/                  # Trusted application policy and counter demo
-├── tests/                 # Host ERT for parent-owned application policy
+├── tests/                 # Host ERT, file checks and guest acceptance source
 ├── scripts/               # Build, native launcher and contribution tools
 └── docs/                  # Current architecture and implementation plan
 ```
@@ -31,15 +35,15 @@ git submodule update --init --recursive
 
 The parent gitlink pins the exact fork commit. Do not float it implicitly with
 `git submodule update --remote`. A source checkout is not a runtime build.
-The default Make targets build the kernel/image scaffold. `make runtime` builds
-and packages a separate static Emacs/musl runtime; `make runtime-smoke` checks
-that runtime in a host PTY. See [runtime build](runtime-build.md). Neither target
-establishes guest execution.
+The default `make` target builds the complete MVP image. `make image` builds
+the kernel-only image; `make runtime` builds/packages static Emacs/musl and
+`make runtime-smoke` checks it in a host PTY. `make check-mvp` separately proves
+the integrated guest subset; see [acceptance](mvp.md) and [runtime build](runtime-build.md).
 
 Parent `lisp/` now contains trusted application policy and the counter example;
 `tests/` contains their host ERT suite. See [application MVP](application-mvp.md)
-for the implemented subset and explicit guest-validation limits. This parent
-policy does not modify the runtime fork or establish guest execution.
+for the policy subset and [MVP acceptance](mvp.md) for actual guest evidence.
+This parent policy does not modify the runtime fork.
 
 ## Future changes
 
@@ -48,8 +52,7 @@ system Elisp and its tests should belong to the parent when introduced, rather
 than accumulating as fork policy. The PAL and C backends belong to the parent;
 the [architecture](design.md) selects static Emacs/musl with a limited Linux
 x86-64 compatibility adapter over a typed PAL. The [runtime-port contract](runtime-port.md)
-records required bootstrap capabilities; concrete implementation remains future
-work. Read-only runtime files precede writable system/user files. Future trusted
+records required bootstrap capabilities; the MVP implements the initial bounded profile. Read-only runtime files precede writable system/user files. Future trusted
 application management policy belongs to parent system Lisp; kernel execution,
 scheduling and enforced process ownership belong to parent kernel code.
 [The process model](process-model.md) defines their distinct phases.
