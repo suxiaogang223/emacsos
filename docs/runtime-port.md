@@ -19,11 +19,13 @@ support and E0 proves the runtime.
   [emacs/src/pdumper.c](https://github.com/suxiaogang223/emacs/blob/73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5/src/pdumper.c) are upstream runtime/startup and
   dump implementation sources to audit, not emacsOS integration.
 
-These requirements derive from read-only source inspection, not syscall traces
-or proof of the musl CRT call set. No toolchain/libc build is pinned yet.
+The [runtime build](runtime-build.md) now pins a terminal-only static musl
+profile and packages matching artifacts. Host PTY/trace validation can establish
+requirements for exercised paths; it does not prove guest compatibility. The
+requirements below also derive from upstream source inspection.
 Running Emacs requires substantially more than dispatching syscalls.
 
-P1 pins a terminal-only static build with interpreted/bytecompiled Lisp. GUI,
+P1 uses the terminal-only static build with interpreted/bytecompiled Lisp. GUI,
 native compilation, Lisp threads, TLS/HTTPS and external helpers are deferred; audit
 exact configure flags and remaining call paths rather than assuming all
 unsupported function names disappear.

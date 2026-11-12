@@ -31,8 +31,10 @@ git submodule update --init --recursive
 
 The parent gitlink pins the exact fork commit. Do not float it implicitly with
 `git submodule update --remote`. A source checkout is not a runtime build.
-Current Make targets build only the kernel/image scaffold; Emacs build and
-installation are future work.
+The default Make targets build the kernel/image scaffold. `make runtime` builds
+and packages a separate static Emacs/musl runtime; `make runtime-smoke` checks
+that runtime in a host PTY. See [runtime build](runtime-build.md). Neither target
+establishes guest execution.
 
 Parent `lisp/` now contains trusted application policy and the counter example;
 `tests/` contains their host ERT suite. See [application MVP](application-mvp.md)
