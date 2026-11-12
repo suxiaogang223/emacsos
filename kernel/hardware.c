@@ -42,6 +42,8 @@ void console_hex(uint64_t v) {
   console_write(b, 18);
 }
 static void drain_serial(void) {
+  uint64_t saved_flags;
+  __asm__ volatile("pushfq; popq %0; cli" : "=r"(saved_flags)::"memory");
   while (in8(0x3fd) & 1) {
     unsigned char c = in8(0x3f8);
     unsigned next = (head + 1) % sizeof input;
@@ -50,6 +52,8 @@ static void drain_serial(void) {
       head = next;
     }
   }
+  if (saved_flags & 0x200)
+    __asm__ volatile("sti" ::: "memory");
 }
 bool console_ready(void) {
   drain_serial();

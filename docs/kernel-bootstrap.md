@@ -32,8 +32,8 @@ splitting and coalescing. Page tables remain allocated for the boot lifetime.
 The ELF loader bounds the header/program table, rejects a dynamic interpreter,
 validates each load extent and segment overlap, requires its entry in an
 executable segment, copies file bytes and zeros BSS. Its initial stack supplies
-argv, a controlled environment and the auxv needed by musl. The bootstrap
-AT_RANDOM bytes are not cryptographic entropy; secure randomness is unsupported.
+argv, a controlled environment and the auxv needed by musl. AT_RANDOM is omitted because no cryptographic entropy source exists; musl may
+use its nonrandom fallback canary. Secure randomness remains unsupported.
 
 ## Disk payload
 

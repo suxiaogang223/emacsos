@@ -106,18 +106,13 @@ _Noreturn void runtime_enter(const struct runtime_image *im) {
     memcpy((void *)sp, strings[i], n);
     ptr[i] = sp;
   }
-  sp -= 16;
-  unsigned char *random = (void *)sp;
-  for (unsigned i = 0; i < 16; i++)
-    random[i] = (unsigned char)(0x73 + i * 11);
-  uintptr_t randomptr = sp;
   uint64_t stack[] = {
       3,         ptr[0], ptr[1],   ptr[2], 0,    ptr[3], ptr[4], ptr[5],
       ptr[6],    ptr[7], ptr[8],   ptr[9], 0,    3,      phdr,   4,
       sizeof *p, 5,      h->phnum, 6,      4096, 7,      0,      8,
       0,         9,      h->entry, 11,     0,    12,     0,      13,
-      0,         14,     0,        17,     1000, 23,     0,      25,
-      randomptr, 31,     ptr[0],   0,      0};
+      0,         14,     0,        17,     1000, 23,     0,      31,
+      ptr[0],    0,      0};
   sp = (sp - sizeof stack) & ~15UL;
   memcpy((void *)sp, stack, sizeof stack);
   syscall_stack_top = (uintptr_t)syscall_stack + sizeof syscall_stack;

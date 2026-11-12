@@ -27,20 +27,26 @@ static void set_time(struct timespec *t, uint64_t ns) {
     t->nsec = ns % 1000000000UL;
   }
 }
-static uint64_t get_time(const struct timespec *t) {
-  if (!t || t->sec < 0 || t->nsec < 0 || t->nsec >= 1000000000)
-    return 0;
-  return (uint64_t)t->sec * 1000000000UL + t->nsec;
+static bool get_time(const struct timespec *t, uint64_t *ns) {
+  if (!t || t->sec < 0 || t->nsec < 0 || t->nsec >= 1000000000 ||
+      (uint64_t)t->sec > (UINT64_MAX - (uint64_t)t->nsec) / 1000000000UL)
+    return false;
+  *ns = (uint64_t)t->sec * 1000000000UL + (uint64_t)t->nsec;
+  return true;
 }
 struct timer_descriptor {
   bool used;
+  unsigned flags, clock_id;
   uint64_t deadline, interval;
 };
 static struct timer_descriptor timers[16];
+static uint64_t timer_now(const struct timer_descriptor *t) {
+  return t->clock_id == 0 ? clock_realtime_ns() : clock_monotonic_ns();
+}
 static bool timer_ready(unsigned fd) {
   return fd >= 240 && fd < 256 && timers[fd - 240].used &&
          timers[fd - 240].deadline &&
-         clock_monotonic_ns() >= timers[fd - 240].deadline;
+         timer_now(&timers[fd - 240]) >= timers[fd - 240].deadline;
 }
 static long timer_syscall(unsigned long nr, const unsigned long a[6],
                           bool *handled) {
@@ -50,7 +56,8 @@ static long timer_syscall(unsigned long nr, const unsigned long a[6],
       return -22;
     for (unsigned i = 0; i < 16; i++)
       if (!timers[i].used) {
-        timers[i] = (struct timer_descriptor){true, 0, 0};
+        timers[i] = (struct timer_descriptor){
+            .used = true, .flags = a[1], .clock_id = a[0]};
         return 240 + i;
       }
     return -24;
@@ -66,47 +73,76 @@ static long timer_syscall(unsigned long nr, const unsigned long a[6],
     }
     if (nr == 72) {
       if (a[1] == 1)
-        return 1;
-      if (a[1] == 2)
+        return !!(t->flags & 0x80000);
+      if (a[1] == 2) {
+        if (a[2] & ~1UL)
+          return -22;
+        t->flags = (t->flags & ~0x80000U) | ((a[2] & 1) ? 0x80000U : 0);
         return 0;
+      }
       if (a[1] == 3)
-        return 0x800;
+        return 2 | (t->flags & 0x800);
+      if (a[1] == 4) {
+        if (a[2] & ~0x803UL)
+          return -22;
+        t->flags = (t->flags & ~0x800U) | (a[2] & 0x800U);
+        return 0;
+      }
       return -22;
     }
     if (nr == 0) {
       if (a[2] < 8)
         return -22;
-      if (!timer_ready(a[0]))
-        return -11;
+      while (!timer_ready(a[0])) {
+        if (t->flags & 0x800)
+          return -11;
+        wait_interrupt();
+      }
       uint64_t count = 1;
       if (t->interval) {
-        count += (clock_monotonic_ns() - t->deadline) / t->interval;
+        count += (timer_now(t) - t->deadline) / t->interval;
         t->deadline += count * t->interval;
       } else
         t->deadline = 0;
       memcpy((void *)a[1], &count, 8);
       return 8;
     }
-    struct timespec *old = (void *)(nr == 286 ? a[3] : a[1]);
-    if (old) {
-      set_time(old, t->interval);
-      set_time(old + 1, t->deadline > clock_monotonic_ns()
-                            ? t->deadline - clock_monotonic_ns()
-                            : 0);
-    }
+    uint64_t interval = 0, value = 0;
     if (nr == 286) {
       if (a[1] & ~1UL)
         return -22;
       const struct timespec *v = (void *)a[2];
-      t->interval = get_time(v);
-      uint64_t value = get_time(v + 1);
-      t->deadline =
-          value ? (a[1] & 1 ? value : clock_monotonic_ns() + value) : 0;
+      if (!v || !get_time(v, &interval) || !get_time(v + 1, &value) ||
+          (!(a[1] & 1) && value > UINT64_MAX - timer_now(t)))
+        return -22;
+    }
+    struct timespec *old = (void *)(nr == 286 ? a[3] : a[1]);
+    if (old) {
+      set_time(old, t->interval);
+      uint64_t now = timer_now(t);
+      set_time(old + 1, t->deadline > now ? t->deadline - now : 0);
+    }
+    if (nr == 286) {
+      t->interval = interval;
+      t->deadline = value ? ((a[1] & 1) ? value : timer_now(t) + value) : 0;
     }
     return 0;
   }
   *handled = false;
   return 0;
+}
+__attribute__((weak)) long file_ready(int fd, bool writing) {
+  if (fd < 0 || fd > 2)
+    return -9;
+  return writing ? (fd != 0) : (fd == 0 && console_ready());
+}
+static long descriptor_ready(unsigned fd, bool writing) {
+  if (fd >= 240 && fd < 256) {
+    if (!timers[fd - 240].used)
+      return -9;
+    return writing ? 0 : timer_ready(fd);
+  }
+  return file_ready(fd, writing);
 }
 static long terminal_ioctl(unsigned long request, void *p) {
   static unsigned char termios[36] = {
@@ -141,23 +177,40 @@ static long terminal_ioctl(unsigned long request, void *p) {
   }
 }
 static long select_wait(const unsigned long *a, bool pselect) {
-  unsigned nfds = a[0];
-  if (nfds > 1024)
+  if (a[0] > 1024)
     return -22;
+  unsigned nfds = a[0];
   size_t bytes = ((nfds + 63) / 64) * 8;
-  uint64_t rin[16] = {0}, win[16] = {0};
+  uint64_t rin[16] = {0}, win[16] = {0}, xin[16] = {0};
   if (a[1])
     memcpy(rin, (void *)a[1], bytes);
   if (a[2])
     memcpy(win, (void *)a[2], bytes);
+  if (a[3])
+    memcpy(xin, (void *)a[3], bytes);
+  if (pselect && a[5]) {
+    const unsigned long *mask = (void *)a[5];
+    if (mask[0])
+      return -38;
+  }
   uint64_t deadline = UINT64_MAX;
   if (a[4]) {
-    struct timespec *t = (void *)a[4];
-    uint64_t duration =
-        pselect ? get_time(t)
-                : (uint64_t)t->sec * 1000000000UL + t->nsec * 1000UL;
+    struct timespec time = *(const struct timespec *)a[4];
+    if (!pselect) {
+      if (time.nsec < 0 || time.nsec >= 1000000)
+        return -22;
+      time.nsec *= 1000;
+    }
+    uint64_t duration;
+    if (!get_time(&time, &duration) ||
+        duration > UINT64_MAX - clock_monotonic_ns())
+      return -22;
     deadline = clock_monotonic_ns() + duration;
   }
+  for (unsigned fd = 0; fd < nfds; fd++)
+    if ((rin[fd / 64] | win[fd / 64] | xin[fd / 64]) & (1UL << (fd % 64)))
+      if (descriptor_ready(fd, false) < 0)
+        return -9;
   for (;;) {
     if (a[1])
       memset((void *)a[1], 0, bytes);
@@ -168,20 +221,14 @@ static long select_wait(const unsigned long *a, bool pselect) {
     long count = 0;
     for (unsigned fd = 0; fd < nfds; fd++) {
       uint64_t bit = 1UL << (fd % 64);
-      bool ready = false;
-      if ((rin[fd / 64] & bit) && ((fd == 0 && console_ready()) ||
-                                   (fd >= 3 && fd < 240) || timer_ready(fd))) {
-        if (a[1])
-          ((uint64_t *)a[1])[fd / 64] |= bit;
-        ready = true;
-      }
-      if ((win[fd / 64] & bit) && fd != 0) {
-        if (a[2])
-          ((uint64_t *)a[2])[fd / 64] |= bit;
-        ready = true;
-      }
-      if (ready)
+      if ((rin[fd / 64] & bit) && descriptor_ready(fd, false) > 0) {
+        ((uint64_t *)a[1])[fd / 64] |= bit;
         count++;
+      }
+      if ((win[fd / 64] & bit) && descriptor_ready(fd, true) > 0) {
+        ((uint64_t *)a[2])[fd / 64] |= bit;
+        count++;
+      }
     }
     if (count || clock_monotonic_ns() >= deadline)
       return count;
@@ -275,7 +322,11 @@ long syscall_dispatch(unsigned long n, const unsigned long a[6]) {
   case 23:
     return select_wait(a, false);
   case 35: {
-    uint64_t end = clock_monotonic_ns() + get_time((void *)a[0]);
+    uint64_t duration;
+    if (!get_time((void *)a[0], &duration) ||
+        duration > UINT64_MAX - clock_monotonic_ns())
+      return -22;
+    uint64_t end = clock_monotonic_ns() + duration;
     while (clock_monotonic_ns() < end)
       wait_interrupt();
     return 0;
