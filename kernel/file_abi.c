@@ -61,7 +61,8 @@ static long install(struct fs_node *node, unsigned flags, int minimum)
     if (fd == FD_LIMIT) return -24;
     struct description *open = kmalloc(sizeof *open);
     if (!open) return -12;
-    *open = (struct description) { .node = node, .flags = flags & ~O_CLOEXEC, .refs = 1 };
+    *open = (struct description) { .node = node,
+        .flags = flags & (O_ACCESS | O_APPEND | 2048U | 32768U | O_DIRECTORY | O_NOFOLLOW | O_PATH), .refs = 1 };
     fs_retain(node);
     descriptors[fd].open = open;
     descriptors[fd].flags = !!(flags & O_CLOEXEC);
@@ -134,17 +135,20 @@ static long open_file(int dirfd, const char *path, unsigned flags, unsigned mode
     const unsigned supported = O_ACCESS | O_CREATE | O_EXCL | 256U | O_TRUNC
         | O_APPEND | 2048U | 32768U | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC | O_PATH;
     if (flags & ~supported || (flags & O_ACCESS) == 3) return -22;
-    int available = 3;
+    if ((flags & O_CREATE) && (flags & O_DIRECTORY)) return -22;
+    if ((flags & O_PATH) && (flags & (O_CREATE | O_EXCL | O_TRUNC | O_APPEND | O_ACCESS))) return -22;
+    int available = 0;
     while (available < FD_LIMIT && valid(available)) ++available;
     if (available == FD_LIMIT) return -24;
     struct fs_node *base, *node;
     long result = base_for(dirfd, path, &base);
     if (result) return result;
-    enum fs_error e = fs_lookup(base, path, !(flags & O_NOFOLLOW), &node);
+    enum fs_error e = fs_lookup(base, path,
+        !(flags & O_NOFOLLOW) && !((flags & O_CREATE) && (flags & O_EXCL)), &node);
     if (e == FS_NOT_FOUND && (flags & O_CREATE)) {
         size_t n = length(path);
         if (!n || path[n - 1] == '/') return -2;
-        e = fs_create(base, path, FS_REGULAR, 0, mode & ~creation_mask, true, &node);
+        e = fs_create_regular(base, path, mode & ~creation_mask, &node);
     } else if (e == FS_OK && (flags & O_CREATE) && (flags & O_EXCL)) return -17;
     if (e != FS_OK) return error(e);
     struct fs_info info = information(node);
@@ -157,7 +161,7 @@ static long open_file(int dirfd, const char *path, unsigned flags, unsigned mode
         e = fs_resize(node, 0);
         if (e != FS_OK) return error(e);
     }
-    return install(node, flags, 3);
+    return install(node, flags, 0);
 }
 
 static long transfer(int fd, void *buffer, size_t count, bool write, bool positioned, uint64_t offset)
@@ -207,9 +211,10 @@ struct linux_stat {
 };
 _Static_assert(sizeof(struct linux_stat) == 144, "x86-64 stat layout");
 
-static long stat_node(struct fs_node *node, struct linux_stat *out)
+static long stat_node(struct fs_node *node, void *destination)
 {
-    if (!out) return -14;
+    if (!destination) return -14;
+    struct linux_stat local, *out = &local;
     struct fs_info info = information(node); clear(out, sizeof *out);
     out->dev = 1; out->ino = info.inode; out->nlink = info.links;
     out->mode = info.mode | (info.kind == FS_DIRECTORY ? 0040000U
@@ -221,6 +226,7 @@ static long stat_node(struct fs_node *node, struct linux_stat *out)
     out->mtime = info.modified_ns / 1000000000;
     out->mtime_ns = info.modified_ns % 1000000000;
     out->ctime = info.changed_ns / 1000000000; out->ctime_ns = info.changed_ns % 1000000000;
+    copy(destination, &local, sizeof local);
     return 0;
 }
 
@@ -283,7 +289,7 @@ static long fcntl_file(int fd, unsigned command, unsigned long argument)
     case 2: if (argument & ~1UL) return -22; descriptors[fd].flags = (unsigned) argument; return 0;
     case 3: return descriptors[fd].open->flags;
     case 4:
-        if (argument & ~(unsigned long) (O_ACCESS | O_APPEND | 2048U | 32768U)) return -22;
+        if (argument & ~(unsigned long) (O_ACCESS | O_APPEND | 2048U | 32768U | O_DIRECTORY | O_NOFOLLOW | O_PATH)) return -22;
         descriptors[fd].open->flags = (descriptors[fd].open->flags & ~(O_APPEND | 2048U))
             | ((unsigned) argument & (O_APPEND | 2048U)); return 0;
     default: return -22;
@@ -343,6 +349,9 @@ bool abi_files(unsigned long number, const unsigned long a[6], long *out)
     case 16: if (file_fd_kind(fd) == FS_CONSOLE) return false; result = valid(fd) ? -25 : -9; break;
     case 17: case 18: result = transfer(fd, (void *) a[1], a[2], number == 18, true, a[3]); break;
     case 19: case 20: {
+        if (!valid(fd) || (descriptors[fd].open->flags & O_PATH)) { result = -9; break; }
+        unsigned access = descriptors[fd].open->flags & O_ACCESS;
+        if ((number == 19 && access == 1) || (number == 20 && !access)) { result = -9; break; }
         if (file_fd_kind(fd) == FS_CONSOLE) return false;
         struct vector { void *base; size_t size; } *vectors = (void *) a[1];
         if (a[2] > 1024 || (!vectors && a[2])) { result = -22; break; }
@@ -407,7 +416,8 @@ bool abi_files(unsigned long number, const unsigned long a[6], long *out)
         break;
     case 269: result = access_path(fd, (const char *) a[1], a[2], 0); break;
     case 280: {
-        struct stamp { int64_t seconds, nanoseconds; } *times = (void *) a[2];
+        struct stamp { int64_t seconds, nanoseconds; } local[2], *times = 0;
+        if (a[2]) { copy(local, (void *) a[2], sizeof local); times = local; }
         unsigned flags = a[3];
         if (flags & ~256U) { result = -22; break; }
         result = a[1] ? lookup(fd, (const char *) a[1], !(flags & 256U), &node)

@@ -29,6 +29,8 @@ static void zero_bytes(void *d, size_t n)
 { unsigned char *p = d; while (n--) *p++ = 0; }
 static bool copy_text(char *d, size_t capacity, const char *s)
 { size_t n = text_length(s); if (n >= capacity) return false; copy_bytes(d, s, n + 1); return true; }
+static bool trailing_slash(const char *s)
+{ size_t n = text_length(s); return n && s[n - 1] == '/'; }
 static void changed(struct fs_node *n)
 { n->modified_ns = n->changed_ns = clock_realtime_ns(); }
 
@@ -148,6 +150,10 @@ enum fs_error fs_create(struct fs_node *base, const char *path, enum fs_kind kin
     enum fs_error error = parent_of(base, path, &parent, name);
     if (error != FS_OK) return error;
     struct fs_node *n = child(parent, name);
+    if (trailing_slash(path) && kind != FS_DIRECTORY) {
+        if (!n) return FS_NOT_FOUND;
+        return n->kind == FS_DIRECTORY ? FS_EXISTS : FS_NOT_DIRECTORY;
+    }
     if (n) {
         if (exclusive) return FS_EXISTS;
         *out = n; return FS_OK;
@@ -174,6 +180,26 @@ enum fs_error fs_create(struct fs_node *base, const char *path, enum fs_kind kin
     return FS_OK;
 }
 
+static enum fs_error create_regular(struct fs_node *base, const char *path,
+                                     unsigned mode, unsigned links, struct fs_node **out)
+{
+    char name[FS_NAME_MAX + 1]; struct fs_node *parent;
+    enum fs_error e = parent_of(base, path, &parent, name);
+    if (e != FS_OK) return e;
+    struct fs_node *n = child(parent, name);
+    if (n && n->kind == FS_SYMLINK) {
+        if (links == 16) return FS_LOOP;
+        if (!n->size || n->size >= FS_PATH_MAX) return FS_NAME_TOO_LONG;
+        char target[FS_PATH_MAX]; copy_bytes(target, n->data, n->size); target[n->size] = 0;
+        return create_regular(parent, target, mode, links + 1, out);
+    }
+    return fs_create(base, path, FS_REGULAR, 0, mode, false, out);
+}
+
+enum fs_error fs_create_regular(struct fs_node *base, const char *path,
+                                unsigned mode, struct fs_node **out)
+{ return create_regular(base, path, mode, 0, out); }
+
 static void detach(struct fs_node *n)
 {
     struct fs_node **p = &n->parent->children;
@@ -191,6 +217,7 @@ enum fs_error fs_remove(struct fs_node *base, const char *path, bool directory)
     if (error != FS_OK) return error;
     struct fs_node *n = child(parent, name);
     if (!n) return FS_NOT_FOUND;
+    if (trailing_slash(path) && n->kind != FS_DIRECTORY) return FS_NOT_DIRECTORY;
     if (!parent->writable || !n->writable) return FS_READ_ONLY;
     if (directory != (n->kind == FS_DIRECTORY)) return directory ? FS_NOT_DIRECTORY : FS_IS_DIRECTORY;
     if (n->kind == FS_DIRECTORY && n->children) return FS_NOT_EMPTY;
@@ -210,6 +237,9 @@ enum fs_error fs_rename(struct fs_node *old_base, const char *old_path,
     if (e != FS_OK) return e;
     struct fs_node *source = child(old_parent, old_name), *dest = child(new_parent, new_name);
     if (!source) return FS_NOT_FOUND;
+    if (trailing_slash(old_path) && source->kind != FS_DIRECTORY) return FS_NOT_DIRECTORY;
+    if (trailing_slash(new_path) && source->kind != FS_DIRECTORY)
+        return FS_NOT_DIRECTORY;
     if (!old_parent->writable || !new_parent->writable || !source->writable) return FS_READ_ONLY;
     if (dest && no_replace) return FS_EXISTS;
     if (source == dest) return FS_OK;

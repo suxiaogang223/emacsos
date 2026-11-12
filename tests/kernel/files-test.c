@@ -48,10 +48,18 @@ int main(int argc, char **argv)
     assert(fs_write(n, 0, "x", 1, &count) == FS_READ_ONLY);
     assert(open_path("/usr/alias", 1) == -30);
     assert(open_path("/work/missing/", 64 | 2) == -2);
+    assert(open_path("/work/not-directory", 64 | 65536) == -22);
+    assert(open_path("/work/not-directory", 0) == -2);
     assert(call(83, P("/work/project"), 0755, 0, 0, 0) == 0);
     int dir = open_path("/work/project", 65536); assert(dir >= 3);
     int fd = (int) call(257, dir, P("data"), 64 | 2, 0600, 0); assert(fd >= 3);
     assert(call(1, fd, P("abc"), 3, 0, 0) == 3);
+    assert(call(87, P("/work/project/data/"), 0, 0, 0, 0) == -20);
+    assert(call(82, P("/work/project/data"), P("/work/invalid/"), 0, 0, 0) == -20);
+    long status_flags = call(72, fd, 3, 0, 0, 0);
+    assert(!(status_flags & (64 | 128 | 512)));
+    assert(call(72, fd, 4, status_flags | 2048, 0, 0) == 0);
+    assert(call(72, fd, 3, 0, 0, 0) & 2048);
     int duplicate = (int) call(32, fd, 0, 0, 0, 0); assert(duplicate >= 3);
     assert(call(8, duplicate, 0, 0, 0, 0) == 0);
     assert(call(0, fd, P(buffer), 1, 0, 0) == 1 && buffer[0] == 'a');
@@ -63,6 +71,10 @@ int main(int argc, char **argv)
     assert(call(5, fd, P(&before), 0, 0, 0) == 0);
     assert(call(4, P("/work/project/renamed"), P(&after), 0, 0, 0) == 0);
     assert(before.st_ino == after.st_ino && before.st_size == 3 && S_ISREG(before.st_mode));
+    unsigned char unaligned[sizeof(struct stat) + 1];
+    assert(call(5, fd, P(unaligned + 1), 0, 0, 0) == 0);
+    memcpy(&after, unaligned + 1, sizeof after);
+    assert(after.st_ino == before.st_ino);
     assert(call(87, P("/work/project/renamed"), 0, 0, 0, 0) == 0);
     assert(open_path("/work/project/renamed", 0) == -2);
     assert(call(5, fd, P(&after), 0, 0, 0) == 0 && after.st_nlink == 0);
@@ -90,6 +102,14 @@ int main(int argc, char **argv)
     assert(call(87, P("/work/alias"), 0, 0, 0, 0) == 0);
     assert(call(87, P("/work/sparse"), 0, 0, 0, 0) == 0); close_file(fd);
     assert(fs_ram_used() == 0);
+    assert(call(88, P("created-target"), P("/work/dangling"), 0, 0, 0) == 0);
+    assert(open_path("/work/dangling", 64 | 128 | 2) == -17);
+    fd = open_path("/work/dangling", 64 | 2); assert(fd >= 3);
+    assert(call(1, fd, P("ok"), 2, 0, 0) == 2); close_file(fd);
+    fd = open_path("/work/created-target", 0); assert(fd >= 3); close_file(fd);
+    assert(call(87, P("/work/dangling"), 0, 0, 0, 0) == 0);
+    assert(call(87, P("/work/created-target"), 0, 0, 0, 0) == 0);
+    assert(call(19, (unsigned long) -1, 0, 0, 0, 0) == -9);
 
     unsigned char entries[512];
     assert(call(217, dir, P(entries), sizeof entries, 0, 0) > 0);
@@ -118,6 +138,11 @@ int main(int argc, char **argv)
     assert(fs_ram_used() == 0 && allocated == baseline);
     assert(file_ready(177, false) == -9 && file_ready(0, false) == 0);
     assert(call(33, 0, 0, 0, 0, 0) == 0);
+    close_file(0);
+    fd = open_path("/work/lowest-fd", 64 | 2); assert(fd == 0);
+    close_file(fd);
+    assert(open_path("/dev/tty", 0) == 0);
+    assert(call(87, P("/work/lowest-fd"), 0, 0, 0, 0) == 0);
     assert(fs_lookup(fs_root(), "/work", true, &n) == FS_OK);
     fs_info(n, &info); assert(info.kind == FS_DIRECTORY);
     puts("File PAL and Linux descriptor/namespace checks passed");

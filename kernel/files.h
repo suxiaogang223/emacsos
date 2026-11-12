@@ -30,6 +30,7 @@ struct fs_node *fs_root(void);
 enum fs_error fs_lookup(struct fs_node *, const char *, bool, struct fs_node **);
 enum fs_error fs_create(struct fs_node *, const char *, enum fs_kind,
                         const char *, unsigned, bool, struct fs_node **);
+enum fs_error fs_create_regular(struct fs_node *, const char *, unsigned, struct fs_node **);
 enum fs_error fs_remove(struct fs_node *, const char *, bool);
 enum fs_error fs_rename(struct fs_node *, const char *, struct fs_node *,
                         const char *, bool);
