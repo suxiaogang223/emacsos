@@ -353,13 +353,16 @@ bool abi_files(unsigned long number, const unsigned long a[6], long *out)
         unsigned access = descriptors[fd].open->flags & O_ACCESS;
         if ((number == 19 && access == 1) || (number == 20 && !access)) { result = -9; break; }
         if (file_fd_kind(fd) == FS_CONSOLE) return false;
-        struct vector { void *base; size_t size; } *vectors = (void *) a[1];
+        struct vector { void *base; size_t size; };
+        const unsigned char *vectors = (void *) a[1];
         if (a[2] > 1024 || (!vectors && a[2])) { result = -22; break; }
         result = 0;
         for (size_t i = 0; i < a[2]; ++i) {
-            long n = transfer(fd, vectors[i].base, vectors[i].size, number == 20, false, 0);
+            struct vector vector;
+            copy(&vector, vectors + i * sizeof vector, sizeof vector);
+            long n = transfer(fd, vector.base, vector.size, number == 20, false, 0);
             if (n < 0) { if (!result) result = n; break; }
-            result += n; if ((size_t) n != vectors[i].size) break;
+            result += n; if ((size_t) n != vector.size) break;
         }
         break;
     }

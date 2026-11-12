@@ -60,6 +60,11 @@ int main(int argc, char **argv)
     assert(!(status_flags & (64 | 128 | 512)));
     assert(call(72, fd, 4, status_flags | 2048, 0, 0) == 0);
     assert(call(72, fd, 3, 0, 0, 0) & 2048);
+    struct { void *base; size_t size; } vector = { (void *) "v", 1 };
+    unsigned char unaligned_vector[sizeof vector + 1];
+    memcpy(unaligned_vector + 1, &vector, sizeof vector);
+    assert(call(20, fd, P(unaligned_vector + 1), 1, 0, 0) == 1);
+    assert(call(77, fd, 3, 0, 0, 0) == 0);
     int duplicate = (int) call(32, fd, 0, 0, 0, 0); assert(duplicate >= 3);
     assert(call(8, duplicate, 0, 0, 0, 0) == 0);
     assert(call(0, fd, P(buffer), 1, 0, 0) == 1 && buffer[0] == 'a');
