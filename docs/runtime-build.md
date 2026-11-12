@@ -12,8 +12,10 @@ make runtime-smoke
 ```
 
 Docker, Python 3 and an initialized clean Emacs checkout matching the staged
-parent pin are required. Generated configure files, bytecode and build products
-stay under `build/runtime/`; the dependency checkout remains unchanged. The
+parent pin are required. The wrapper exports only tracked bytes from the exact pinned commit with
+`git archive`; ignored or generated dependency files cannot seed the build.
+Generated configure files, bytecode and build products stay under
+`build/runtime/`; the dependency checkout remains unchanged. The
 wrapper invalidates its generated source/build cache when the submodule pin,
 container recipe, package lock or inner build recipe changes. The container pins the complete installed package closure in
 [scripts/runtime-packages.lock](../scripts/runtime-packages.lock) and records
@@ -43,7 +45,7 @@ parallel implementation in this change.
 | `build/runtime/emacs` | Static ELF input for the kernel loader. |
 | `build/runtime/root/` | Runtime filesystem staging tree. |
 | `build/runtime/runtime.cpio` | Uncompressed newc archive, with deterministic entry order, zero archive timestamps and bounded paths/entry count. |
-| `build/runtime/manifest.json` | Parent/fork revisions, dirty-source indication, profile/toolchain/package identities and SHA-256 hashes for executable/archive/every regular runtime file. |
+| `build/runtime/manifest.json` | Parent/fork revisions, dirty-source indication, profile/toolchain/package identities and SHA-256 hashes for source export/executable/archive/every regular runtime file. |
 | `build/runtime/elf-segments.txt` | Actual ELF segment layout from readelf. |
 
 Runtime paths are `/usr/bin/emacs`,

@@ -3,11 +3,11 @@ set -eu
 
 out=/work/build/runtime
 mkdir -p "$out"
-# Configure/autogen generate files; keep the pinned dependency checkout clean.
+# Only tracked bytes from the exact pinned commit seed generated build files.
 if test ! -e "$out/source/configure"; then
     rm -rf "$out/source"
-    cp -a /work/emacs "$out/source"
-    rm -f "$out/source/.git"
+    mkdir -p "$out/source"
+    tar -xf "$out/source.tar" -C "$out/source"
     (cd "$out/source" && ./autogen.sh)
 fi
 mkdir -p "$out/obj"

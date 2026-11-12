@@ -15,8 +15,13 @@ cache_key=$(
 )
 if test ! -f build/runtime/build-key || test "$(cat build/runtime/build-key)" != "$cache_key"; then
     rm -rf build/runtime/source build/runtime/obj
+    rm -f build/runtime/source.tar
     printf '%s\n' "$pin" > build/runtime/source-pin
     printf '%s\n' "$cache_key" > build/runtime/build-key
+fi
+if test ! -f build/runtime/source.tar; then
+    git -C emacs archive --format=tar "$pin" > build/runtime/source.tar.part
+    mv build/runtime/source.tar.part build/runtime/source.tar
 fi
 SOURCE_DATE_EPOCH=$(git -C emacs show -s --format=%ct HEAD)
 export SOURCE_DATE_EPOCH

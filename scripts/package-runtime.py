@@ -111,6 +111,7 @@ def main():
         "parent_commit": git("rev-parse", "HEAD"),
         "parent_dirty": bool(git("status", "--porcelain")),
         "emacs_commit": git("-C", "emacs", "rev-parse", "HEAD"),
+        "source_archive_sha256": sha256(out / "source.tar"),
         "profile": "GNU Emacs30.2 / static musl / x86-64 / terminal / pdumper",
         "source_date_epoch": (out / "source-date-epoch.txt").read_text().strip(),
         "build_key": (out / "build-key").read_text().strip(),
