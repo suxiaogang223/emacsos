@@ -1,0 +1,360 @@
+#include "kernel.h"
+__attribute__((weak)) bool abi_files(unsigned long n, const unsigned long a[6],
+                                     long *r) {
+  (void)n;
+  (void)a;
+  (void)r;
+  return false;
+}
+__attribute__((weak)) void fs_init(const void *p, size_t n) {
+  (void)p;
+  (void)n;
+}
+__attribute__((weak)) long file_map_read(int fd, uint64_t off, void *p,
+                                         size_t n) {
+  (void)fd;
+  (void)off;
+  (void)p;
+  (void)n;
+  return -9;
+}
+struct timespec {
+  int64_t sec, nsec;
+};
+static void set_time(struct timespec *t, uint64_t ns) {
+  if (t) {
+    t->sec = ns / 1000000000UL;
+    t->nsec = ns % 1000000000UL;
+  }
+}
+static uint64_t get_time(const struct timespec *t) {
+  if (!t || t->sec < 0 || t->nsec < 0 || t->nsec >= 1000000000)
+    return 0;
+  return (uint64_t)t->sec * 1000000000UL + t->nsec;
+}
+struct timer_descriptor {
+  bool used;
+  uint64_t deadline, interval;
+};
+static struct timer_descriptor timers[16];
+static bool timer_ready(unsigned fd) {
+  return fd >= 240 && fd < 256 && timers[fd - 240].used &&
+         timers[fd - 240].deadline &&
+         clock_monotonic_ns() >= timers[fd - 240].deadline;
+}
+static long timer_syscall(unsigned long nr, const unsigned long a[6],
+                          bool *handled) {
+  *handled = true;
+  if (nr == 283) {
+    if (a[0] > 1 || (a[1] & ~(0x800UL | 0x80000UL)))
+      return -22;
+    for (unsigned i = 0; i < 16; i++)
+      if (!timers[i].used) {
+        timers[i] = (struct timer_descriptor){true, 0, 0};
+        return 240 + i;
+      }
+    return -24;
+  }
+  if ((nr == 0 || nr == 3 || nr == 72 || nr == 286 || nr == 287) &&
+      a[0] >= 240 && a[0] < 256) {
+    struct timer_descriptor *t = &timers[a[0] - 240];
+    if (!t->used)
+      return -9;
+    if (nr == 3) {
+      *t = (struct timer_descriptor){0};
+      return 0;
+    }
+    if (nr == 72) {
+      if (a[1] == 1)
+        return 1;
+      if (a[1] == 2)
+        return 0;
+      if (a[1] == 3)
+        return 0x800;
+      return -22;
+    }
+    if (nr == 0) {
+      if (a[2] < 8)
+        return -22;
+      if (!timer_ready(a[0]))
+        return -11;
+      uint64_t count = 1;
+      if (t->interval) {
+        count += (clock_monotonic_ns() - t->deadline) / t->interval;
+        t->deadline += count * t->interval;
+      } else
+        t->deadline = 0;
+      memcpy((void *)a[1], &count, 8);
+      return 8;
+    }
+    struct timespec *old = (void *)(nr == 286 ? a[3] : a[1]);
+    if (old) {
+      set_time(old, t->interval);
+      set_time(old + 1, t->deadline > clock_monotonic_ns()
+                            ? t->deadline - clock_monotonic_ns()
+                            : 0);
+    }
+    if (nr == 286) {
+      if (a[1] & ~1UL)
+        return -22;
+      const struct timespec *v = (void *)a[2];
+      t->interval = get_time(v);
+      uint64_t value = get_time(v + 1);
+      t->deadline =
+          value ? (a[1] & 1 ? value : clock_monotonic_ns() + value) : 0;
+    }
+    return 0;
+  }
+  *handled = false;
+  return 0;
+}
+static long terminal_ioctl(unsigned long request, void *p) {
+  static unsigned char termios[36] = {
+      0,  0,   0,  0, 5, 0, 0, 0,  0xbf, 0,  0, 0,  0x3b, 0x8a, 0,  0, 0, 3,
+      28, 127, 21, 4, 0, 1, 0, 17, 19,   26, 0, 18, 15,   23,   22, 0, 0, 0};
+  switch (request) {
+  case 0x5401:
+    memcpy(p, termios, sizeof termios);
+    return 0;
+  case 0x5402:
+  case 0x5403:
+  case 0x5404:
+    memcpy(termios, p, sizeof termios);
+    return 0;
+  case 0x5413: {
+    uint16_t *w = p;
+    w[0] = 24;
+    w[1] = 80;
+    w[2] = w[3] = 0;
+    return 0;
+  }
+  case 0x541b:
+    *(int *)p = console_ready() ? 1 : 0;
+    return 0;
+  case 0x540f:
+    *(int *)p = 1;
+    return 0;
+  case 0x5410:
+    return 0;
+  default:
+    return -25;
+  }
+}
+static long select_wait(const unsigned long *a, bool pselect) {
+  unsigned nfds = a[0];
+  if (nfds > 1024)
+    return -22;
+  size_t bytes = ((nfds + 63) / 64) * 8;
+  uint64_t rin[16] = {0}, win[16] = {0};
+  if (a[1])
+    memcpy(rin, (void *)a[1], bytes);
+  if (a[2])
+    memcpy(win, (void *)a[2], bytes);
+  uint64_t deadline = UINT64_MAX;
+  if (a[4]) {
+    struct timespec *t = (void *)a[4];
+    uint64_t duration =
+        pselect ? get_time(t)
+                : (uint64_t)t->sec * 1000000000UL + t->nsec * 1000UL;
+    deadline = clock_monotonic_ns() + duration;
+  }
+  for (;;) {
+    if (a[1])
+      memset((void *)a[1], 0, bytes);
+    if (a[2])
+      memset((void *)a[2], 0, bytes);
+    if (a[3])
+      memset((void *)a[3], 0, bytes);
+    long count = 0;
+    for (unsigned fd = 0; fd < nfds; fd++) {
+      uint64_t bit = 1UL << (fd % 64);
+      bool ready = false;
+      if ((rin[fd / 64] & bit) && ((fd == 0 && console_ready()) ||
+                                   (fd >= 3 && fd < 240) || timer_ready(fd))) {
+        if (a[1])
+          ((uint64_t *)a[1])[fd / 64] |= bit;
+        ready = true;
+      }
+      if ((win[fd / 64] & bit) && fd != 0) {
+        if (a[2])
+          ((uint64_t *)a[2])[fd / 64] |= bit;
+        ready = true;
+      }
+      if (ready)
+        count++;
+    }
+    if (count || clock_monotonic_ns() >= deadline)
+      return count;
+    wait_interrupt();
+  }
+}
+static uint64_t signal_mask;
+long syscall_dispatch(unsigned long n, const unsigned long a[6]) {
+  long result;
+  bool timer_handled;
+  result = timer_syscall(n, a, &timer_handled);
+  if (timer_handled)
+    return result;
+  if (abi_files(n, a, &result))
+    return result;
+  switch (n) {
+  case 0:
+    if (a[0] > 2)
+      return -9;
+    while ((result = console_read((void *)a[1], a[2])) == -11)
+      wait_interrupt();
+    return result;
+  case 1:
+    if (a[0] > 2)
+      return -9;
+    console_write((void *)a[1], a[2]);
+    return a[2];
+  case 9: {
+    if (a[4] != (unsigned long)-1 && !(a[3] & 0x20)) {
+      if (!(a[3] & 2))
+        return -95;
+      long address = memory_map(a[0], a[1], 3, a[3]);
+      if (address < 0)
+        return address;
+      long got = file_map_read(a[4], a[5], (void *)address, a[1]);
+      if (got < 0) {
+        memory_unmap(address, a[1]);
+        return got;
+      }
+      long protected = memory_protect(address, a[1], a[2]);
+      return protected < 0 ? protected : address;
+    }
+    return memory_map(a[0], a[1], a[2], a[3]);
+  }
+  case 10:
+    return memory_protect(a[0], a[1], a[2]);
+  case 11:
+    return memory_unmap(a[0], a[1]);
+  case 12:
+    return memory_brk(a[0]);
+  case 13: /* No asynchronous signal delivery is implemented. */
+  case 131:
+    return -38;
+  case 14:
+    if (a[3] != 8)
+      return -22;
+    if (a[2])
+      memcpy((void *)a[2], &signal_mask, 8);
+    if (a[1]) {
+      uint64_t mask;
+      memcpy(&mask, (void *)a[1], 8);
+      if (a[0] == 0)
+        signal_mask |= mask;
+      else if (a[0] == 1)
+        signal_mask &= ~mask;
+      else if (a[0] == 2)
+        signal_mask = mask;
+      else
+        return -22;
+    }
+    return 0;
+  case 16:
+    return a[0] <= 2 ? terminal_ioctl(a[1], (void *)a[2]) : -25;
+  case 20: {
+    struct iovec {
+      void *base;
+      size_t len;
+    };
+    struct iovec *v = (void *)a[1];
+    if (a[0] > 2)
+      return -9;
+    if (a[2] > 1024)
+      return -22;
+    size_t total = 0;
+    for (size_t i = 0; i < a[2]; i++) {
+      console_write(v[i].base, v[i].len);
+      total += v[i].len;
+    }
+    return total;
+  }
+  case 23:
+    return select_wait(a, false);
+  case 35: {
+    uint64_t end = clock_monotonic_ns() + get_time((void *)a[0]);
+    while (clock_monotonic_ns() < end)
+      wait_interrupt();
+    return 0;
+  }
+  case 39:
+  case 186:
+    return 1;
+  case 60:
+  case 231:
+    console_puts("\r\nRuntime exited status=");
+    console_hex(a[0]);
+    console_puts("\r\n");
+    __asm__ volatile("outl %0,%1" ::"a"((unsigned)(a[0] ? 0x11 : 0x10)),
+                     "Nd"((uint16_t)0xf4));
+    panic("runtime exit");
+  case 63: {
+    char *u = (void *)a[0];
+    memset(u, 0, 390);
+    memcpy(u, "Linux", 6);
+    memcpy(u + 65, "emacsos", 8);
+    memcpy(u + 130, "6.0.0-emacsos", 13);
+    memcpy(u + 195, "emacsOS bounded ABI", 20);
+    memcpy(u + 260, "x86_64", 7);
+    return 0;
+  }
+  case 97: {
+    uint64_t *r = (void *)a[1];
+    if (a[0] == 3) {
+      r[0] = 4 * 1024 * 1024;
+      r[1] = 4 * 1024 * 1024;
+    } else if (a[0] == 7) {
+      r[0] = 256;
+      r[1] = 256;
+    } else {
+      r[0] = r[1] = UINT64_MAX;
+    }
+    return 0;
+  }
+  case 102:
+  case 104:
+  case 107:
+  case 108:
+    return 0;
+  case 110:
+    return 0;
+  case 158:
+    if (a[0] == 0x1002) {
+      __asm__ volatile("wrmsr" ::"c"(0xc0000100), "a"((uint32_t)a[1]),
+                       "d"((uint32_t)(a[1] >> 32)));
+      return 0;
+    }
+    return -22;
+  case 222: /* Signal-driven POSIX timers are not supported. */
+    return -38;
+  case 202:
+    return -38;
+  case 218:
+    return 1;
+  case 228:
+    if (a[0] != 0 && a[0] != 1 && a[0] != 4)
+      return -22;
+    set_time((void *)a[1],
+             a[0] == 0 ? clock_realtime_ns() : clock_monotonic_ns());
+    return 0;
+  case 270:
+    return select_wait(a, true);
+  case 302:
+    if (a[2])
+      return -1;
+    {
+      unsigned long args[6] = {a[1], a[3], 0, 0, 0, 0};
+      return syscall_dispatch(97, args);
+    }
+  case 318:
+    return -38;
+  default:
+    console_puts("\r\nUnsupported syscall ");
+    console_hex(n);
+    console_puts("\r\n");
+    return -38;
+  }
+}

@@ -2,6 +2,7 @@ section .text.boot
 bits 16
 global _start
 extern kernel_main, __bss_start, __bss_end
+global runtime_gdt
 
 _start:
     cli
@@ -16,14 +17,21 @@ _start:
     or al, 2
     out 0x92, al
 
-    ; Identity map the first 2 MiB with one large page.
+    ; Identity map the fixed 1 GiB QEMU RAM contract with 2 MiB pages.
     xor ax, ax
     mov di, 0x1000
     mov cx, 0x1800
     rep stosw
     mov dword [0x1000], 0x2003
     mov dword [0x2000], 0x3003
-    mov dword [0x3000], 0x83
+    mov di, 0x3000
+    mov eax, 0x83
+    mov cx, 512
+.map:
+    mov [di], eax
+    add eax, 0x200000
+    add di, 8
+    loop .map
     mov eax, 0x1000
     mov cr3, eax
     mov eax, cr4
@@ -31,8 +39,8 @@ _start:
     mov cr4, eax
     mov ecx, 0xc0000080
     rdmsr
-    and eax, ~1           ; Keep SYSCALL disabled.
-    or eax, 0x100          ; Long-mode enable.
+    or eax, 1             ; Enable the bounded Linux SYSCALL entry.
+    or eax, 0x900          ; Long-mode and execute-disable enable.
     wrmsr
     lgdt [cs:gdtr - _start]
     mov eax, cr0
@@ -41,7 +49,8 @@ _start:
     jmp dword 0x08:long_entry
 
 align 8
-gdt: dq 0, 0x00af9a000000ffff, 0x00cf92000000ffff
+gdt:
+runtime_gdt: dq 0, 0x00af9a000000ffff, 0x00cf92000000ffff, 0, 0
 gdtr:
     dw $ - gdt - 1
     dd gdt
@@ -53,6 +62,14 @@ long_entry:
     mov es, ax
     mov ss, ax
     mov esp, 0x90000
+    mov rax, cr0
+    and rax, ~4
+    or rax, 2
+    mov cr0, rax
+    mov rax, cr4
+    or rax, 0x600
+    mov cr4, rax
+    fninit
     xor ebp, ebp
     mov edi, __bss_start
     mov ecx, __bss_end
