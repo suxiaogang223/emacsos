@@ -8,6 +8,8 @@ emacsos/
 │   ├── entry.asm          # x86-64 entry scaffold
 │   ├── main.c             # Minimal C/serial scaffold
 │   └── kernel.ld          # Link layout
+├── lisp/                  # Trusted application policy and counter demo
+├── tests/                 # Host ERT for parent-owned application policy
 ├── scripts/               # Build, native launcher and contribution tools
 └── docs/                  # Current architecture and implementation plan
 ```
@@ -31,6 +33,11 @@ The parent gitlink pins the exact fork commit. Do not float it implicitly with
 `git submodule update --remote`. A source checkout is not a runtime build.
 Current Make targets build only the kernel/image scaffold; Emacs build and
 installation are future work.
+
+Parent `lisp/` now contains trusted application policy and the counter example;
+`tests/` contains their host ERT suite. See [application MVP](application-mvp.md)
+for the implemented subset and explicit guest-validation limits. This parent
+policy does not modify the runtime fork or establish guest execution.
 
 ## Future changes
 
