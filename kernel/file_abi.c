@@ -185,7 +185,19 @@ static long transfer(int fd, void *buffer, size_t count, bool write, bool positi
 }
 
 long file_map_read(int fd, uint64_t offset, void *buffer, size_t count)
-{ initialize(); return transfer(fd, buffer, count, false, true, offset); }
+{
+    initialize();
+    if (!valid(fd)) return -9;
+    struct description *open = descriptors[fd].open;
+    if ((open->flags & O_PATH) || (open->flags & O_ACCESS) == 1) return -9;
+    struct fs_info info = information(open->node);
+    if (info.kind != FS_REGULAR) return -19;
+    uint64_t end = (info.size + 4095) & ~4095UL;
+    /* Pages wholly beyond EOF would require SIGBUS, which this port lacks. */
+    if (count && (offset >= info.size || count > end - offset)) return -95;
+    if (!buffer) return 0;
+    return transfer(fd, buffer, count, false, true, offset);
+}
 
 static long seek_file(int fd, int64_t offset, unsigned whence)
 {

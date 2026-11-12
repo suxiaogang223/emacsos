@@ -60,6 +60,9 @@ int main(int argc, char **argv)
     assert(!(status_flags & (64 | 128 | 512)));
     assert(call(72, fd, 4, status_flags | 2048, 0, 0) == 0);
     assert(call(72, fd, 3, 0, 0, 0) & 2048);
+    assert(file_map_read(fd, 0, 0, 4096) == 0);
+    assert(file_map_read(fd, 0, 0, 8192) == -95);
+    assert(file_map_read(fd, 4096, 0, 1) == -95);
     struct { void *base; size_t size; } vector = { (void *) "v", 1 };
     unsigned char unaligned_vector[sizeof vector + 1];
     memcpy(unaligned_vector + 1, &vector, sizeof vector);

@@ -8,7 +8,7 @@ CFLAGS := --target=x86_64-unknown-none-elf -std=c11 -O2 -g -Wall -Wextra -Werror
           -ffreestanding -fno-stack-protector -fno-pic -fno-pie -mno-red-zone -mgeneral-regs-only
 
 .PHONY: image kernel container-image run
-KERNEL_C := main hardware memory loader runtime
+KERNEL_C := main hardware memory loader runtime files file_abi
 KERNEL_ASM := entry interrupts syscall
 KERNEL_OBJS := $(addprefix $(OUT)/,$(addsuffix .o,$(KERNEL_C) $(KERNEL_ASM)))
 image: $(OUT)/emacsos.img
@@ -20,7 +20,7 @@ $(OUT):
 $(OUT)/%.o: kernel/%.asm Makefile | $(OUT)
 	$(NASM) -f elf64 $< -o $@
 
-$(OUT)/%.o: kernel/%.c kernel/kernel.h Makefile | $(OUT)
+$(OUT)/%.o: kernel/%.c kernel/kernel.h kernel/files.h Makefile | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(OUT)/kernel.elf: $(KERNEL_OBJS) kernel/kernel.ld

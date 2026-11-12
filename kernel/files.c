@@ -485,7 +485,10 @@ void fs_init(const void *archive, size_t length)
     root_node = 0; node_count = ram_bytes = next_inode = 0;
     root_node = new_node(0, "", FS_DIRECTORY, 0755, false);
     if (!root_node) panic("cannot allocate root directory");
-    if (archive) seed_archive(archive, length);
+    if (length) {
+        if (!archive) panic("missing runtime archive data");
+        seed_archive(archive, length);
+    }
     seed_directory("work", true); seed_directory("tmp", true);
     struct fs_node *home = seed_directory("home", true);
     if (!new_node(home, "user", FS_DIRECTORY, 0755, true)) panic("cannot allocate user directory");
