@@ -279,6 +279,12 @@ long syscall_dispatch(unsigned long n, const unsigned long a[6]) {
     if (a[4] != (unsigned long)-1 && !(a[3] & 0x20)) {
       if (!(a[3] & 2))
         return -95;
+      if (a[5] & (PAGE_SIZE - 1))
+        return -22;
+      /* Validate the descriptor before MAP_FIXED can replace existing bytes. */
+      long checked = file_map_read(a[4], a[5], 0, 0);
+      if (checked < 0)
+        return checked;
       long address = memory_map(a[0], a[1], 3, a[3]);
       if (address < 0)
         return address;
@@ -355,6 +361,8 @@ long syscall_dispatch(unsigned long n, const unsigned long a[6]) {
       wait_interrupt();
     return 0;
   }
+  case 25: /* mremap is unavailable; musl can allocate/copy/free instead. */
+    return -38;
   case 38: /* Signal-driven interval timers are unavailable. */
     return -38;
   case 39:

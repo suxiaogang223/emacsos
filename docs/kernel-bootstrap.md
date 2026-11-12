@@ -94,5 +94,7 @@ IDs. Group operations accept only that existing identity. `setfsuid`/`setfsgid`
 report the previous unchanged identity; there are no accounts or credentials to
 switch. Signal interval timers and physical-free-memory queries explicitly
 return ENOSYS, allowing the selected upstream runtime's available fallbacks.
+Unsupported mremap returns ENOSYS so musl can use allocate/copy/free. File mmap
+checks descriptor validity and offset alignment before replacing fixed mappings.
 These profile additions need acceptance with the matching runtime and file
 backend; the standalone musl probes do not establish full Emacs behavior.
