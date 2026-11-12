@@ -79,3 +79,20 @@ write a read-only page and execute an NX page; they must report the correspondin
 real page faults. Logs and a source/fork/artifact manifest are written under
 `build/skeleton/`. These checks are kernel/probe acceptance only. They prove
 neither Emacs startup, application behavior, persistent storage nor isolation.
+
+## GNU Emacs integration profile
+
+The terminal runtime profile supplies `-Q -nw`, an explicit matching installed
+portable dump, and fixed Lisp/data/helper paths. Console identity is obtained
+through the file adapter, so `/dev/tty` opens and duplicated descriptors use the
+same device behavior as standard input/output. Console reads honor the open
+file's nonblocking status; `readv`/`writev` preserve partial progress. The file
+adapter owns shared open-description status and descriptor access modes.
+
+The compatibility identity remains one fixed process/group with root numeric
+IDs. Group operations accept only that existing identity. `setfsuid`/`setfsgid`
+report the previous unchanged identity; there are no accounts or credentials to
+switch. Signal interval timers and physical-free-memory queries explicitly
+return ENOSYS, allowing the selected upstream runtime's available fallbacks.
+These profile additions need acceptance with the matching runtime and file
+backend; the standalone musl probes do not establish full Emacs behavior.

@@ -92,27 +92,30 @@ _Noreturn void runtime_enter(const struct runtime_image *im) {
       "/usr/bin/emacs",
       "-Q",
       "-nw",
+      "--dump-file",
+      "/usr/libexec/emacs/30.2/x86_64-pc-linux-musl/emacs.pdmp",
       "TERM=xterm",
       "HOME=/work",
       "PWD=/work",
       "PATH=/usr/bin",
       "EMACSDATA=/usr/share/emacs/30.2/etc",
       "EMACSDOC=/usr/share/emacs/30.2/etc",
-      "EMACSLOADPATH=/usr/share/emacs/30.2/lisp:/usr/share/emacs/site-lisp"};
-  uintptr_t ptr[10];
-  for (unsigned i = 0; i < 10; i++) {
+      "EMACSLOADPATH=/usr/share/emacs/30.2/lisp:/usr/share/emacs/site-lisp",
+      "EMACSPATH=/usr/libexec/emacs/30.2/x86_64-pc-linux-musl"};
+  uintptr_t ptr[13];
+  for (unsigned i = 0; i < 13; i++) {
     size_t n = strlen(strings[i]) + 1;
     sp -= n;
     memcpy((void *)sp, strings[i], n);
     ptr[i] = sp;
   }
   uint64_t stack[] = {
-      3,         ptr[0], ptr[1],   ptr[2], 0,    ptr[3], ptr[4], ptr[5],
-      ptr[6],    ptr[7], ptr[8],   ptr[9], 0,    3,      phdr,   4,
-      sizeof *p, 5,      h->phnum, 6,      4096, 7,      0,      8,
-      0,         9,      h->entry, 11,     0,    12,     0,      13,
-      0,         14,     0,        17,     1000, 23,     0,      31,
-      ptr[0],    0,      0};
+      5,      ptr[0], ptr[1], ptr[2],    ptr[3],  ptr[4],   0,       ptr[5],
+      ptr[6], ptr[7], ptr[8], ptr[9],    ptr[10], ptr[11],  ptr[12], 0,
+      3,      phdr,   4,      sizeof *p, 5,       h->phnum, 6,       4096,
+      7,      0,      8,      0,         9,       h->entry, 11,      0,
+      12,     0,      13,     0,         14,      0,        17,      1000,
+      23,     0,      31,     ptr[0],    0,       0};
   sp = (sp - sizeof stack) & ~15UL;
   memcpy((void *)sp, stack, sizeof stack);
   syscall_stack_top = (uintptr_t)syscall_stack + sizeof syscall_stack;
