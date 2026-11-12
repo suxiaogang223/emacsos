@@ -83,7 +83,7 @@ static long timer_syscall(unsigned long nr, const unsigned long a[6],
       if (a[1] == 3)
         return 2 | (t->flags & 0x800);
       if (a[1] == 4) {
-        if (a[2] & ~0x803UL)
+        if (a[2] & ~0x8803UL)
           return -22;
         t->flags = (t->flags & ~0x800U) | (a[2] & 0x800U);
         return 0;
