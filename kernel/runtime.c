@@ -284,7 +284,7 @@ long syscall_dispatch(unsigned long n, const unsigned long a[6]) {
       if (a[5] & (PAGE_SIZE - 1))
         return -22;
       /* Validate the descriptor before MAP_FIXED can replace existing bytes. */
-      long checked = file_map_read(a[4], a[5], 0, 0);
+      long checked = file_map_read(a[4], a[5], 0, a[1]);
       if (checked < 0)
         return checked;
       long address = memory_map(a[0], a[1], 3, a[3]);
