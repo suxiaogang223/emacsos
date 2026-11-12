@@ -32,7 +32,7 @@ flowchart TB
     end
     subgraph kernel["3. Own C kernel and backends"]
       core["Memory/resource ownership, events and actual device operations"]
-      backend["Console; read-only runtime image; later files and network"]
+      backend["Console; runtime image and volatile files; future network"]
       core --> backend
     end
     runtime --> adapter
@@ -207,7 +207,8 @@ Applications have code/entry contracts; each managed invocation has a distinct
 run identity, lifecycle, context and explicit owned/borrowed/shared resources.
 Entry return ends startup; explicit finish and a callback-unwind cleanup barrier
 determine terminal completion. Stop request is not completed exit.
-A0 adds trusted cooperative instances after E0. A buffer is their tool/view,
+The A0 MVP adds trusted cooperative instances on the interactive runtime.
+A buffer is their tool/view,
 not an execution unit; GNU network process objects are connections rather than
 kernel processes. Standard file/network APIs remain the common public surface.
 
@@ -220,7 +221,8 @@ not authority over ambient APIs or the shared heap.
 
 [The application/process model](process-model.md) defines minimal management,
 context propagation, late-event suppression, bounded communication and the
-planned `*Processes*` client. It adds no automatic services or startup framework
+implemented `*Processes*` MVP client. It adds no automatic services or startup
+framework
 and does not gate basic file/network capability work.
 
 ## Decisions and open gates

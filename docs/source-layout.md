@@ -4,9 +4,13 @@
 emacsos/
 ├── emacs/                 # Pinned GNU Emacs fork submodule
 ├── kernel/
-│   ├── boot.asm           # BIOS loader scaffold
-│   ├── entry.asm          # x86-64 entry scaffold
+│   ├── boot.asm           # BIOS disk loader
+│   ├── entry.asm          # x86-64 entry and fixed memory map
 │   ├── main.c             # Kernel initialization and runtime entry
+│   ├── loader.c           # Static ELF and startup ABI
+│   ├── runtime.c          # Bounded syscall adapter and waits
+│   ├── files.c / file_abi.c # Typed volatile files and ABI translation
+│   ├── memory.c / hardware.c # Memory, serial and clocks
 │   └── kernel.ld          # Link layout
 ├── lisp/                  # Trusted application policy and counter demo
 ├── tests/                 # Host ERT, file checks and guest acceptance source

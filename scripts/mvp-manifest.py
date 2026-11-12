@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import struct
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -20,6 +21,29 @@ def git(*args):
     return subprocess.check_output(["git", "-C", str(ROOT), *args], text=True).strip()
 
 
+def verify_image(image_path, boot_path, elf_path, archive_path):
+    """Bind the booted disk bytes to the individually identified components."""
+    boot = boot_path.read_bytes()
+    if len(boot) > 1024 * 1024:
+        raise SystemExit("Kernel image overlaps the runtime header")
+    sizes = (elf_path.stat().st_size, archive_path.stat().st_size)
+    with image_path.open("rb") as image:
+        if image.read(1024 * 1024) != boot + bytes(1024 * 1024 - len(boot)):
+            raise SystemExit("Boot image does not contain the identified kernel")
+        expected = struct.pack("<8sQQ", b"EMACSOS1", *sizes) + bytes(512 - 24)
+        if image.read(512) != expected:
+            raise SystemExit("Boot image runtime header differs")
+        for path, size in zip((elf_path, archive_path), sizes):
+            with path.open("rb") as component:
+                for chunk in iter(lambda: component.read(1024 * 1024), b""):
+                    if image.read(len(chunk)) != chunk:
+                        raise SystemExit(f"Boot image payload differs: {path.name}")
+            if image.read(-size % 512) != bytes(-size % 512):
+                raise SystemExit("Boot image sector padding differs")
+        if image.read(1):
+            raise SystemExit("Boot image has unexpected trailing bytes")
+
+
 def main():
     out = ROOT / "build/mvp"
     runtime = ROOT / "build/runtime"
@@ -31,10 +55,26 @@ def main():
             raise SystemExit(f"Stale runtime component: {name}")
     if manifest["parent_commit"] != git("rev-parse", "HEAD"):
         raise SystemExit("Repackage the runtime at the current parent commit")
+    entries = {}
+    for entry in manifest["files"]:
+        if entry["path"] in entries:
+            raise SystemExit(f"Duplicate runtime manifest path: {entry['path']}")
+        entries[entry["path"]] = entry
     for path in (ROOT / "lisp").glob("*.el"):
-        installed = runtime / "root/usr/share/emacs/site-lisp" / path.name
-        if not installed.is_file() or digest(path) != digest(installed):
-            raise SystemExit(f"Stale installed system Lisp: {path.name}")
+        name = "/usr/share/emacs/site-lisp/" + path.name
+        installed = runtime / ("root" + name)
+        entry = entries.get(name, {})
+        expected = digest(path)
+        if (not installed.is_file() or installed.is_symlink()
+                or digest(installed) != expected
+                or entry.get("sha256") != expected
+                or entry.get("size") != path.stat().st_size
+                or "symlink" in entry or "directory" in entry):
+            raise SystemExit(f"Stale installed/archived system Lisp: {path.name}")
+    verify_image(out / "emacsos.img", ROOT / "build/skeleton/emacsos.img",
+                 runtime / "emacs", runtime / "runtime.cpio")
+    if git("-C", "emacs", "rev-parse", "HEAD") != manifest["emacs_commit"]:
+        raise SystemExit("Initialize the matching Emacs submodule")
     components = ["build/skeleton/kernel.elf", "build/skeleton/emacsos.img",
                   "build/runtime/emacs", "build/runtime/runtime.cpio",
                   "build/runtime/manifest.json", "build/mvp/emacsos.img"]
@@ -42,7 +82,7 @@ def main():
         "format": 1, "scope": "Build identity only; guest acceptance is separate",
         "parent": git("rev-parse", "HEAD"), "tree": git("rev-parse", "HEAD^{tree}"),
         "fork": git("rev-parse", "HEAD:emacs"),
-        "dirty": bool(git("status", "--porcelain")),
+        "dirty": bool(git("status", "--porcelain")) or manifest["parent_dirty"],
         "machine": {"qemu": "pc", "ram": "1G", "console": "COM1", "network": "none"},
         "components": {name: digest(ROOT / name) for name in components},
         "containers": {

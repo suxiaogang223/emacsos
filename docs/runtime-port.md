@@ -92,7 +92,7 @@ namespace. Its memory/map lifetime must outlive any borrowed runtime access.
 Select which files are loaded by the kernel and which Emacs opens through the
 adapter; do not require F0 writable files just to bootstrap Emacs.
 
-F0 later supplies explicitly volatile working files with ordinary Emacs file
+F0 supplies explicitly volatile working files with ordinary Emacs file
 behavior. Directory enumeration, file position, creation flags, metadata,
 locking fallback requirements and rename semantics need concrete contracts.
 [filelock.c](https://github.com/suxiaogang223/emacs/blob/73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5/src/filelock.c) falls back to regular-file locks only for
@@ -117,8 +117,8 @@ than using a path string as identity. Reject stale readiness after close/reuse.
 
 The first port runs one trusted Emacs, without promised process/thread isolation
 or external subprocess execution. The [application/process model](process-model.md)
-adds later A0 instance tracking and K0 kernel execution; neither is required by
-the initial PAL or basic file/network APIs. ABI calls needed only by unsupported
+adds A0 instance tracking (the MVP subset is implemented) and future K0 kernel
+execution; neither is required by the initial PAL or basic file/network APIs. ABI calls needed only by unsupported
 features must fail clearly. Network process objects remain connections in the same
 runtime. Even a connection created with `:nowait` does not make every later
 `process-send-string` nonblocking; document the supported send/progress behavior.
