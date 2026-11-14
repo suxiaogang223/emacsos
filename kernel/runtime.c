@@ -1,4 +1,5 @@
 #include "kernel.h"
+#include "storage_control.h"
 __attribute__((weak)) bool abi_files(unsigned long n, const unsigned long a[6],
                                      long *r) {
   (void)n;
@@ -18,6 +19,8 @@ __attribute__((weak)) long file_map_read(int fd, uint64_t off, void *p,
   (void)n;
   return -9;
 }
+__attribute__((weak)) uint64_t fs_data_boot_id(void) { return 0; }
+static unsigned long runtime_pid(void) { return fs_data_boot_id() + 1; }
 struct timespec {
   int64_t sec, nsec;
 };
@@ -265,6 +268,7 @@ static long select_wait(const unsigned long *a, bool pselect) {
 }
 static uint64_t signal_mask;
 long syscall_dispatch(unsigned long n, const unsigned long a[6]) {
+  storage_control_service();
   long result;
   bool timer_handled;
   result = timer_syscall(n, a, &timer_handled);
@@ -381,7 +385,11 @@ long syscall_dispatch(unsigned long n, const unsigned long a[6]) {
     return -38;
   case 39:
   case 186:
-    return 1;
+    return runtime_pid();
+  case 62:
+    if (a[1])
+      return -38;
+    return a[0] == runtime_pid() ? 0 : -3;
   case 60:
   case 231:
     console_puts("\r\nRuntime exited status=");
@@ -423,10 +431,11 @@ long syscall_dispatch(unsigned long n, const unsigned long a[6]) {
   case 110:
     return 0;
   case 109:
+    return ((!a[0] || a[0] == runtime_pid()) && a[1] <= 1) ? 0 : -1;
   case 111:
     return 1;
   case 121:
-    return a[0] <= 1 ? 1 : -3;
+    return (!a[0] || a[0] == runtime_pid()) ? 1 : -3;
   case 122:
   case 123:
     return 0; /* No alternate identity exists; report the unchanged previous ID.

@@ -94,6 +94,8 @@ _Noreturn void runtime_enter(const struct runtime_image *im) {
       "-nw",
       "--dump-file",
       "/usr/libexec/emacs/30.2/x86_64-pc-linux-musl/emacs.pdmp",
+      "--load",
+      "/usr/share/emacs/site-lisp/emacsos-storage.el",
       "TERM=xterm",
       "HOME=/work",
       "PWD=/work",
@@ -102,20 +104,28 @@ _Noreturn void runtime_enter(const struct runtime_image *im) {
       "EMACSDOC=/usr/share/emacs/30.2/etc",
       "EMACSLOADPATH=/usr/share/emacs/30.2/lisp:/usr/share/emacs/site-lisp",
       "EMACSPATH=/usr/libexec/emacs/30.2/x86_64-pc-linux-musl"};
-  uintptr_t ptr[13];
-  for (unsigned i = 0; i < 13; i++) {
+  enum { argument_count = 7, string_count = sizeof strings / sizeof *strings };
+  uintptr_t ptr[string_count];
+  for (unsigned i = 0; i < string_count; i++) {
     size_t n = strlen(strings[i]) + 1;
     sp -= n;
     memcpy((void *)sp, strings[i], n);
     ptr[i] = sp;
   }
-  uint64_t stack[] = {
-      5,      ptr[0], ptr[1], ptr[2],    ptr[3],  ptr[4],   0,       ptr[5],
-      ptr[6], ptr[7], ptr[8], ptr[9],    ptr[10], ptr[11],  ptr[12], 0,
-      3,      phdr,   4,      sizeof *p, 5,       h->phnum, 6,       4096,
-      7,      0,      8,      0,         9,       h->entry, 11,      0,
-      12,     0,      13,     0,         14,      0,        17,      1000,
-      23,     0,      31,     ptr[0],    0,       0};
+  const uint64_t auxiliary[] = {
+      3, phdr, 4, sizeof *p, 5, h->phnum, 6, 4096, 7, 0, 8, 0,
+      9, h->entry, 11, 0, 12, 0, 13, 0, 14, 0, 17, 1000, 23, 0,
+      31, ptr[0], 0, 0};
+  uint64_t stack[1 + string_count + 2 + sizeof auxiliary / sizeof *auxiliary];
+  unsigned si = 0;
+  stack[si++] = argument_count;
+  for (unsigned i = 0; i < argument_count; i++)
+    stack[si++] = ptr[i];
+  stack[si++] = 0;
+  for (unsigned i = argument_count; i < string_count; i++)
+    stack[si++] = ptr[i];
+  stack[si++] = 0;
+  memcpy(stack + si, auxiliary, sizeof auxiliary);
   sp = (sp - sizeof stack) & ~15UL;
   memcpy((void *)sp, stack, sizeof stack);
   syscall_stack_top = (uintptr_t)syscall_stack + sizeof syscall_stack;
