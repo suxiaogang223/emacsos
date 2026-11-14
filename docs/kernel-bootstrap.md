@@ -77,7 +77,7 @@ QEMU. The normal case verifies TLS-backed libc startup, mmap, RO protection,
 unmap, clock progress, sleep, output and exit. Two negative cases deliberately
 write a read-only page and execute an NX page; they must report the corresponding
 real page faults. Logs and a source/fork/artifact manifest are written under
-`build/skeleton/`. These checks are kernel/probe acceptance only. They prove
+`build/kernel/`. These checks are kernel/probe acceptance only. They prove
 neither Emacs startup, application behavior, persistent storage nor isolation.
 
 ## GNU Emacs integration profile

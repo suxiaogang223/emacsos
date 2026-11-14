@@ -18,14 +18,16 @@ make build
 make run
 ```
 
-The first build compiles static Emacs and its matching portable dump in pinned
-containers. Later builds reuse the runtime build directory. The image is
-`build/mvp/emacsos.img`; the launcher uses QEMU's fixed PC profile, 1 GiB RAM,
-COM1 and no network. Exit QEMU with `C-a x`; send Emacs a literal `C-a` with `C-a a`.
+The first build compiles the kernel, static Emacs and its matching portable dump
+in Docker toolchains. Later builds share Docker layers and use incremental
+compilation in this worktree's build directory. Runtime installation and packaging
+run each time. The image is `build/image/emacsos.img`; the launcher uses QEMU's
+fixed PC profile, 1 GiB RAM, COM1 and no network. Exit QEMU with `C-a x`; send Emacs a literal `C-a` with `C-a a`.
 
 Use `make test` for fast host tests and `make check` for host tests, contribution
-checks, kernel probes and native guest acceptance. Builds reuse verified
-artifacts; changing system Lisp only repackages the runtime. See
+checks, kernel probes and native guest acceptance. Host tests additionally need
+Clang, Emacs and OpenSSL. Each worktree keeps separate build outputs while Docker
+shares toolchain images and layers. See
 [build and test](docs/build-and-test.md) for dependencies and focused commands.
 
 In Emacs, use `M-:` to evaluate `(+ 20 22)`, `C-x C-f` to create

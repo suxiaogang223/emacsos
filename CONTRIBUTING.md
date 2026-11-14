@@ -61,9 +61,12 @@ roadmap only when the stated criteria are satisfied. Skills:
 
 ## Contribution checks
 
-Use `make test` for fast host checks and `make check` for full native validation
-from a clean committed checkout. See [build and test](docs/build-and-test.md)
-for incremental builds, focused checks and optional browser acceptance.
+Use `make test` for host component checks and `make check` for the full host,
+kernel-probe and native-guest sequence. Compilation uses Docker toolchains;
+host tests additionally need Clang, Emacs and OpenSSL. Worktrees share Docker
+images/layers and keep their generated outputs separate. See
+[build and test](docs/build-and-test.md) for prerequisites and focused commands.
+Guest results belong to the exact committed source and image under test.
 
 ```sh
 python3 scripts/check-contribution.py --require-clean-submodule
