@@ -10,7 +10,7 @@ if test "$pin" != "$actual" || test -n "$(git -C emacs status --porcelain)"; the
 fi
 mkdir -p build/runtime
 # Docker shares its layer cache across worktrees; run the exact build result.
-docker build --platform linux/amd64 --iidfile build/runtime/container-id \
+docker build --provenance=false --platform linux/amd64 --iidfile build/runtime/container-id \
     -t "$image" -f scripts/Dockerfile.runtime scripts
 container_id=$(cat build/runtime/container-id)
 cache_key=$(
