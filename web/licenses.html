@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>emacsOS browser runtime notices</title>
+<main>
+  <h1>Browser runtime notices</h1>
+  <p>The browser runs the current emacsOS image in a third-party QEMU/WebAssembly
+  build, with xterm.js and xterm-pty providing its serial terminal. The
+  <a href="./assets.json">asset manifest</a> identifies the downloaded bytes and
+  their source URLs. These files are cached locally, not committed to emacsOS.</p>
+  <h2>Terminal</h2>
+  <ul>
+    <li>xterm.js 5.3.0: <a href="./licenses/xterm-MIT.txt">MIT notice</a>;
+    <a href="https://github.com/xtermjs/xterm.js/tree/5.3.0">source</a>.</li>
+    <li>xterm-pty 0.12.0: <a href="./licenses/xterm-pty-MIT.txt">MIT notice</a>;
+    <a href="https://github.com/mame/xterm-pty/tree/v0.12.0">source</a>.</li>
+  </ul>
+  <h2>Emulator and firmware</h2>
+  <p>The QEMU/Wasm and BIOS package files come from
+  <a href="https://github.com/ktock/qemu-wasm-demo-images/tree/b7c549b5e6f4c376f76483a03e983214421434ad/alpine-x86_64">this pinned artifact tree</a>.
+  QEMU contains code under multiple licenses, including GPL and LGPL; the demo
+  repository's license does not replace those component licenses.</p>
+  <ul>
+    <li>QEMU: <a href="./licenses/qemu-COPYING.txt">COPYING</a>,
+    <a href="./licenses/qemu-COPYING.LIB.txt">COPYING.LIB</a>, and
+    <a href="./licenses/qemu-bios-README.txt">firmware notices and source references</a>.</li>
+    <li>Emscripten: <a href="./licenses/emscripten-LICENSE.txt">license notices</a>.</li>
+    <li>GLib: <a href="./licenses/glib-COPYING.txt">LGPL notice</a>.</li>
+    <li>libffi: <a href="./licenses/libffi-LICENSE.txt">license notice</a>.</li>
+    <li>zlib: <a href="./licenses/zlib-README.txt">README and license notice</a>.</li>
+  </ul>
+  <p>The upstream <a href="https://github.com/ktock/qemu-wasm">QEMU/Wasm source and build instructions</a>
+  are a build reference. This integration pins prebuilt artifact hashes; it has
+  not reconstructed the exact compiler, source revisions, linked libraries or
+  firmware provenance of those artifacts. The notices above preserve upstream
+  reference texts, without claiming an exact corresponding-source audit.
+  Reconstructing that build and its complete distribution materials remains
+  necessary before a public runtime distribution.</p>
+  <h2>Guest system</h2>
+  <p>The boot image is built separately from the emacsOS checkout and its pinned
+  GNU Emacs fork. Its <a href="./build.json">build manifest</a> records component
+  hashes and source identity. Guest Emacs license files accompany its runtime
+  archive. This page does not change their licenses.</p>
+  <p><a href="./">Return to the computer</a></p>
+</main>
+</html>
