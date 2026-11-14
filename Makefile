@@ -64,3 +64,18 @@ mvp: runtime container-image
 
 check-mvp: mvp
 	python3 scripts/check-mvp.py
+
+WEB_HOST ?= 127.0.0.1
+WEB_PORT ?= 18082
+.PHONY: web web-assets web-serve check-web
+web-assets:
+	python3 scripts/fetch-web-assets.py
+
+web: mvp web-assets
+	python3 scripts/serve-web.py --host $(WEB_HOST) --port $(WEB_PORT)
+
+web-serve: web-assets
+	python3 scripts/serve-web.py --host $(WEB_HOST) --port $(WEB_PORT)
+
+check-web:
+	python3 -m unittest discover -s scripts/tests -p 'test_web.py'

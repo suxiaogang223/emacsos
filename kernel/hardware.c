@@ -34,7 +34,7 @@ void console_write(const void *data, size_t n) {
 }
 void console_puts(const char *s) { console_write(s, strlen(s)); }
 void console_hex(uint64_t v) {
-  char b[18] = "0x0000000000000000";
+  char b[] = "0x0000000000000000";
   for (int i = 17; i >= 2; --i) {
     b[i] = "0123456789abcdef"[v & 15];
     v >>= 4;

@@ -1,0 +1,38 @@
+{
+  "xterm-MIT.txt": {
+    "url": "https://raw.githubusercontent.com/xtermjs/xterm.js/5.3.0/LICENSE",
+    "sha256": "b569f629d00f2626a8100df2a1798210535621e42164dfd426a6fe5aac7b0ccd"
+  },
+  "xterm-pty-MIT.txt": {
+    "url": "https://raw.githubusercontent.com/mame/xterm-pty/05ed1ad11003254bdea32e37032402b068fffca5/LICENSE.txt",
+    "sha256": "45c32f09070ea64647927a671b0c150467e25319d31b9d38fb68e0b149d82268"
+  },
+  "qemu-COPYING.txt": {
+    "url": "https://raw.githubusercontent.com/ktock/qemu-wasm/0ef7b4e2814b231705d8371dd7997f5b72e70baf/COPYING",
+    "sha256": "6f04ae8364d0079a192b14635f4b1da294ce18724c034c39a6a41d1b09df6100"
+  },
+  "qemu-COPYING.LIB.txt": {
+    "url": "https://raw.githubusercontent.com/ktock/qemu-wasm/0ef7b4e2814b231705d8371dd7997f5b72e70baf/COPYING.LIB",
+    "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551"
+  },
+  "qemu-bios-README.txt": {
+    "url": "https://raw.githubusercontent.com/ktock/qemu-wasm/0ef7b4e2814b231705d8371dd7997f5b72e70baf/pc-bios/README",
+    "sha256": "bad452a2f09022efc8caa7c71d19dda5475eb13423267bc98067eec38fd1cab2"
+  },
+  "emscripten-LICENSE.txt": {
+    "url": "https://raw.githubusercontent.com/emscripten-core/emscripten/3.1.50/LICENSE",
+    "sha256": "620a78084fc7ca97c0b5dea9abf891f3ffcadfdbf305276f099c9c4e12fc1d86"
+  },
+  "glib-COPYING.txt": {
+    "url": "https://raw.githubusercontent.com/GNOME/glib/2.75.0/LICENSES/LGPL-2.1-or-later.txt",
+    "sha256": "fa6f36630bb1e0c571d34b2bbdf188d08495c9dbf58f28cac112f303fc1f58fb"
+  },
+  "libffi-LICENSE.txt": {
+    "url": "https://raw.githubusercontent.com/libffi/libffi/adbcf2b247696dde2667ab552cb93e0c79455c84/LICENSE",
+    "sha256": "2c9c2acb9743e6b007b91350475308aee44691d96aa20eacef8e199988c8c388"
+  },
+  "zlib-README.txt": {
+    "url": "https://raw.githubusercontent.com/madler/zlib/v1.3.1/README",
+    "sha256": "d106dcdb2a0b3087cb3a2380b9f00a0bbadc7eb835cd80408f94a2d78d69727d"
+  }
+}
