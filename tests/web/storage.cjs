@@ -205,6 +205,27 @@ const url = process.argv[2] || 'http://127.0.0.1:18082/';
             expect(unavailable.state === 'session-only', 'Status polling concealed unavailable retention');
             await unavailable.close();
             checks.push('Unavailable retention remains session-only and cannot silently restart');
+
+            const faulted = new BrowserDisk(() => {});
+            faulted.bytes = new Uint8Array(DATA_SIZE); faulted.diskId = crypto.randomUUID();
+            await faulted.prepare();
+            faulted.machine = {FS:{readFile:()=>volume}};faulted.mounted=true;
+            faulted.control.request = async command => {
+                if(command==='FREEZE')frozen=true;
+                if(command==='THAW')frozen=false;
+                return {type:command==='STATUS'?'STATUS':command==='FREEZE'?'FROZEN':'THAWED',
+                    generation:'0000000000000009',errno:command==='STATUS'?5:0,mounted:true,frozen};
+            };
+            await faulted.checkpoint();
+            expect(faulted.state==='error'&&faulted.healthError===5&&faulted.pending,
+                'Mounted STATUS fault was labeled saved');
+            expect((await stored(faulted.db)).generation==='0000000000000009',
+                'Consistent pre-fault checkpoint was not retained');
+            await rejects(()=>faulted.checkpoint(),'storage fault');
+            faulted.applyStatus({type:'THAWED',generation:'0000000000000009',errno:0,mounted:true,frozen:false});
+            expect(faulted.healthError===5,'Successful THAW hid a latched media fault');
+            await faulted.close();
+            checks.push('Mounted media faults stay visible and disable snapshots without hiding completed checkpoint identity');
             return checks;
         });
         assert.deepEqual(errors, []);

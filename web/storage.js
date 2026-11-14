@@ -203,7 +203,9 @@ export class BrowserDisk {
         const status = await this.control.request("STATUS");
         this.applyStatus(status);
         if (!status.mounted || status.errno) {
-            this.emit("error", `DATA mount rejected (error ${status.errno}). Original retained/imported bytes are preserved; recovery files are volatile.`);
+            this.emit("error", status.mounted ?
+                `DATA reports a storage fault (error ${status.errno}). The previous retained checkpoint is preserved.` :
+                `DATA mount rejected (error ${status.errno}). Original retained/imported bytes are preserved; recovery files are volatile.`);
             return;
         }
         try { await this.checkpoint(); }
@@ -213,6 +215,8 @@ export class BrowserDisk {
         this.frozen = status.frozen;
         this.mounted = status.mounted;
         this.generation = status.generation;
+        // STATUS carries latched media health; THAW can succeed without clearing it.
+        if (status.type === "STATUS" && status.errno) this.healthError = status.errno;
         this.pending = this.savedGeneration !== this.generation;
     }
     serialize(operation) {
@@ -231,7 +235,8 @@ export class BrowserDisk {
             await this.serialize(async () => {
                 const status = await this.control.request("STATUS", 5000);
                 this.applyStatus(status);
-                if (status.errno || !status.mounted || status.frozen) throw new Error("DATA needs attention; its guest state is not writable.");
+                if (status.errno || !status.mounted || status.frozen) throw new Error(
+                    `DATA needs attention (error ${status.errno}); its guest state is not writable.`);
                 if (this.pending) {
                     if (this.sessionOnly || !this.db || !this.hasLock) this.emit("session-only", "Session only: export DATA before closing this page.");
                     else this.emit(this.retentionError ? "error" : "pending", this.retentionError ?
@@ -278,6 +283,7 @@ export class BrowserDisk {
             this.lastAttempt = Date.now();
             if (this.unknown) throw new Error("DATA state is unresolved. Use RESUME to confirm its state.");
             if (!this.mounted) throw new Error("DATA is not mounted. The previous retained disk is unchanged.");
+            if (this.healthError) throw new Error(`DATA reports a storage fault (error ${this.healthError}). The last checkpoint is preserved.`);
             this.emit("pending", restart ? "Saving DATA before restart…" : "Checkpointing DATA…");
             let copy, generation;
             try {
@@ -303,10 +309,15 @@ export class BrowserDisk {
                             try { this.applyStatus(await this.control.request("STATUS")); }
                             catch { unconfirmed = true; }
                         }
-                        this.pending = unconfirmed || this.generation !== generation;
-                        this.emit(this.pending ? "pending" : "saved", this.pending ?
-                            "Checkpoint saved; newer changes are pending or unconfirmed." : "Saved in this browser · /work on DATA");
-                        this.retentionError = undefined;
+                        this.pending = unconfirmed || Boolean(this.healthError) || !this.mounted || this.generation !== generation;
+                        if (this.healthError || !this.mounted) {
+                            this.retentionError = `DATA reports a storage fault (error ${this.healthError || "unknown"}).`;
+                            this.emit("error", "Checkpoint saved; " + this.retentionError + " Further snapshots are disabled.");
+                        } else {
+                            this.emit(this.pending ? "pending" : "saved", this.pending ?
+                                "Checkpoint saved; newer changes are pending or unconfirmed." : "Saved in this browser · /work on DATA");
+                            this.retentionError = undefined;
+                        }
                     } catch (error) {
                         if (!exportImage) throw error;
                         this.retentionError = error.message;

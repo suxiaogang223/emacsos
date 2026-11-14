@@ -21,7 +21,7 @@ function storageView(disk) {
         initializationStarted || disk.busy || Boolean(disk.preparing) || ["loading", "starting"].includes(state);
     element("boot").disabled = !(state === "off" || (state === "failed" && retryable)) || disk.busy || Boolean(disk.preparing);
     element("reset").disabled = state === "off" || disk.busy;
-    for (const id of ["disk-export", "disk-save"]) element(id).disabled = !disk.mounted || disk.busy || disk.unknown;
+    for (const id of ["disk-export", "disk-save"]) element(id).disabled = !disk.mounted || disk.busy || disk.unknown || disk.frozen || Boolean(disk.healthError);
     element("disk-resume").hidden = !disk.unknown && !disk.frozen;
     element("disk-resume").disabled = disk.busy;
     element("disk-discard").hidden = !initializationStarted;
