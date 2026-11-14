@@ -16,6 +16,12 @@ management. Networking, persistence and isolated execution are not implemented.
 The fixed-machine profile and limits are in [kernel bootstrap](kernel-bootstrap.md)
 and [files](files.md); the fork itself remains unchanged except provenance.
 
+The [browser console](web.md) runs that same fixed-machine image inside a pinned
+QEMU/Wasm runtime, with xterm.js presenting COM1. Its page owns emulator
+startup/restart, keyboard input and display; system and application behavior
+remain in the guest. There is no terminal-server or host Emacs substitute in
+this route. Browser memory is discarded when the page closes or restarts.
+
 The following diagram shows responsibilities; network streams remain future work:
 
 ```mermaid
@@ -196,8 +202,10 @@ promised. Invalid-pointer checks needed for correctness do not by themselves
 supply isolation. A runtime fault can stop the system; explicit errors and
 resource cleanup cover only paths that retain control.
 
-Accounts, service managers, durable startup snapshots, scheduling experiments,
-protected-process implementation and a browser product are later stages.
+Accounts, service managers, durable startup snapshots, scheduling experiments
+and protected-process implementation are later stages. The browser console
+provides the current MVP presentation; browser persistence, disk mounting and
+guest networking remain unimplemented.
 Do not restore their previous implementations implicitly. Buffers should be clients of working APIs
 when those tools are introduced.
 
@@ -235,7 +243,8 @@ and does not gate basic file/network capability work.
 | Implemented subset | Concrete interfaces | Bootstrap operations and typed volatile file backend; see kernel-bootstrap.md and files.md. |
 | MVP validated | Runtime artifacts | Pinned build, matching executable/dump/archive, controlled startup, real terminal input and timers. |
 | Open: F1 | Durability | Format, synchronization and recovery model after volatile file behavior is correct. |
-| Open: N0 | Network transport | Prove native and future Wasm feasibility, including any explicit host bridge, before selecting device/stack. |
+| Implemented presentation | Browser console | QEMU/Wasm runs the current image; xterm.js exposes its serial terminal. This does not establish guest networking or storage retention. |
+| Open: N0 | Network transport | Prove native and Wasm guest-network transport feasibility, including any explicit host bridge, before selecting device/stack. |
 | MVP subset | Trusted application instances | Lifecycle/context, explicit ownership and management implemented; messaging/subscriptions/deadline waits remain future work. |
 | Planned: K0 | Kernel processes | After runtime/ownership contracts: independent execution/address spaces, scheduling, enforced limits and exit cleanup; no implementation yet. |
 | Deferred | Other expansion | Direct libc replacement, runtime latency optimization, broad Unix subprocess compatibility and service frameworks. |
