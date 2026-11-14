@@ -15,7 +15,7 @@ are not required for the normal build. Native execution additionally needs
 | `make check` | Run host tests, contribution checks, kernel probes and native guest acceptance in order. |
 | `make help` | Show the main entry points. |
 
-`make kernel` builds only the boot/kernel image in Docker. `make runtime` builds
+`make kernel` builds the boot/kernel image and an initialized DATA template in Docker. `make runtime` builds
 and packages static Emacs and its matching portable dump. These components feed
 `make build`. Compilation, host tests, kernel probes and guest functional
 acceptance retain separate results.
@@ -55,6 +55,9 @@ documented platform configuration.
 | `build/kernel/` | Kernel objects, ELF, kernel-only image and probe evidence. |
 | `build/runtime/` | Generated Emacs source/objects, fresh runtime installation, executable, archive and manifest. |
 | `build/image/emacsos.img` | Complete kernel, static runtime and runtime-file image. |
+| `build/image/data-empty.img` | Initialized 64 MiB littlefs DATA template; never a user disk. |
+| `build/data/emacsos-data.img` | Default native user disk, created only when missing. |
+| `build/image/storage/` | Separate-boot persistent guest transcripts, disk copies and results. |
 | `build/image/manifest.json` | Source/component hashes, toolchain identities and fixed machine profile. |
 | `build/image/guest.transcript` | Actual serial bytes from the latest native guest acceptance attempt. |
 | `build/image/guest-results.json` | Native guest acceptance outcome and source/image/transcript identities. |
@@ -74,7 +77,8 @@ Docker and native QEMU in addition to the build prerequisites.
 | `make test-tooling` | Build, image and contribution-tool unit tests. |
 | `make test-web` | Web server routes, isolation headers, TLS and asset verification. |
 | `make test-probes` | Static-musl startup and deliberate RO/NX page faults in native QEMU. |
-| `make test-guest` | Complete native guest editing, files and application lifecycle. |
+| `make test-guest` | Complete native guest editing, volatile files and application lifecycle. |
+| `make test-storage` | Repeat file/application acceptance on littlefs, then sync/copy/reboot and stale-lock recovery. |
 | `make test-browser` | Optional real-browser checks against an already running web server. |
 
 Tests live under `tests/kernel`, `tests/lisp`, `tests/tooling`, `tests/guest`

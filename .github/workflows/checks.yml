@@ -46,9 +46,11 @@ jobs:
         run: make test-probes
       - name: Build and accept the actual guest
         run: make test-guest
+      - name: Accept persistent files across guest launches
+        run: make test-storage
       - name: Print source and image acceptance identity
         if: always()
         run: |
-          for record in build/kernel/probe-manifest.json build/image/manifest.json build/image/guest-results.json; do
+          for record in build/kernel/probe-manifest.json build/image/manifest.json build/image/guest-results.json build/image/storage/results.json; do
             if test -f "$record"; then cat "$record"; fi
           done

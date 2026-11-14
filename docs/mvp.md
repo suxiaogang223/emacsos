@@ -72,3 +72,7 @@ This MVP implements the first application-management subset, not every A0
 contract in the broader process model. Message queues, completion subscriptions
 and deadline waits remain future work. F1 persistence, N0 transport feasibility
 and K0 independent execution retain separate acceptance gates.
+
+The first MVP remains the volatile baseline. Subsequent DATA persistence and
+browser retention have separate [storage acceptance](storage.md#validation-boundaries);
+they do not retroactively change the original MVP evidence.

@@ -101,8 +101,10 @@ specific errors; indiscriminate EROFS or fake success changes normal behavior.
 [fileio.c](https://github.com/suxiaogang223/emacs/blob/73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5/src/fileio.c) propagates write/fsync/final-close failures, but
 `write-region-inhibit-fsync` normally defaults to true: ordinary save is not a
 durability boundary. No old save fixes or validated save contract is inherited
-by the clean fork. F1 alone introduces persistent media and defines sync/recovery. This architecture
-selects neither filesystem format nor durable close semantics.
+by the clean fork. F1 uses parent-owned startup policy to enable file sync,
+and adds a littlefs DATA backend at `/work` without changing Emacs sources.
+See [storage](storage.md) for sync, recovery and browser-retention boundaries;
+close alone is not a durable-save contract.
 
 ## Event and failure boundary
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Boot the real ATA/COM2 driver in QEMU; no filesystem acceptance is implied."""
+import hashlib
 import json
 import os
 import pathlib
@@ -18,9 +19,7 @@ subprocess.run(["cc", "-std=c11", "-O2", "-Wall", "-Wextra", "-Werror",
                 "tests/kernel/block-error-tests.c", "-o", str(OUT / "block-errors")],
                cwd=ROOT, check=True)
 subprocess.run([str(OUT / "block-errors")], check=True)
-IMAGE = subprocess.check_output(
-    ["docker", "image", "inspect", "emacsos-kernel:alpine3.22", "--format", "{{.Id}}"],
-    text=True).strip()
+IMAGE = (ROOT / "build/toolchains/kernel.id").read_text().strip()
 CFLAGS = ["--target=x86_64-unknown-none-elf", "-std=c11", "-O2", "-Wall", "-Wextra",
           "-Werror", "-ffreestanding", "-fno-stack-protector", "-fno-pic", "-fno-pie",
           "-mno-red-zone", "-mgeneral-regs-only", "-Ikernel"]
@@ -102,7 +101,8 @@ for mode, define, size, marker in (
                     time.sleep(1.1)
                     control.sendall(b"bad-tail\n")
                     request(1, 6, "STATUS", "STATUS")
-            results.append({"mode": mode, "boot": marker, "control": mode == "normal"})
+            results.append({"mode": mode, "boot": marker, "control": mode == "normal",
+                            "disk_sha256": hashlib.sha256(disk.read_bytes()).hexdigest()})
         finally:
             process.terminate()
             process.communicate(timeout=5)
@@ -114,5 +114,5 @@ for mode, define, size, marker in (
                 assert file.read(1024) == expected, "host disk bytes differ"
                 file.seek(size - 512)
                 assert file.read(512) == expected[:512], "host final-sector bytes differ"
-(OUT / "results.json").write_text(json.dumps({"toolchain": IMAGE, "results": results}, indent=2) + "\n")
+(OUT / "results.json").write_text(json.dumps({"toolchain": IMAGE, "parent": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(), "fork": subprocess.check_output(["git", "rev-parse", "HEAD:emacs"], cwd=ROOT, text=True).strip(), "results": results}, indent=2) + "\n")
 print("ATA write/read/flush/bounds and COM2 freeze/thaw/stale/partial-frame probes passed.")

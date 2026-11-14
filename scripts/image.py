@@ -103,13 +103,19 @@ def build():
         raise SystemExit("Initialize the matching Emacs submodule")
     components = ["build/kernel/kernel.elf", "build/kernel/emacsos.img",
                   "build/runtime/emacs", "build/runtime/runtime.cpio",
-                  "build/runtime/manifest.json", "build/image/emacsos.img"]
+                  "build/runtime/manifest.json", "build/image/emacsos.img",
+                  "build/image/data-empty.img", "third_party/littlefs/SOURCE.json"]
+    template = ROOT / "build/image/data-empty.img"
+    if template.stat().st_size != 64 * 1024 * 1024:
+        raise SystemExit("DATA template must be a 64 MiB initialized image")
     record = {
         "format": 1, "scope": "Build identity only; guest acceptance is separate",
         "parent": git("rev-parse", "HEAD"), "tree": git("rev-parse", "HEAD^{tree}"),
         "fork": git("rev-parse", "HEAD:emacs"),
         "dirty": bool(git("status", "--porcelain")) or manifest["parent_dirty"],
         "machine": {"qemu": "pc", "ram": "1G", "console": "COM1", "network": "none"},
+        "data_disk": {"format": "emacsos-littlefs-v1", "bytes": template.stat().st_size,
+                      "mount": "/work", "template_sha256": digest(template)},
         "components": {name: digest(ROOT / name) for name in components},
         "containers": {
             "emacsos-runtime:alpine3.22": manifest["container_id"],

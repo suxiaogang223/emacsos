@@ -10,9 +10,11 @@ implemented; [MVP acceptance](mvp.md) defines the exercised guest subset.
 
 The parent contains BIOS boot, static ELF loading, page mappings/protection,
 serial input/output, PIT/RTC time, readiness waits, a bounded syscall adapter,
-and read-only runtime plus volatile working files. GNU Emacs executes with its
+and read-only runtime plus volatile and littlefs working files. GNU Emacs executes with its
 matching portable dump. Parent-owned Lisp provides cooperative application
-management. Networking, persistence and isolated execution are not implemented.
+management. The fixed DATA disk supplies persistence at `/work`; networking and
+isolated execution remain unimplemented. See [storage](storage.md) for disk and
+browser-retention boundaries.
 The fixed-machine profile and limits are in [kernel bootstrap](kernel-bootstrap.md)
 and [files](files.md); the fork itself remains unchanged except provenance.
 
@@ -20,7 +22,8 @@ The [browser console](web.md) runs that same fixed-machine image inside a pinned
 QEMU/Wasm runtime, with xterm.js presenting COM1. Its page owns emulator
 startup/restart, keyboard input and display; system and application behavior
 remain in the guest. There is no terminal-server or host Emacs substitute in
-this route. Browser memory is discarded when the page closes or restarts.
+this route. Browser RAM is discarded when the page closes or restarts; completed
+DATA checkpoints are retained separately in IndexedDB for the same origin.
 
 The following diagram shows responsibilities; network streams remain future work:
 
@@ -38,7 +41,7 @@ flowchart TB
     end
     subgraph kernel["3. Own C kernel and backends"]
       core["Memory/resource ownership, events and actual device operations"]
-      backend["Console; runtime image and volatile files; future network"]
+      backend["Console; runtime image, RAM and littlefs files; future network"]
       core --> backend
     end
     runtime --> adapter
@@ -174,10 +177,11 @@ the port. Do not combine an old dump with new dumped Lisp or a new executable.
 
 A supported file read follows Elisp file API → Emacs/libc → supported ABI operation
 → typed PAL file operation → backend. Data/count/error returns along that path;
-backend limits and original failures remain visible. F0 working files are
-explicitly volatile. F1 separately defines disk format, synchronization,
-interruption behavior and retained-file validation. A RAM write or successful
-close must not be presented as persistence.
+backend limits and original failures remain visible. F0 RAM directories remain
+volatile. F1 projects a fixed littlefs DATA volume at `/work`, with file sync and
+ATA flush in the guest. Browser retention additionally needs a frozen copy and a
+completed IndexedDB transaction. A RAM write or successful close alone does not
+establish retention; see [storage semantics](storage.md).
 
 Input and connection readiness follow backend → kernel event/wait state → ABI
 wait result → Emacs command loop → filters, sentinels or Lisp callbacks. Waiting
@@ -204,8 +208,8 @@ resource cleanup cover only paths that retain control.
 
 Accounts, service managers, durable startup snapshots, scheduling experiments
 and protected-process implementation are later stages. The browser console
-provides the current MVP presentation; browser persistence, disk mounting and
-guest networking remain unimplemented.
+provides the presentation and DATA retention controls; guest networking remains
+unimplemented.
 Do not restore their previous implementations implicitly. Buffers should be clients of working APIs
 when those tools are introduced.
 
@@ -240,10 +244,10 @@ and does not gate basic file/network capability work.
 | MVP validated | First runtime port | Static Emacs + musl + bounded ABI adapter; actual guest acceptance, not general compatibility. |
 | Selected | Public API | Standard Elisp evaluation/file/network APIs; document the supported subset. |
 | Selected | Bootstrap ordering | Read-only runtime files and memory/time/wait precede interactive Emacs; working files follow. |
-| Implemented subset | Concrete interfaces | Bootstrap operations and typed volatile file backend; see kernel-bootstrap.md and files.md. |
+| Implemented subset | Concrete interfaces | Bootstrap operations and typed RAM/littlefs file backends; see kernel-bootstrap.md and files.md. |
 | MVP validated | Runtime artifacts | Pinned build, matching executable/dump/archive, controlled startup, real terminal input and timers. |
-| Open: F1 | Durability | Format, synchronization and recovery model after volatile file behavior is correct. |
-| Implemented presentation | Browser console | QEMU/Wasm runs the current image; xterm.js exposes its serial terminal. This does not establish guest networking or storage retention. |
+| Implemented: F1 | DATA retention | Fixed 64 MiB littlefs at `/work`, guest sync/ATA flush, frozen browser checkpoints and optional import/export; see storage.md for scope. |
+| Implemented presentation | Browser console | QEMU/Wasm runs the current image; xterm.js exposes COM1, while COM2 supplies DATA checkpoint barriers. Guest networking remains separate. |
 | Open: N0 | Network transport | Prove native and Wasm guest-network transport feasibility, including any explicit host bridge, before selecting device/stack. |
 | MVP subset | Trusted application instances | Lifecycle/context, explicit ownership and management implemented; messaging/subscriptions/deadline waits remain future work. |
 | Planned: K0 | Kernel processes | After runtime/ownership contracts: independent execution/address spaces, scheduling, enforced limits and exit cleanup; no implementation yet. |

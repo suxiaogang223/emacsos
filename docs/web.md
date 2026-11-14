@@ -72,7 +72,7 @@ development; choose the listening address deliberately.
 POWER downloads the image and starts one emulator instance. Repeated clicks
 cannot create another instance. Download and environment failures before
 emulator initialization allow another POWER attempt. Once initialization has
-begun, use RESTART to reload a fresh machine. Errors remain visible in the
+begun, RESTART checkpoints DATA before reloading a fresh machine. Errors remain visible in the
 status panel; there is no automatic restart.
 
 The console becomes ready when the guest first displays its scratch buffer.
@@ -82,18 +82,44 @@ Control supplies `C-` and Option supplies `M-`; `Esc`, then `x`, also invokes
 return focus to the terminal. The browser's shortcuts outside the terminal
 retain their normal behavior.
 
-RESTART asks for confirmation after emulator initialization. Leaving the page
-requests the browser's standard unload warning; browsers may suppress it.
+RESTART asks for confirmation after emulator initialization, freezes DATA and
+waits for a completed browser checkpoint before reloading. A failed checkpoint
+keeps the page open with an error. DISCARD & RESTART explicitly reopens the last
+completed checkpoint. Leaving the page requests the browser's standard unload
+warning; browsers may suppress it.
 Guest runtime-exit and kernel-fault diagnostics update the machine status, as do
-reported emulator exits or aborts. This observes the fixed MVP's serial output,
-not a separate guest control protocol. A guest that hangs without a diagnostic
+reported emulator exits or aborts. Machine diagnostics observe COM1 serial output; DATA
+checkpoints use a separate COM2 control protocol. A guest that hangs without a diagnostic
 can remain in its last displayed state.
 
-All writable guest files are volatile. Saving in `/work` preserves a file only
-inside that running machine. Closing or restarting the page discards the whole
-RAM filesystem. The DATA expansion bay is a visual reservation: there is no
-writable disk mount, browser persistence, import/export, network API or guest
-isolation beyond the current MVP. See [the MVP scope](mvp.md).
+## DATA controls
+
+POWER automatically selects the retained disk for this browser origin, or creates
+an initialized empty 64 MiB littlefs disk on first use. The guest mounts it at
+`/work`; `/tmp`, `/home/user` and unsaved buffers remain volatile. No setup or
+manual export is required for ordinary use.
+
+SAVE NOW requests an explicit checkpoint. Automatic polling also checkpoints
+changed DATA after guest synchronization. The status distinguishes pending,
+saved, session-only and failed states. An Emacs save reaches the emulated DATA
+disk; only a completed IndexedDB transaction means it is retained in this
+browser. Quota failures and unavailable storage preserve the prior checkpoint
+and remain visible. RESUME confirms guest state after an uncertain storage
+barrier. No successful save is inferred from terminal text.
+
+EXPORT downloads a consistent full DATA image. Before POWER, IMPORT stages a
+64 MiB image, and NEW DISK stages an initialized empty disk. The guest validates
+the staged volume before it can replace the retained checkpoint. Imports never
+cause user Lisp to load automatically. There is no hot-swap or host-directory
+mount. The raw image can also be used by the native launcher.
+
+Retention belongs to the browser profile and origin (scheme, host and port).
+Changing an SSH local port therefore selects a different store. Clearing site
+data or browser eviction can remove it; export supplies a portable backup. A
+Web Lock prevents simultaneous writers in two tabs. Browser environments without
+ownership/retention support use an explicitly labeled session-only disk. See
+[storage](storage.md) for sync, recovery and failure boundaries. This adds no
+guest networking or fault isolation.
 
 ## Asset identity and licenses
 

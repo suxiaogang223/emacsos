@@ -14,7 +14,8 @@ contracts rather than implied capabilities.
 | F0 | MVP implemented subset | Volatile files, normal save/backup/lock/errors and directory operations; bounded unsupported options documented in files.md. |
 | A0 | MVP subset | Host ERT and guest two-instance manager lifecycle; message queues, completion subscriptions and deadline waits remain open. |
 | Browser presentation | Implemented | Pinned QEMU/Wasm boots the same MVP image; xterm.js supplies the raw serial terminal and retro computer controls. See web.md for browser evidence and limits. |
-| F1 / N0–N2 / K0 | Not implemented | Persistence, transport/networking and independent protected execution require separate decisions and evidence. |
+| F1 | Implemented subset | Fixed littlefs DATA at `/work`, native sync/reboot acceptance and separate browser checkpoint/import/export acceptance; see storage.md. |
+| N0–N2 / K0 | Not implemented | Transport/networking and independent protected execution require separate decisions and evidence. |
 
 ## Staged work and dependencies
 
@@ -39,29 +40,30 @@ F0 and N0 can proceed independently once their shared handle/error/event contrac
 are settled. Networking research must address both native QEMU and the pinned
 browser Wasm target before promising equivalent guest capabilities.
 
-## Browser data-disk gate
+## DATA disk boundaries
 
-The retro page reserves separate SYSTEM and DATA bays. The SYSTEM bay describes
-the boot image; the DATA bay is an inactive expansion position. A future disk
-feature must specify these distinct boundaries before enabling its controls:
+F1 uses a fixed 64 MiB littlefs DATA disk separately from SYSTEM. Native startup
+creates an initialized disk only when missing. Browser startup supplies an empty
+disk automatically, then restores completed checkpoints for the same origin.
+Optional import/export moves complete DATA images. See [storage](storage.md).
 
-1. Select a local image, validate its format/size and define ownership of bytes.
-2. Attach it as an emulated device, with clear boot-time versus hot-attach support.
-3. Mount a supported guest filesystem through a real kernel/backend path.
-4. Define guest synchronization, dirty state and safe unmount/eject behavior.
-5. Specify how changed bytes reach a retained browser store or exported image,
-   then test errors, interruption and reopening in a new machine.
+Guest mount validation precedes promotion of an imported image. COM2 freeze,
+littlefs sync and ATA flush delimit the consistent copy; a completed IndexedDB
+transaction establishes browser retention. Failed mount or checkpoint operations
+preserve the previous retained disk and expose the error. Host tests, native
+reboot acceptance and actual pinned-Wasm/browser acceptance are separate gates.
 
-Choosing a browser file alone is not a guest mount, and exporting an image alone
-does not prove a completed guest sync. F1 must settle these semantics; do not
-restore archived disk protocols or imply browser persistence from the empty bay.
+Future storage expansion includes broader disk profiles, capacity management,
+additional persistent directories and stronger recovery tooling. Hot-swap,
+partitions, disk growth, encryption and automatic user startup remain outside
+this implementation.
 
 ## Deferred scope
 
 The application/process model is defined; A0 has an MVP subset and K0 remains
 a later stage. Service managers, durable startup snapshots, a generic resource
 registry, runtime latency optimization, accounts, broad Unix subprocess support,
-broad device support and browser storage integration remain deferred.
+and broad device support remain deferred.
 Standard Emacs API availability does not establish backend support. A compatibility
 subset is selected from this runtime, not expanded toward all of Linux.
 

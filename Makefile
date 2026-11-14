@@ -5,16 +5,18 @@ OBJCOPY := llvm-objcopy
 NASM := nasm
 OUT := build/kernel
 CFLAGS := --target=x86_64-unknown-none-elf -std=c11 -O2 -g -Wall -Wextra -Werror \
+          -I kernel -I third_party/littlefs -DLFS_CONFIG=littlefs_config.h \
           -ffreestanding -fno-stack-protector -fno-pic -fno-pie -mno-red-zone -mgeneral-regs-only
 
 .PHONY: kernel build run runtime \
-        test test-files test-lisp test-tooling test-web test-probes test-guest \
+        test test-files test-lisp test-tooling test-web test-probes test-guest test-storage \
         lint check web web-assets web-serve test-browser help
 .NOTPARALLEL: check
 BUILD_IMAGE := emacsos-kernel:alpine3.22
-KERNEL_C := main hardware memory loader runtime files file_abi
+KERNEL_C := main hardware memory loader runtime files file_abi block storage_control littlefs_backend
 KERNEL_ASM := entry interrupts syscall
-KERNEL_OBJS := $(addprefix $(OUT)/,$(addsuffix .o,$(KERNEL_C) $(KERNEL_ASM)))
+KERNEL_HEADERS := $(wildcard kernel/*.h) $(wildcard third_party/littlefs/*.h)
+KERNEL_OBJS := $(addprefix $(OUT)/,$(addsuffix .o,$(KERNEL_C) $(KERNEL_ASM))) $(OUT)/lfs.o
 
 $(OUT):
 	mkdir -p $@
@@ -22,8 +24,22 @@ $(OUT):
 $(OUT)/%.o: kernel/%.asm Makefile build/toolchains/kernel.id | $(OUT)
 	$(NASM) -f elf64 $< -o $@
 
-$(OUT)/%.o: kernel/%.c kernel/kernel.h kernel/files.h Makefile build/toolchains/kernel.id | $(OUT)
+$(OUT)/%.o: kernel/%.c $(KERNEL_HEADERS) Makefile build/toolchains/kernel.id | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OUT)/lfs.o: third_party/littlefs/lfs.c $(KERNEL_HEADERS) Makefile build/toolchains/kernel.id | $(OUT)
+	$(CC) $(CFLAGS) -Wno-unused-function -c $< -o $@
+
+$(OUT)/data-image: tools/data-image.c kernel/littlefs_backend.c third_party/littlefs/lfs.c $(KERNEL_HEADERS) Makefile build/toolchains/kernel.id | $(OUT)
+	clang -std=c11 -O2 -Wall -Wextra -Werror -Wno-unused-function -DEMACSOS_HOST_TEST \
+	  -I kernel -I third_party/littlefs -DLFS_CONFIG=littlefs_config.h \
+	  tools/data-image.c kernel/littlefs_backend.c third_party/littlefs/lfs.c -o $@
+
+build/image/data-empty.img: $(OUT)/data-image
+	mkdir -p $(@D)
+	rm -f $@.part
+	$(OUT)/data-image $@.part
+	mv $@.part $@
 
 $(OUT)/kernel.elf: $(KERNEL_OBJS) kernel/kernel.ld
 	$(LD) -T kernel/kernel.ld -o $@ $(KERNEL_OBJS)
@@ -55,7 +71,7 @@ kernel:
 	rm -f build/toolchains/kernel.id.part
 	docker run --rm --platform linux/amd64 --user "$$(id -u):$$(id -g)" \
 	  -e HOME=/tmp -v "$(CURDIR):/work:z" -w /work \
-	  "$$(cat build/toolchains/kernel.id)" $(MAKE) $(OUT)/emacsos.img
+	  "$$(cat build/toolchains/kernel.id)" $(MAKE) $(OUT)/emacsos.img build/image/data-empty.img
 
 run: build
 	python3 scripts/qemu.py
@@ -75,7 +91,7 @@ test-lisp:
 	mkdir -p build/lisp
 	emacs -Q --batch -L lisp \
 	  --eval '(setq byte-compile-error-on-warn t byte-compile-dest-file-function (lambda (file) (expand-file-name (file-name-nondirectory (concat file "c")) "build/lisp/")))' \
-	  -f batch-byte-compile lisp/emacsos-app.el lisp/emacsos-counter.el
+	  -f batch-byte-compile lisp/*.el
 	emacs -Q --batch -L lisp -l tests/lisp/emacsos-app-tests.el -f ert-run-tests-batch-and-exit
 
 test-tooling:
@@ -89,12 +105,16 @@ lint:
 
 test-probes: kernel
 	python3 tests/kernel/check-probe.py
+	python3 tests/kernel/check-storage-device.py
 
 test-guest: build
 	python3 tests/guest/check.py
 
+test-storage: build
+	python3 tests/guest/check.py --storage
+
 # Run in order even under make -j: probes and guest acceptance share kernel files.
-check: test lint test-probes test-guest
+check: test lint test-probes test-guest test-storage
 
 WEB_HOST ?= 127.0.0.1
 WEB_PORT ?= 18082

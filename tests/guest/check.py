@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Check console, file and application features in the actual QEMU guest."""
+import argparse
 import json
 import os
 from pathlib import Path
 import selectors
+import shutil
 import subprocess
 import time
 import sys
@@ -16,8 +18,11 @@ import qemu
 
 
 class Guest:
-    def __init__(self):
-        self.process = subprocess.Popen(qemu.command(OUT / "emacsos.img", debug_exit=True),
+    def __init__(self, *, data=None, control=None, output=OUT, label="guest"):
+        self.output, self.label = output, label
+        output.mkdir(parents=True, exist_ok=True)
+        self.process = subprocess.Popen(qemu.command(OUT / "emacsos.img", debug_exit=True,
+                                                      data=data, control=control),
                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                         stderr=subprocess.STDOUT)
         self.selector = selectors.DefaultSelector()
@@ -61,10 +66,10 @@ class Guest:
             self.process.terminate()
             self.process.wait(timeout=10)
         self.selector.close()
-        (OUT / "guest.transcript").write_bytes(self.transcript)
+        (self.output / f"{self.label}.transcript").write_bytes(self.transcript)
 
 
-def main():
+def validated_manifest():
     manifest = json.loads((OUT / "manifest.json").read_text())
     if manifest["dirty"] or identity.git("status", "--porcelain"):
         raise SystemExit("Guest integration requires a clean committed parent checkout")
@@ -73,12 +78,18 @@ def main():
     for name, expected in manifest["components"].items():
         if identity.digest(ROOT / name) != expected:
             raise SystemExit(f"Changed build component: {name}")
+    return manifest
+
+
+def main(data=None, output=OUT, label="guest"):
+    manifest = validated_manifest()
     checks = []
-    guest = Guest()
+    guest = Guest(data=data, output=output, label=label)
     result = {"parent": manifest["parent"], "fork": manifest["fork"],
               "image_sha256": manifest["components"]["build/image/emacsos.img"],
               "build_manifest_sha256": identity.digest(OUT / "manifest.json"),
-              "scope": "Actual fixed-machine QEMU guest; volatile files, trusted applications",
+              "scope": "Actual fixed-machine QEMU guest; trusted applications",
+              "data_disk": str(data) if data else None,
               "passed": False, "checks": checks}
 
     def check(name, form, marker):
@@ -116,10 +127,136 @@ def main():
         raise
     finally:
         guest.close()
-        result["transcript_sha256"] = identity.digest(OUT / "guest.transcript")
-        (OUT / "guest-results.json").write_text(json.dumps(result, indent=2) + "\n")
+        result["transcript_sha256"] = identity.digest(output / f"{label}.transcript")
+        (output / f"{label}-results.json").write_text(json.dumps(result, indent=2) + "\n")
     print("Guest integration checks passed", flush=True)
 
 
+class Control:
+    """Use a separate UART pipe, never terminal output, for storage barriers."""
+    def __init__(self, directory):
+        self.path = directory / "control"
+        self.session = "0000000000000001"
+        self.request = 0
+        self.pending = bytearray()
+        self.paths = [Path(str(self.path) + suffix) for suffix in (".in", ".out")]
+        for path in self.paths:
+            path.unlink(missing_ok=True)
+            os.mkfifo(path)
+        self.input, self.output = [os.open(path, os.O_RDWR | os.O_NONBLOCK) for path in self.paths]
+
+    def call(self, guest, action):
+        self.request += 1
+        request = f"{self.request:016x}"
+        os.write(self.input, f"EOS1 {self.session} {request} {action}\n".encode())
+        end = time.monotonic() + 30
+        while time.monotonic() < end:
+            guest.pump(0.01)
+            try:
+                self.pending.extend(os.read(self.output, 4096))
+            except BlockingIOError:
+                pass
+            while b"\n" in self.pending:
+                line, _, rest = self.pending.partition(b"\n")
+                self.pending = bytearray(rest)
+                fields = line.decode().split()
+                if len(fields) == 8 and fields[:3] == ["EOS1", self.session, request]:
+                    result = {"state": fields[3], "generation": int(fields[4], 16),
+                              "errno": int(fields[5]), "mounted": fields[6] == "1",
+                              "frozen": fields[7] == "1"}
+                    if result["errno"]:
+                        raise RuntimeError(f"Storage {action} failed: {result}")
+                    return result
+            if guest.process.poll() is not None:
+                raise RuntimeError("Guest exited before storage acknowledgement")
+        raise RuntimeError(f"Storage {action} acknowledgement timed out")
+
+    def close(self):
+        for descriptor in (self.input, self.output):
+            os.close(descriptor)
+        for path in self.paths:
+            path.unlink(missing_ok=True)
+
+
+def storage_main():
+    manifest = validated_manifest()
+    output = OUT / "storage"
+    output.mkdir(exist_ok=True)
+    disk, snapshot = output / "data.img", output / "checkpoint.img"
+    disk.unlink(missing_ok=True)
+    snapshot.unlink(missing_ok=True)
+    qemu.prepare_data(disk, OUT / "data-empty.img")
+    system_hash = identity.digest(OUT / "emacsos.img")
+    # Exercise the same fourteen file/application checks on the persistent PAL.
+    main(data=disk, output=output, label="features")
+    checks = ["all fourteen existing guest checks on littlefs"]
+    record = {"parent": manifest["parent"], "fork": manifest["fork"],
+              "system_sha256": system_hash, "passed": False, "checks": checks}
+    channel = Control(output)
+    guest = Guest(data=disk, control=channel.path, output=output, label="write")
+    try:
+        guest.wait(b"*scratch*")
+        status = channel.call(guest, "STATUS")
+        if not status["mounted"] or status["frozen"]:
+            raise RuntimeError(f"DATA not mounted normally: {status}")
+        guest.evaluate('(progn (unless (null write-region-inhibit-fsync) (error "Save sync disabled")) (unless (file-exists-p "/work/counter.el") (error "Prior launch file missing")) (message (concat "STORE-" "REOPENED")))', "STORE-REOPENED")
+        checks.append("fresh guest reopens prior saved source and enables save sync")
+        source = '(defun retained-computation () (+ 19 23))\n(provide \'retained)\n'
+        guest.evaluate('(progn (find-file "/work/retained.el") (erase-buffer) (insert %s) (save-buffer) (set-file-modes buffer-file-name 416) (kill-buffer) (make-symbolic-link "retained.el" "/work/source-link.el") (with-temp-file "/work/.#user-data" (insert "ordinary user filename")) (with-temp-file "/work/stale.el" (insert "previous content")) (make-symbolic-link (format "%%s@%%s.%%d" (user-login-name) (system-name) (emacs-pid)) "/work/.#stale.el") (message (concat "STORE-" "SAVED")))' % json.dumps(source), "STORE-SAVED")
+        checks.append("save source, metadata, links and a real prior-boot lock")
+        frozen = channel.call(guest, "FREEZE")
+        if frozen["state"] != "FROZEN" or not frozen["frozen"]:
+            raise RuntimeError(f"No frozen checkpoint: {frozen}")
+        guest.evaluate('(progn (with-temp-buffer (insert "unsaved") (let (observed) (condition-case condition (write-region (point-min) (point-max) "/work/frozen.txt") (file-error (setq observed condition))) (unless (and observed (buffer-modified-p)) (error "Frozen writes accepted")))) (message (concat "STORE-" "FROZEN")))', "STORE-FROZEN")
+        shutil.copyfile(disk, snapshot)
+        checkpoint_hash = identity.digest(snapshot)
+        checks.append("acknowledged freeze rejects writes and yields a consistent disk copy")
+        thawed = channel.call(guest, "THAW")
+        if thawed["frozen"]:
+            raise RuntimeError("DATA did not thaw")
+        guest.evaluate('(progn (with-temp-file "/work/after-copy.txt" (insert "later generation")) (message (concat "STORE-" "THAWED")))', "STORE-THAWED")
+        if identity.digest(snapshot) != checkpoint_hash:
+            raise RuntimeError("Checkpoint copy changed after guest resumed")
+        checks.append("thaw resumes writes without changing the copied generation")
+        guest.evaluate('(kill-emacs 0)', "Runtime exited status=0x0000000000000000")
+        if guest.process.wait(timeout=10) != 33:
+            raise RuntimeError("Writer guest exit failed")
+    except Exception as error:
+        record["error"] = str(error)
+        raise
+    finally:
+        guest.close()
+        channel.close()
+        (output / "results.json").write_text(json.dumps(record, indent=2) + "\n")
+    guest = Guest(data=snapshot, output=output, label="restore")
+    try:
+        guest.wait(b"*scratch*")
+        guest.evaluate('(progn (load-file "/work/retained.el") (unless (and (= 42 (retained-computation)) (= 416 (file-modes "/work/retained.el")) (equal (file-symlink-p "/work/source-link.el") "retained.el") (not (file-exists-p "/work/after-copy.txt")) (with-temp-buffer (insert-file-contents "/work/.#user-data") (equal (buffer-string) "ordinary user filename"))) (error "Retained data differs")) (message (concat "STORE-" "RESTORED")))', "STORE-RESTORED")
+        checks.append("independent reboot restores checkpoint source, modes and symlinks")
+        guest.evaluate('(progn (setq prior-lock (file-symlink-p "/work/.#stale.el")) (find-file "/work/stale.el") (goto-char (point-max)) (insert "edited") (unless (and (file-symlink-p "/work/.#stale.el") (not (equal prior-lock (file-symlink-p "/work/.#stale.el")))) (error "Previous boot lock was reused")) (save-buffer) (kill-buffer) (message (concat "STORE-" "LOCK-RECOVERED")))', "STORE-LOCK-RECOVERED")
+        checks.append("normal Emacs locking replaces stale prior-boot owner safely")
+        guest.evaluate('(kill-emacs 0)', "Runtime exited status=0x0000000000000000")
+        if guest.process.wait(timeout=10) != 33:
+            raise RuntimeError("Restored guest exit failed")
+        if identity.digest(OUT / "emacsos.img") != system_hash:
+            raise RuntimeError("Storage operations changed SYSTEM image")
+        record.update(passed=True, checkpoint_sha256=checkpoint_hash,
+                      data_sha256=identity.digest(disk), restored_sha256=identity.digest(snapshot))
+        checks.append("SYSTEM image remains unchanged")
+    except Exception as error:
+        record["error"] = str(error)
+        raise
+    finally:
+        guest.close()
+        (output / "results.json").write_text(json.dumps(record, indent=2) + "\n")
+    print(f"Storage guest checks passed: {len(checks)}", flush=True)
+
+
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--storage", action="store_true", help="Check DATA across separate guest launches")
+    args = parser.parse_args()
+    if args.storage:
+        storage_main()
+    else:
+        main()

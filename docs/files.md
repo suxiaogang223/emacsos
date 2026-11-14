@@ -1,10 +1,12 @@
-# Volatile file backend
+# File backends
 
 The kernel links a typed file namespace and a bounded Linux x86-64 descriptor
 adapter. The runtime newc archive supplies immutable files, directories and
-symbolic links. `/work`, `/tmp` and `/home/user` are writable RAM directories;
-`/dev/tty` and `/dev/null` are bounded console/null device entries. All changes
-are lost when QEMU exits. This backend introduces no persistent disk format.
+symbolic links. `/tmp` and `/home/user` are writable RAM directories; `/work`
+uses the mounted littlefs DATA disk when present and valid, or RAM when no disk
+is attached. `/dev/tty` and `/dev/null` are bounded console/null device entries.
+See [persistent DATA](storage.md) for the format, mount failures and retention
+boundaries. RAM-directory changes are lost when QEMU exits.
 
 The namespace supports lookup, regular files, sparse writes, truncation,
 directories, rename, unlink, symlinks and metadata. File identity survives rename
@@ -28,8 +30,9 @@ EBUSY. O_CREAT with O_DIRECTORY, and mutating/access flags with O_PATH, are
 rejected before namespace changes. This is a documented runtime subset, not
 general Linux filesystem compatibility or a multiuser permissions system.
 
-Successful fsync/fdatasync means only that prior writes reached this volatile
-memory backend; there is no durable media or restart guarantee. Normal GNU Emacs
+On RAM directories, successful fsync/fdatasync reaches only volatile memory.
+For persistent `/work`, it synchronizes the littlefs object and flushes ATA;
+browser retention additionally requires a completed checkpoint transaction. Normal GNU Emacs
 save, backup, symlink-lock and error behavior must stay enabled in guest
 acceptance. No archived Emacs save changes were restored. The backend does not
 intercept Lisp application ownership; explicit application adoption is separate.

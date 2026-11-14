@@ -12,6 +12,7 @@ from unittest import mock
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import image
+import qemu
 
 spec = importlib.util.spec_from_file_location("package_runtime", SCRIPTS / "package-runtime.py")
 package = importlib.util.module_from_spec(spec)
@@ -77,6 +78,36 @@ class RuntimePackagingTests(unittest.TestCase):
         self.assertEqual(manifest["elf"]["sha256"], package.sha256(self.out / "emacs"))
         self.assertEqual((self.out / "emacs").read_bytes(), (self.root / "usr/bin/emacs").read_bytes())
         self.assertEqual((self.root / "usr/libexec/emacs/emacs.pdmp").read_bytes(), b"matching dump")
+
+
+class DataImageTests(unittest.TestCase):
+    def test_missing_disk_is_initialized_but_existing_data_is_never_replaced(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            template, disk = root / "empty.img", root / "data.img"
+            with template.open("wb") as stream:
+                stream.write(b"template")
+                stream.truncate(qemu.DATA_SIZE)
+            qemu.prepare_data(disk, template)
+            self.assertEqual(disk.stat().st_size, qemu.DATA_SIZE)
+            with disk.open("r+b") as stream:
+                stream.write(b"personal")
+            qemu.prepare_data(disk, template)
+            with disk.open("rb") as stream:
+                self.assertEqual(stream.read(8), b"personal")
+            disk.write_bytes(b"damaged disk, preserve these bytes")
+            with self.assertRaises(ValueError):
+                qemu.prepare_data(disk, template)
+            self.assertEqual(disk.read_bytes(), b"damaged disk, preserve these bytes")
+
+    def test_retained_data_has_no_snapshot_option_and_paths_escape_commas(self):
+        command = qemu.command("system,image.img", data="data,image.img")
+        drives = [command[index + 1] for index, value in enumerate(command) if value == "-drive"]
+        self.assertIn("snapshot=on", drives[0])
+        self.assertIn("file=system,,image.img,", drives[0])
+        self.assertIn("file=data,,image.img,", drives[1])
+        self.assertNotIn("snapshot", drives[1])
+        self.assertNotIn("unsafe", drives[1])
 
 
 class ImageTests(unittest.TestCase):
