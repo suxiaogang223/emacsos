@@ -31,23 +31,7 @@ static void copy(void *p, const void *s, size_t size)
 static size_t length(const char *s) { size_t n = 0; while (s[n]) ++n; return n; }
 static long error(enum fs_error e)
 {
-    switch (e) {
-    case FS_OK: return 0;
-    case FS_NOT_FOUND: return -2;
-    case FS_NOT_DIRECTORY: return -20;
-    case FS_IS_DIRECTORY: return -21;
-    case FS_EXISTS: return -17;
-    case FS_READ_ONLY: return -30;
-    case FS_NO_MEMORY: return -12;
-    case FS_NO_SPACE: return -28;
-    case FS_INVALID: return -22;
-    case FS_NAME_TOO_LONG: return -36;
-    case FS_LOOP: return -40;
-    case FS_NOT_EMPTY: return -39;
-    case FS_BUSY: return -16;
-    case FS_TOO_BIG: return -27;
-    }
-    return -5;
+    return fs_error_errno(e);
 }
 
 static bool valid(int fd) { return fd >= 0 && fd < FD_LIMIT && descriptors[fd].open; }
@@ -97,7 +81,11 @@ static long close_fd(int fd)
     if (!valid(fd)) return -9;
     struct description *open = descriptors[fd].open;
     descriptors[fd].open = 0; descriptors[fd].flags = 0;
-    if (!--open->refs) { fs_release(open->node); kfree(open); }
+    if (!--open->refs) {
+        enum fs_error e = fs_release_checked(open->node);
+        kfree(open);
+        return error(e);
+    }
     return 0;
 }
 
@@ -179,7 +167,8 @@ static long transfer(int fd, void *buffer, size_t count, bool write, bool positi
     size_t done;
     enum fs_error e = write ? fs_write(open->node, offset, buffer, count, &done)
                            : fs_read(open->node, offset, buffer, count, &done);
-    if (e != FS_OK) return error(e);
+    if (e != FS_OK && !done)
+        return error(e);
     if (!positioned) open->offset = offset + done;
     return (long) done;
 }
@@ -383,7 +372,10 @@ bool abi_files(unsigned long number, const unsigned long a[6], long *out)
     case 33: result = duplicate(fd, (int) a[1], true, false); break;
     case 72: result = fcntl_file(fd, a[1], a[2]); break;
     case 74: case 75:
-        result = !valid(fd) || (descriptors[fd].open->flags & O_PATH) ? -9 : 0; break;
+        result = !valid(fd) || (descriptors[fd].open->flags & O_PATH)
+                     ? -9
+                     : error(fs_sync_node(descriptors[fd].open->node));
+        break;
     case 76:
         result = lookup(AT_CWD, path, true, &node);
         if (!result) result = error(fs_resize(node, a[1]));

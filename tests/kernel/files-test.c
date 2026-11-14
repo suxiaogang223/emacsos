@@ -6,6 +6,32 @@
 #include <string.h>
 #include <sys/stat.h>
 
+int data_disk_init(void)
+{
+    return -19;
+}
+int data_disk_read(uint64_t s, void *p, size_t n)
+{
+    (void)s;
+    (void)p;
+    (void)n;
+    return -19;
+}
+int data_disk_write(uint64_t s, const void *p, size_t n)
+{
+    (void)s;
+    (void)p;
+    (void)n;
+    return -19;
+}
+int data_disk_flush(void)
+{
+    return -19;
+}
+uint64_t data_disk_sectors(void)
+{
+    return 0;
+}
 static size_t allocated;
 union allocation { max_align_t alignment; size_t size; };
 void *kmalloc(size_t size)
