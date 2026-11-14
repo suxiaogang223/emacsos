@@ -115,7 +115,7 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         await state('running');
         record.bootSeconds = (Date.now() - begin) / 1000;
         record.imageSha256 = await page.evaluate(() => window.__imageHash);
-        assert.equal(record.imageSha256, record.guestBuild.components['build/mvp/emacsos.img']);
+        assert.equal(record.imageSha256, record.guestBuild.components['build/image/emacsos.img']);
         assert(await page.locator('#boot').isDisabled());
         assert(await page.locator('#command-key').isEnabled());
         check('Current manifest-matched MVP boots in QEMU/Wasm');

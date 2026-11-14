@@ -18,7 +18,7 @@ def command(image, *, interactive=False, debug_exit=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--image", type=Path,
-                        default=os.environ.get("EMACSOS_IMAGE", "build/mvp/emacsos.img"))
+                        default=os.environ.get("EMACSOS_IMAGE", "build/image/emacsos.img"))
     args, extra = parser.parse_known_args()
     native = command(args.image, interactive=True) + extra
     os.execvp(native[0], native)

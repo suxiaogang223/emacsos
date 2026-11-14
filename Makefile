@@ -3,28 +3,26 @@ CC := clang
 LD := ld.lld
 OBJCOPY := llvm-objcopy
 NASM := nasm
-OUT := build/skeleton
+OUT := build/kernel
 CFLAGS := --target=x86_64-unknown-none-elf -std=c11 -O2 -g -Wall -Wextra -Werror \
           -ffreestanding -fno-stack-protector -fno-pic -fno-pie -mno-red-zone -mgeneral-regs-only
 
-.PHONY: image kernel container-image build mvp run runtime runtime-smoke \
-        test test-files test-lisp test-tooling check-web test-probes test-guest \
-        check-mvp lint check web web-assets web-serve test-browser help
+.PHONY: kernel build run runtime \
+        test test-files test-lisp test-tooling test-web test-probes test-guest \
+        lint check web web-assets web-serve test-browser help
 .NOTPARALLEL: check
-BUILD_IMAGE := emacsos-skeleton:alpine3.22
+BUILD_IMAGE := emacsos-kernel:alpine3.22
 KERNEL_C := main hardware memory loader runtime files file_abi
 KERNEL_ASM := entry interrupts syscall
 KERNEL_OBJS := $(addprefix $(OUT)/,$(addsuffix .o,$(KERNEL_C) $(KERNEL_ASM)))
-image: $(OUT)/emacsos.img
-kernel: $(OUT)/kernel.bin
 
 $(OUT):
 	mkdir -p $@
 
-$(OUT)/%.o: kernel/%.asm Makefile scripts/Dockerfile.build | $(OUT)
+$(OUT)/%.o: kernel/%.asm Makefile build/toolchains/kernel.id | $(OUT)
 	$(NASM) -f elf64 $< -o $@
 
-$(OUT)/%.o: kernel/%.c kernel/kernel.h kernel/files.h Makefile scripts/Dockerfile.build | $(OUT)
+$(OUT)/%.o: kernel/%.c kernel/kernel.h kernel/files.h Makefile build/toolchains/kernel.id | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(OUT)/kernel.elf: $(KERNEL_OBJS) kernel/kernel.ld
@@ -47,19 +45,17 @@ $(OUT)/emacsos.img: $(OUT)/boot.bin $(OUT)/kernel.bin
 	dd if=/dev/zero bs=1 count=$$padding >> $@.part 2>/dev/null; \
 	mv $@.part $@
 
-build/toolchains/kernel.id: scripts/Dockerfile.build
-	mkdir -p $(@D)
-	docker build --platform linux/amd64 -t $(BUILD_IMAGE) -f $< scripts
-	docker image inspect $(BUILD_IMAGE) --format '{{.Id}}' > $@
-
-container-image: build/toolchains/kernel.id
-	@if ! docker image inspect $(BUILD_IMAGE) >/dev/null 2>&1; then \
-		docker build --platform linux/amd64 -t $(BUILD_IMAGE) -f scripts/Dockerfile.build scripts; \
-	fi
-	@if ! $(MAKE) --no-print-directory -q image; then \
-		docker run --rm --platform linux/amd64 --user "$$(id -u):$$(id -g)" \
-		-e HOME=/tmp -v "$(CURDIR):/work:z" -w /work $(BUILD_IMAGE) make image; \
-	fi
+# Docker owns the shared toolchain cache; each checkout owns its build output.
+kernel:
+	mkdir -p build/toolchains
+	docker build --platform linux/amd64 --iidfile build/toolchains/kernel.id.part \
+	  -t $(BUILD_IMAGE) -f scripts/Dockerfile.build scripts
+	@cmp -s build/toolchains/kernel.id.part build/toolchains/kernel.id || \
+	  cp build/toolchains/kernel.id.part build/toolchains/kernel.id
+	rm -f build/toolchains/kernel.id.part
+	docker run --rm --platform linux/amd64 --user "$$(id -u):$$(id -g)" \
+	  -e HOME=/tmp -v "$(CURDIR):/work:z" -w /work \
+	  "$$(cat build/toolchains/kernel.id)" $(MAKE) $(OUT)/emacsos.img
 
 run: build
 	python3 scripts/qemu.py
@@ -67,16 +63,10 @@ run: build
 runtime:
 	./scripts/build-runtime.sh
 
-runtime-smoke: runtime
-	python3 tests/runtime/smoke.py
+build: runtime kernel
+	python3 scripts/image.py
 
-build: runtime container-image
-	python3 scripts/image.py build
-
-# Keep existing contributor and CI entry points as aliases.
-mvp: build
-
-test: test-files test-lisp test-tooling check-web
+test: test-files test-lisp test-tooling test-web
 
 test-files:
 	python3 tests/kernel/check-files.py
@@ -91,19 +81,17 @@ test-lisp:
 test-tooling:
 	python3 -m unittest discover -s tests/tooling -p 'test_*.py'
 
-check-web:
+test-web:
 	python3 -m unittest discover -s tests/web -p 'test_*.py'
 
 lint:
 	python3 scripts/check-contribution.py --require-clean-submodule
 
-test-probes: container-image
+test-probes: kernel
 	python3 tests/kernel/check-probe.py
 
 test-guest: build
-	python3 tests/guest/check-mvp.py
-
-check-mvp: test-guest
+	python3 tests/guest/check.py
 
 # Run in order even under make -j: probes and guest acceptance share kernel files.
 check: test lint test-probes test-guest
@@ -124,7 +112,7 @@ test-browser:
 	node tests/web/browser.cjs '$(WEB_URL)'
 
 help:
-	@echo 'make build  - incrementally build the complete image (default)'
+	@echo 'make build  - build the complete image using Docker (default)'
 	@echo 'make run    - build and launch the native console'
 	@echo 'make web    - build, verify browser assets and serve the browser console'
 	@echo 'make test   - run host file, Lisp, tooling and web server tests'

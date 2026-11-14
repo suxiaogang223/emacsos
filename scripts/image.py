@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Assemble, verify and identify the complete fixed-machine boot image."""
-import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -69,7 +68,7 @@ def verify_image(image_path, boot_path, elf_path, archive_path):
 
 
 def build():
-    out = ROOT / "build/mvp"
+    out = ROOT / "build/image"
     runtime = ROOT / "build/runtime"
     manifest = json.loads((runtime / "manifest.json").read_text())
     if manifest["emacs_commit"] != git("rev-parse", "HEAD:emacs"):
@@ -97,18 +96,14 @@ def build():
                 or "symlink" in entry or "directory" in entry):
             raise SystemExit(f"Stale installed/archived system Lisp: {path.name}")
     image_path = out / "emacsos.img"
-    inputs = (ROOT / "build/skeleton/emacsos.img", runtime / "emacs", runtime / "runtime.cpio")
-    try:
-        verify_image(image_path, *inputs)
-    except (OSError, SystemExit):
-        pack_image(*inputs, image_path)
-        verify_image(image_path, *inputs)
-        print("Assembled MVP image")
+    inputs = (ROOT / "build/kernel/emacsos.img", runtime / "emacs", runtime / "runtime.cpio")
+    pack_image(*inputs, image_path)
+    verify_image(image_path, *inputs)
     if git("-C", "emacs", "rev-parse", "HEAD") != manifest["emacs_commit"]:
         raise SystemExit("Initialize the matching Emacs submodule")
-    components = ["build/skeleton/kernel.elf", "build/skeleton/emacsos.img",
+    components = ["build/kernel/kernel.elf", "build/kernel/emacsos.img",
                   "build/runtime/emacs", "build/runtime/runtime.cpio",
-                  "build/runtime/manifest.json", "build/mvp/emacsos.img"]
+                  "build/runtime/manifest.json", "build/image/emacsos.img"]
     record = {
         "format": 1, "scope": "Build identity only; guest acceptance is separate",
         "parent": git("rev-parse", "HEAD"), "tree": git("rev-parse", "HEAD^{tree}"),
@@ -118,27 +113,16 @@ def build():
         "components": {name: digest(ROOT / name) for name in components},
         "containers": {
             "emacsos-runtime:alpine3.22": manifest["container_id"],
-            "emacsos-skeleton:alpine3.22": subprocess.check_output([
-                "docker", "image", "inspect", "emacsos-skeleton:alpine3.22",
-                "--format", "{{.Id}}"], text=True).strip(),
+            "emacsos-kernel:alpine3.22": (
+                ROOT / "build/toolchains/kernel.id").read_text().strip(),
         },
     }
     manifest_path = out / "manifest.json"
     encoded = json.dumps(record, indent=2) + "\n"
     if not manifest_path.exists() or manifest_path.read_text() != encoded:
         manifest_path.write_text(encoded)
-    print(f"MVP image built from {record['parent']}; dirty={record['dirty']}")
+    print(f"System image built from {record['parent']}; dirty={record['dirty']}")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
-    commands = parser.add_subparsers(dest="action", required=True)
-    commands.add_parser("build", help="Build or reuse the complete image and record its identity")
-    pack = commands.add_parser("pack", help="Assemble a standalone probe image")
-    for name in ("boot", "elf", "archive", "output"):
-        pack.add_argument(name, type=Path)
-    args = parser.parse_args()
-    if args.action == "build":
-        build()
-    else:
-        pack_image(args.boot, args.elf, args.archive, args.output)
+    build()

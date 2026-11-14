@@ -19,8 +19,8 @@ def routes(root):
         "/index.html": (root / "web/index.html", "text/html; charset=utf-8"),
         "/machine.js": (root / "web/machine.js", "text/javascript; charset=utf-8"),
         "/terminal.css": (root / "web/terminal.css", "text/css; charset=utf-8"),
-        "/emacsos.img": (root / "build/mvp/emacsos.img", "application/octet-stream"),
-        "/build.json": (root / "build/mvp/manifest.json", "application/json"),
+        "/emacsos.img": (root / "build/image/emacsos.img", "application/octet-stream"),
+        "/build.json": (root / "build/image/manifest.json", "application/json"),
         "/assets.json": (root / "web/assets.json", "application/json"),
         "/licenses.html": (root / "web/licenses.html", "text/html; charset=utf-8"),
     }
