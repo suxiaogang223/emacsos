@@ -59,6 +59,8 @@ The retro computer page reserves a DATA expansion bay for a future disk-image
 backend. Mounting is not implemented. Saving files remains volatile; closing or
 restarting the page discards them. See [browser controls and hosting](docs/web.md)
 for lifecycle, asset provenance and validation details.
+The optional [browser checks](docs/web-browser-checks.md) exercise keyboard,
+file and machine-control behavior against a fresh guest.
 
 ## Acceptance and architecture
 
