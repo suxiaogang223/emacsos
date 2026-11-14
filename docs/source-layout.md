@@ -14,7 +14,8 @@ emacsos/
 │   └── kernel.ld          # Link layout
 ├── lisp/                  # Trusted application policy and counter demo
 ├── tests/                 # Host ERT, file checks and guest acceptance source
-├── scripts/               # Build, native launcher and contribution tools
+├── web/                   # Retro console, browser bridge and asset identities
+├── scripts/               # Build, native/browser launchers and checks
 └── docs/                  # Current architecture and implementation plan
 ```
 
@@ -39,6 +40,10 @@ The default `make` target builds the complete MVP image. `make image` builds
 the kernel-only image; `make runtime` builds/packages static Emacs/musl and
 `make runtime-smoke` checks it in a host PTY. `make check-mvp` separately proves
 the integrated guest subset; see [acceptance](mvp.md) and [runtime build](runtime-build.md).
+`make web` builds and serves that image through the pinned browser runtime;
+`make check-web` checks the asset cache and allowlisted server. Browser bridge,
+page and notices belong to the parent. Downloaded vendor assets stay in ignored
+`build/web-vendor`; see [browser hosting](web.md).
 
 Parent `lisp/` now contains trusted application policy and the counter example;
 `tests/` contains their host ERT suite. See [application MVP](application-mvp.md)

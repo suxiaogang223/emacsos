@@ -41,6 +41,25 @@ Use `s` to stop a selected run, `r` to restart it with a fresh identity, `RET`
 to inspect it, and `v` to visit its source. This is cooperative management in one
 trusted Emacs; a non-yielding callback can block every application and the UI.
 
+## Browser console
+
+Run `make web` to build the same MVP image, fetch hash-pinned QEMU/Wasm and
+xterm.js assets, and serve `http://127.0.0.1:18082/`. The browser runs its own
+machine with an 80 × 24 serial terminal. Use POWER to boot; on Mac, Control
+supplies `C-` and Option supplies `M-`. The page also provides direct command,
+evaluation and cancel keys.
+
+Use a desktop browser with WebAssembly threads and sufficient memory: the
+prebuilt runtime reserves about 2.25 GiB plus image/browser overhead. HTTPS or
+localhost and cross-origin isolation are required. For access from another
+computer, use the [SSH forwarding instructions](docs/web.md#access-from-another-computer).
+Plain HTTP on a remote address cannot run this runtime.
+
+The retro computer page reserves a DATA expansion bay for a future disk-image
+backend. Mounting is not implemented. Saving files remains volatile; closing or
+restarting the page discards them. See [browser controls and hosting](docs/web.md)
+for lifecycle, asset provenance and validation details.
+
 ## Acceptance and architecture
 
 From a clean committed checkout, run `make check-mvp`. It boots the actual
