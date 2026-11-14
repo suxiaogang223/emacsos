@@ -232,10 +232,13 @@ export class BrowserDisk {
                 const status = await this.control.request("STATUS", 5000);
                 this.applyStatus(status);
                 if (status.errno || !status.mounted || status.frozen) throw new Error("DATA needs attention; its guest state is not writable.");
-                if (this.pending) this.emit(this.retentionError ? "error" : "pending", this.retentionError ?
-                    this.retentionError + " Changes remain pending; the last checkpoint is preserved." : "Changes pending in this browser.");
+                if (this.pending) {
+                    if (this.sessionOnly || !this.db || !this.hasLock) this.emit("session-only", "Session only: export DATA before closing this page.");
+                    else this.emit(this.retentionError ? "error" : "pending", this.retentionError ?
+                        this.retentionError + " Changes remain pending; the last checkpoint is preserved." : "Changes pending in this browser.");
+                }
             });
-            if (this.pending && Date.now() - this.lastAttempt >= 5000) await this.checkpoint();
+            if (this.pending && this.db && this.hasLock && Date.now() - this.lastAttempt >= 5000) await this.checkpoint();
         } catch (error) {
             this.emit("error", error.message + " Last completed checkpoint is preserved.");
         }
@@ -295,11 +298,12 @@ export class BrowserDisk {
                             generation, sha256, bytes: copy.buffer, savedAt: Date.now() };
                         await writeRecord(this.db, record, () => this.active && this.hasLock && record.session === this.session);
                         this.savedGeneration = generation;
+                        let unconfirmed = false;
                         if (!restart) {
                             try { this.applyStatus(await this.control.request("STATUS")); }
-                            catch { this.pending = true; }
+                            catch { unconfirmed = true; }
                         }
-                        this.pending = this.pending || this.generation !== generation;
+                        this.pending = unconfirmed || this.generation !== generation;
                         this.emit(this.pending ? "pending" : "saved", this.pending ?
                             "Checkpoint saved; newer changes are pending or unconfirmed." : "Saved in this browser · /work on DATA");
                         this.retentionError = undefined;

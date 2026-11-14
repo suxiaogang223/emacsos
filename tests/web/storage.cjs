@@ -94,6 +94,56 @@ const url = process.argv[2] || 'http://127.0.0.1:18082/';
             expect(requests.join(',') === 'FREEZE,THAW,STATUS,FREEZE,THAW,STATUS', 'Concurrent checkpoints interleaved');
             checks.push('Concurrent checkpoint requests serialize without overlapping barriers');
             const peer = first.control.request;
+
+            generation++;
+            const retainedGeneration = generation.toString(16).padStart(16, '0');
+            const restartBarriers = [];
+            first.db = {transaction(...args) {
+                const tx = actualDB.transaction(...args);
+                tx.addEventListener('complete', () => restartBarriers.push(frozen));
+                const actualStore = tx.objectStore.bind(tx);
+                tx.objectStore = name => {
+                    const store = actualStore(name);
+                    return {get:store.get.bind(store),put(record,key) {
+                        restartBarriers.push(frozen); return store.put(record,key);
+                    }};
+                };
+                return tx;
+            }};
+            await first.checkpoint({restart:true});
+            first.db = actualDB;
+            expect(restartBarriers.length === 2 && restartBarriers.every(Boolean) && frozen,
+                'Restart thawed before retention/reload');
+            expect(first.state === 'saved' && !first.pending, 'Retained restart remained pending');
+            await first.recover();
+            expect(!frozen, 'Explicit restart cancellation did not resume');
+            checks.push('Restart holds DATA frozen through transaction completion and returns a saved barrier');
+            generation++;
+            first.db = {transaction(...args) {
+                const tx = actualDB.transaction(...args);
+                const actualStore = tx.objectStore.bind(tx);
+                tx.objectStore = name => {
+                    const store = actualStore(name);
+                    return {get:store.get.bind(store),put(record,key) {
+                        expect(frozen, 'Failed restart had already thawed');
+                        store.put(record,key); tx.abort();
+                    }};
+                };
+                return tx;
+            }};
+            await rejects(() => first.checkpoint({restart:true}), 'not committed');
+            expect(!frozen && !first.unknown, 'Failed restart did not confirm guest resume');
+            expect((await stored(actualDB)).generation === retainedGeneration, 'Failed restart replaced checkpoint');
+            first.control.request = async command => {
+                if (command === 'THAW') throw new Error('Simulated lost thaw acknowledgement');
+                return peer(command);
+            };
+            await rejects(() => first.checkpoint({restart:true}), 'not committed');
+            expect(frozen && first.unknown, 'Lost restart thaw was labeled writable');
+            first.db = actualDB; first.control.request = peer;
+            await first.recover();
+            expect(!frozen && !first.unknown, 'Failed restart state did not recover');
+            checks.push('Failed restart preserves old DATA and confirms thaw or exposes unresolved frozen state');
             first.control.request = async command => {
                 if (command === 'FREEZE' || command === 'STATUS') throw new Error('Simulated lost acknowledgement');
                 return peer(command);
@@ -151,6 +201,8 @@ const url = process.argv[2] || 'http://127.0.0.1:18082/';
             expect(unavailable.state === 'session-only', 'Unavailable storage reported saved');
             await rejects(() => unavailable.checkpoint({restart:true}), 'retention is unavailable');
             expect(!frozen, 'Failed session-only restart left guest frozen');
+            await unavailable.poll();
+            expect(unavailable.state === 'session-only', 'Status polling concealed unavailable retention');
             await unavailable.close();
             checks.push('Unavailable retention remains session-only and cannot silently restart');
             return checks;
