@@ -432,6 +432,23 @@ int littlefs_backend_rename(const char *old, const char *new)
         e = lfs_rename(&volume, a, b);
     return e ? e : data_disk_flush();
 }
+int littlefs_backend_object_metadata(uint64_t id, struct littlefs_metadata *m)
+{
+    char path[32];
+    object_path(path, "/objects/", id);
+    int e = get_metadata(path, m);
+    if (e)
+        return e;
+    struct lfs_info info;
+    e = lfs_stat(&volume, path, &info);
+    if (e)
+        return e;
+    if (m->id != id || m->kind == FS_DIRECTORY || info.type != LFS_TYPE_REG ||
+        info.size > FS_FILE_LIMIT)
+        return -84;
+    m->size = info.size;
+    return 0;
+}
 int littlefs_backend_open(uint64_t id, struct littlefs_handle **out)
 {
     struct littlefs_handle *h = kmalloc(sizeof *h);

@@ -98,6 +98,8 @@ with tempfile.TemporaryDirectory(prefix="emacsos-files-") as directory:
     print(run("io-failure"), end="")
     shutil.copyfile(baseline, trial)
     print(run("stream"), end="")
+    shutil.copyfile(baseline, trial)
+    print(run("capacity"), end="")
     with trial.open("wb") as damaged:
         damaged.truncate(64 * 1024 * 1024)
     before = hashlib.sha256(trial.read_bytes()).digest()

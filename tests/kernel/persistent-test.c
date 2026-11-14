@@ -286,6 +286,47 @@ static void stream(void)
     assert(fs_data_health_error() == FS_OK);
     puts("32MiB streams beyond the RAM file quota with bounded allocator use");
 }
+static void capacity(void)
+{
+    static unsigned char bytes[65536];
+    memset(bytes, 0x71, sizeof bytes);
+    bool full = false;
+    for (unsigned index = 0; index < 10 && !full; index++) {
+        char path[64];
+        snprintf(path, sizeof path, "/work/capacity%u", index);
+        int fd = open_file(path, 64 | 2);
+        assert(fd >= 3);
+        for (unsigned chunk = 0; chunk < 128; chunk++) {
+            long result = call(1, fd, P(bytes), sizeof bytes, 0, 0);
+            if (result == -28) {
+                full = true;
+                break;
+            }
+            assert(result == sizeof bytes);
+        }
+        long closed = call(3, fd, 0, 0, 0, 0);
+        if (closed == -28)
+            full = true;
+        else
+            assert(closed == 0);
+        if (full) {
+            assert(fs_data_health_error() == FS_OK);
+            struct fs_info info;
+            fs_info(node(path), &info);
+            fd = open_file(path, 0);
+            assert(fd >= 3);
+            long count = call(0, fd, P(bytes), 1, 0, 0);
+            assert(count == (info.size ? 1 : 0));
+            long read_closed = call(3, fd, 0, 0, 0, 0);
+            assert(read_closed == 0 || read_closed == -28);
+            assert(call(87, P("/work/capacity0"), 0, 0, 0, 0) == 0);
+            write_file("/work/reclaimed-space", "space is reusable");
+            assert(fs_data_health_error() == FS_OK);
+        }
+    }
+    assert(full);
+    puts("ENOSPC remains healthy and closed inode state matches committed data");
+}
 static void replace(void)
 {
     int old = open_file("/work/destination", 0);
@@ -319,7 +360,7 @@ static void io_failure(void)
     failed_flush = -5;
     assert(call(74, fd, 0, 0, 0, 0) == -5);
     assert(fs_data_health_error() == FS_IO);
-    assert(open_file("/work/after-fault", 64|2) == -30);
+    assert(open_file("/work/after-fault", 64 | 2) == -30);
     assert(fs_data_health_error() == FS_IO);
     assert(fs_freeze_data() == FS_IO && !fs_data_frozen());
     failed_flush = -110;
@@ -361,6 +402,8 @@ int main(int argc, char **argv)
         io_failure();
     else if (!strcmp(argv[2], "stream"))
         stream();
+    else if (!strcmp(argv[2], "capacity"))
+        capacity();
     else if (!strncmp(argv[2], "create-", 7))
         create_case(argv[2] + 7, false);
     else if (!strncmp(argv[2], "recover-", 8))

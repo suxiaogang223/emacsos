@@ -8,6 +8,7 @@ struct littlefs_metadata {
 };
 struct littlefs_handle;
 /* Paths are relative to the projected /work root, never raw volume paths. */
+int littlefs_backend_object_metadata(uint64_t, struct littlefs_metadata *);
 int littlefs_backend_root_metadata(struct littlefs_metadata *);
 int littlefs_backend_mount(uint64_t *boot_id);
 int littlefs_backend_accept(uint64_t *);

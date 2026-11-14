@@ -32,6 +32,7 @@ static enum fs_error data_error;
 
 static enum fs_error persistent_result(int);
 static enum fs_error finish_transient(struct fs_node *, enum fs_error);
+static enum fs_error close_handle(struct fs_node *, enum fs_error);
 static enum fs_error destroy_if_unused(struct fs_node *);
 static struct littlefs_metadata metadata(struct fs_node *);
 static enum fs_error data_path(struct fs_node *, char *);
@@ -134,11 +135,7 @@ enum fs_error fs_release_checked(struct fs_node *n)
     enum fs_error result = FS_OK;
     if (--n->references == 0 && n->persistent && n->handle) {
         result = fs_sync_node(n);
-        enum fs_error closed = persistent_result(littlefs_backend_close(n->handle));
-        n->handle = 0;
-        n->pending_error = FS_OK;
-        if (result == FS_OK)
-            result = closed;
+        result = close_handle(n, result);
     }
     enum fs_error removed = destroy_if_unused(n);
     return result == FS_OK ? removed : result;
@@ -780,6 +777,26 @@ static void import_metadata(struct fs_node *n, const struct littlefs_metadata *m
     n->modified_ns = m->modified_ns;
     n->changed_ns = m->changed_ns;
 }
+static enum fs_error close_handle(struct fs_node *n, enum fs_error result)
+{
+    enum fs_error closed = persistent_result(littlefs_backend_close(n->handle));
+    n->handle = 0;
+    n->pending_error = FS_OK;
+    if (result == FS_OK)
+        result = closed;
+    if (result != FS_OK) {
+        /* littlefs discards errored write caches on close. Restore the committed
+         * view before another description opens this same in-memory inode. */
+        struct littlefs_metadata m;
+        int loaded = littlefs_backend_object_metadata(n->object_id, &m);
+        if (!loaded) {
+            import_metadata(n, &m);
+            n->metadata_dirty = false;
+        } else
+            (void)persistent_result(loaded);
+    }
+    return result;
+}
 static enum fs_error data_path(struct fs_node *n, char *out)
 {
     char path[FS_PATH_MAX];
@@ -834,10 +851,7 @@ static enum fs_error finish_transient(struct fs_node *n, enum fs_error result)
     enum fs_error e = fs_sync_node(n);
     if (result == FS_OK)
         result = e;
-    e = persistent_result(littlefs_backend_close(n->handle));
-    n->handle = 0;
-    n->pending_error = FS_OK;
-    return result == FS_OK ? e : result;
+    return close_handle(n, result);
 }
 enum fs_error fs_sync_all(void)
 {
