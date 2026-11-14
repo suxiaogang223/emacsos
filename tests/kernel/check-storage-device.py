@@ -53,6 +53,7 @@ def build(mode, define):
 results = []
 for mode, define, size, marker in (
         ("normal", [], 64 * 1024 * 1024, "DATA-DEVICE-PASS CONTROL-READY"),
+        ("degraded", ["-DPROBE_DEGRADED"], 64 * 1024 * 1024, "DATA-DEVICE-PASS CONTROL-READY"),
         ("absent", ["-DPROBE_NO_DATA"], None, "DATA-ABSENT-PASS"),
         ("wrong-size", ["-DPROBE_WRONG_SIZE"], 32 * 1024 * 1024, "DATA-SIZE-PASS")):
     disk = build(mode, define)
@@ -78,7 +79,7 @@ for mode, define, size, marker in (
                     raise AssertionError(f"{mode} did not boot: {transcript!r}")
                 if select.select([process.stdout], [], [], .2)[0]:
                     transcript += os.read(process.stdout.fileno(), 4096)
-            if mode == "normal":
+            if mode in ("normal", "degraded"):
                 with socket.socket(socket.AF_UNIX) as control:
                     control.settimeout(3)
                     control.connect(str(channel))
@@ -89,19 +90,23 @@ for mode, define, size, marker in (
                         assert line == (f"EOS1 {session:016x} {identifier:016x} {expected} "
                                         f"0000000000000007 {errno} 1 {frozen}"), line
                         return line
-                    request(1, 1, "STATUS", "STATUS")
-                    request(1, 2, "FREEZE", "FROZEN", frozen=1)
-                    request(1, 3, "STATUS", "STATUS", frozen=1)
-                    request(2, 4, "THAW", "ERROR", errno=116, frozen=1)
-                    request(1, 2, "THAW", "ERROR", errno=116, frozen=1)
-                    request(1, 4, "THAW", "THAWED")
-                    control.sendall(b"x" * 256 + b"\n")
-                    request(1, 5, "STATUS", "STATUS")
-                    control.sendall(b"EOS1 ")
-                    time.sleep(1.1)
-                    control.sendall(b"bad-tail\n")
-                    request(1, 6, "STATUS", "STATUS")
-            results.append({"mode": mode, "boot": marker, "control": mode == "normal",
+                    if mode == "degraded":
+                        request(1, 1, "STATUS", "STATUS", errno=5)
+                        request(1, 2, "FREEZE", "ERROR", errno=5)
+                    else:
+                        request(1, 1, "STATUS", "STATUS")
+                        request(1, 2, "FREEZE", "FROZEN", frozen=1)
+                        request(1, 3, "STATUS", "STATUS", frozen=1)
+                        request(2, 4, "THAW", "ERROR", errno=116, frozen=1)
+                        request(1, 2, "THAW", "ERROR", errno=116, frozen=1)
+                        request(1, 4, "THAW", "THAWED")
+                        control.sendall(b"x" * 256 + b"\n")
+                        request(1, 5, "STATUS", "STATUS")
+                        control.sendall(b"EOS1 ")
+                        time.sleep(1.1)
+                        control.sendall(b"bad-tail\n")
+                        request(1, 6, "STATUS", "STATUS")
+            results.append({"mode": mode, "boot": marker, "control": mode in ("normal", "degraded"),
                             "disk_sha256": hashlib.sha256(disk.read_bytes()).hexdigest()})
         finally:
             process.terminate()

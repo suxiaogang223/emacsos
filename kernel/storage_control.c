@@ -2,14 +2,6 @@
 #include "files.h"
 #include "storage_control.h"
 
-/* FS owns the barrier, dirty generation, synchronization and device flush. */
-extern enum fs_error fs_freeze_data(void);
-extern void fs_thaw_data(void);
-extern bool fs_data_mounted(void);
-extern bool fs_data_frozen(void);
-extern uint64_t fs_data_generation(void);
-extern enum fs_error fs_data_last_error(void);
-extern long fs_error_errno(enum fs_error);
 #define FRAME_SIZE 128
 #define FRAME_TIMEOUT_NS 1000000000UL
 #define TX_TIMEOUT_NS 2000000000UL
@@ -113,8 +105,8 @@ static void command(void) {
     last_request = request;
     if (status) {
       result = "STATUS";
-      if (!fs_data_mounted())
-        error = fs_error_errno(fs_data_last_error());
+      error = fs_error_errno(fs_data_mounted() ? fs_data_health_error()
+                                                : fs_data_last_error());
     } else if (!fs_data_mounted())
       error = 19;
     else if (freeze) {

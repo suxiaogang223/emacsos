@@ -8,9 +8,17 @@ static uint64_t generation = 7;
 bool fs_data_mounted(void) { return data_disk_sectors() != 0; }
 bool fs_data_frozen(void) { return frozen; }
 uint64_t fs_data_generation(void) { return generation; }
+enum fs_error fs_data_health_error(void) {
+#ifdef PROBE_DEGRADED
+  return FS_IO;
+#else
+  return FS_OK;
+#endif
+}
 enum fs_error fs_data_last_error(void) { return FS_NOT_FOUND; }
 long fs_error_errno(enum fs_error error) { return error ? -5 : 0; }
 enum fs_error fs_freeze_data(void) {
+  if (fs_data_health_error() != FS_OK) return fs_data_health_error();
   if (data_disk_flush())
     return FS_INVALID;
   frozen = true;
