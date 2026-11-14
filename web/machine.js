@@ -1,3 +1,4 @@
+import { BrowserDisk } from "./storage.js";
 // The browser hosts one real emulated machine; application state stays in Emacs.
 const element = id => document.getElementById(id);
 const buttons = ["command-key", "cancel-key", "eval-key"].map(element);
@@ -10,7 +11,31 @@ let terminal;
 let machine;
 let slave;
 let observed = "";
+let storageAttached = false;
 const decoder = new TextDecoder();
+function storageView(disk) {
+    document.documentElement.dataset.storageState = disk.state;
+    element("data-status").dataset.state = disk.state;
+    element("data-status").textContent = disk.message;
+    for (const id of ["disk-import", "disk-new"]) element(id).disabled =
+        initializationStarted || disk.busy || Boolean(disk.preparing) || ["loading", "starting"].includes(state);
+    element("boot").disabled = !(state === "off" || (state === "failed" && retryable)) || disk.busy || Boolean(disk.preparing);
+    element("reset").disabled = state === "off" || disk.busy;
+    for (const id of ["disk-export", "disk-save"]) element(id).disabled = !disk.mounted || disk.busy || disk.unknown;
+    element("disk-resume").hidden = !disk.unknown && !disk.frozen;
+    element("disk-resume").disabled = disk.busy;
+    element("disk-discard").hidden = !initializationStarted;
+    element("disk-discard").disabled = disk.busy;
+}
+const disk = new BrowserDisk(storageView);
+function startStorage() {
+    if (!machine || state !== "running" || storageAttached) return;
+    storageAttached = true;
+    disk.attach(machine).catch(storageError);
+}
+function storageError(error) {
+    disk.emit("error", error instanceof Error ? error.message : String(error));
+}
 
 function render(next, message, error = "") {
     state = next;
@@ -21,6 +46,7 @@ function render(next, message, error = "") {
     element("boot").disabled = !(state === "off" || (state === "failed" && retryable));
     element("reset").disabled = state === "off";
     for (const button of buttons) button.disabled = state !== "running";
+    storageView(disk);
     if (terminal) terminal.options.disableStdin = state !== "running";
     element("idle-screen").hidden = Boolean(terminal) || !["off", "failed"].includes(state);
     element("boot-progress").hidden = !["loading", "starting"].includes(state);
@@ -43,15 +69,16 @@ function observe(bytes) {
     } else if (/\r\n(?:PANIC: |FAULT vector=)/.test(observed)) {
         fail(new Error("The guest stopped with a kernel fault. The terminal contains its diagnostic."));
     } else if (state === "starting" && observed.includes("*scratch*")) {
-        render("running", "Emacs ready · COM1 · 80 × 24 · temporary files");
+        render("running", "Emacs ready · COM1 · 80 × 24");
         element("screen-caption")?.replaceChildren(document.createTextNode("GNU Emacs 30.2 · emacsOS"));
         terminal.focus();
+        startStorage();
     }
 }
 
 async function bootImage() {
     const response = await fetch(new URL("./emacsos.img", import.meta.url));
-    if (!response.ok) throw new Error(`Boot disk request failed (${response.status}). Build the MVP image first.`);
+    if (!response.ok) throw new Error(`Boot disk request failed (${response.status}). Build the system image first.`);
     const total = Number(response.headers.get("Content-Length"));
     if (!response.body || !Number.isSafeInteger(total) || total <= 0) return response.arrayBuffer();
     const reader = response.body.getReader();
@@ -99,7 +126,7 @@ async function start() {
         if (typeof Terminal !== "function" || typeof openpty !== "function") {
             throw new Error("Terminal assets are unavailable. Run make web-assets and reload.");
         }
-        const [image, bios] = await Promise.all([bootImage(), biosPackage()]);
+        const [image, bios] = await Promise.all([bootImage(), biosPackage(), disk.prepare()]);
         terminal = new Terminal({
             cols: 80, rows: 24, cursorBlink: true, macOptionIsMeta: true,
             fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 16,
@@ -117,8 +144,10 @@ async function start() {
         const moduleUrl = new URL("out.js", vendor).href;
         const config = {
             arguments: ["-M", "pc", "-m", "1G", "-nic", "none", "-display", "none", "-monitor", "none",
-                "-serial", "stdio", "-L", "/pack-rom", "-accel", "tcg,tb-size=64",
-                "-drive", "file=/emacsos.img,format=raw,if=ide,index=0,media=disk"],
+                "-serial", "stdio", "-chardev", "pipe,id=control,path=/control", "-serial", "chardev:control",
+                "-L", "/pack-rom", "-accel", "tcg,tb-size=64",
+                "-drive", "file=/emacsos.img,format=raw,if=ide,index=0,media=disk",
+                "-drive", "file=/data.img,format=raw,if=ide,index=1,media=disk"],
             locateFile: path => new URL(path, vendor).href,
             mainScriptUrlOrBlob: moduleUrl,
             getPreloadedPackage: () => bios,
@@ -156,8 +185,12 @@ async function start() {
                 document.head.append(script);
             }),
         ]);
-        config.preRun.push(module => module.FS.writeFile("/emacsos.img", image instanceof Uint8Array ? image : new Uint8Array(image), { canOwn: true }));
+        config.preRun.push(module => {
+            module.FS.writeFile("/emacsos.img", image instanceof Uint8Array ? image : new Uint8Array(image), { canOwn: true });
+            disk.install(module.FS);
+        });
         machine = await initialize(config);
+        startStorage();
         raw();
         // The bridge's poll/read must report would-block instead of fake EOF.
         const streams = machine.TTY.stream_ops;
@@ -188,11 +221,39 @@ function send(data) {
 }
 
 element("boot").addEventListener("click", start);
-element("reset").addEventListener("click", () => {
-    if (initializationStarted && !window.confirm("Restart this machine? All temporary files and unsaved work will be lost.")) return;
+element("reset").addEventListener("click", async () => {
+    if (initializationStarted && !window.confirm("Save DATA and restart? Unsaved buffers and volatile files will be lost.")) return;
+    try {
+        if (initializationStarted) await disk.checkpoint({ restart: true });
+        approvedReload = true;
+        window.location.reload();
+    } catch (error) { storageError(error); }
+});
+element("disk-discard").addEventListener("click", () => {
+    if (!window.confirm("Discard pending DATA changes and restart? Only the last completed browser checkpoint will return.")) return;
     approvedReload = true;
     window.location.reload();
 });
+element("disk-import").addEventListener("click", () => element("disk-file").click());
+element("disk-file").addEventListener("change", async event => {
+    const file = event.target.files[0];
+    event.target.value = "";
+    if (file) {
+        disk.busy = true; storageView(disk);
+        try { await disk.import(file); } catch (error) { storageError(error); }
+        finally { disk.busy = false; storageView(disk); }
+    }
+});
+element("disk-new").addEventListener("click", async () => {
+    if (!window.confirm("Stage a new empty DATA disk? The retained disk is replaced only after its guest mount and checkpoint succeed.")) return;
+    disk.busy = true; storageView(disk);
+    try { await disk.newDisk(); } catch (error) { storageError(error); }
+    finally { disk.busy = false; storageView(disk); }
+});
+element("disk-export").addEventListener("click", () => disk.checkpoint({ exportImage: true }).catch(storageError));
+element("disk-save").addEventListener("click", () => disk.checkpoint().catch(storageError));
+element("disk-resume").addEventListener("click", () => disk.recover().catch(storageError));
+window.addEventListener("pagehide", () => disk.close());
 element("command-key").addEventListener("click", () => send("\x1bx"));
 element("cancel-key").addEventListener("click", () => send("\x07"));
 element("eval-key").addEventListener("click", () => send("\x1b:"));
@@ -219,4 +280,4 @@ window.addEventListener("error", event => {
 window.addEventListener("unhandledrejection", event => {
     if (initializationStarted && ["starting", "running"].includes(state)) fail(event.reason);
 });
-render("off", "Power off · files are temporary");
+render("off", "Power off · DATA is local");

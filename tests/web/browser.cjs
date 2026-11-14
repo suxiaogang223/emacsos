@@ -92,9 +92,11 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         await state('off');
         assert(await page.locator('#reset').isDisabled());
         assert(await page.locator('#command-key').isDisabled());
-        assert.equal(await page.locator('input[type=file]').count(), 0);
-        assert.match(await page.locator('[data-drive=data]').innerText(), /not available yet/);
-        check('Isolated browser, initial controls and inactive data bay');
+        assert.equal(await page.locator('input[type=file]').count(), 1);
+        assert(await page.locator('#disk-file').isHidden());
+        assert(await page.locator('#disk-import').isEnabled());
+        assert(await page.locator('#disk-export').isDisabled());
+        check('Isolated browser, initial controls and staged DATA import');
         for (const width of [1440, 1100, 1024, 768, 390]) {
             await page.setViewportSize({ width, height: 1100 });
             assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Page overflow at ${width}`);
@@ -107,7 +109,7 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         await page.click('#boot');
         await state('failed');
         assert(await page.locator('#error').isVisible());
-        assert(await page.locator('#boot').isEnabled());
+        await page.waitForFunction(() => !document.getElementById('boot').disabled);
         assert(await page.locator('#boot svg').count());
         check('Missing boot image is visible and permits a pre-initialization retry');
         const begin = Date.now();
@@ -118,7 +120,9 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         assert.equal(record.imageSha256, record.guestBuild.components['build/image/emacsos.img']);
         assert(await page.locator('#boot').isDisabled());
         assert(await page.locator('#command-key').isEnabled());
-        check('Current manifest-matched MVP boots in QEMU/Wasm');
+        check('Current manifest-matched system boots in QEMU/Wasm');
+        await page.waitForFunction(() => document.documentElement.dataset.storageState === 'saved', null, {timeout:60000});
+        check('Guest-validated DATA receives an initial local checkpoint');
         await page.waitForTimeout(250);
         await page.screenshot({ path: path.join(output, 'running.png'), fullPage: true });
 
@@ -189,7 +193,15 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         await page.click('#reset');
         await state('off');
         assert.equal(await serialLength(), 0);
-        check('Confirmed RESTART reloads a fresh powered-off page');
+        check('Confirmed RESTART retains DATA before reloading a fresh powered-off page');
+        await page.click('#boot');
+        await state('running');
+        await page.waitForFunction(() => document.documentElement.dataset.storageState === 'saved', null, {timeout:60000});
+        await evaluate('(progn (when (boundp \'browser-proof) (error "Imported Lisp ran automatically")) (load-file "/work/browser-proof.el") (message "BROWSER-RESTORED-%d" browser-proof))', 'BROWSER-RESTORED-42');
+        check('Restart restores saved source without automatically executing it');
+        page.once('dialog', dialog => dialog.accept());
+        await page.click('#disk-discard');
+        await state('off');
         assert.deepEqual(errors, []);
 
         const blocked = await browser.newPage();

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Serve only the browser UI, allowlisted vendor filenames and the built MVP image."""
+"""Serve only the browser UI, allowlisted vendor filenames and the built system and empty DATA images."""
 import argparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -18,8 +18,10 @@ def routes(root):
         "/": (root / "web/index.html", "text/html; charset=utf-8"),
         "/index.html": (root / "web/index.html", "text/html; charset=utf-8"),
         "/machine.js": (root / "web/machine.js", "text/javascript; charset=utf-8"),
+        "/storage.js": (root / "web/storage.js", "text/javascript; charset=utf-8"),
         "/terminal.css": (root / "web/terminal.css", "text/css; charset=utf-8"),
         "/emacsos.img": (root / "build/image/emacsos.img", "application/octet-stream"),
+        "/data-empty.img": (root / "build/image/data-empty.img", "application/octet-stream"),
         "/build.json": (root / "build/image/manifest.json", "application/json"),
         "/assets.json": (root / "web/assets.json", "application/json"),
         "/licenses.html": (root / "web/licenses.html", "text/html; charset=utf-8"),
