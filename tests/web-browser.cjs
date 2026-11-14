@@ -119,6 +119,7 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         assert(await page.locator('#boot').isDisabled());
         assert(await page.locator('#command-key').isEnabled());
         check('Current manifest-matched MVP boots in QEMU/Wasm');
+        await page.waitForTimeout(250);
         await page.screenshot({ path: path.join(output, 'running.png'), fullPage: true });
 
         await page.locator('.xterm-screen').click({ position: { x: 100, y: 100 } });
@@ -158,7 +159,14 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         await page.keyboard.press('Control+s');
         await evaluate('(progn (kill-buffer) (load-file "/work/browser-proof.el") (message "BROWSER-SAVED-%d" browser-proof))', 'BROWSER-SAVED-42');
         check('Ctrl-x Ctrl-f / Ctrl-x Ctrl-s save source that the guest loads');
-        await evaluate('(progn (require \'emacsos-counter) (emacsos-counter-start) (emacsos-counter-start) (emacsos-processes) (message (concat "APPS-" "READY")))', 'APPS-READY');
+        await evaluate('(progn (require \'emacsos-counter) (emacsos-counter-start) (emacsos-counter-start) (message "BROWSER-RUNS-%d" (length (emacsos-app-list))))', 'BROWSER-RUNS-2');
+        start = await serialLength();
+        await page.click('#command-key');
+        await page.keyboard.type('emacsos-processes', { delay: 5 });
+        await page.keyboard.press('Enter');
+        await waitSerial('*Processes*', start);
+        await evaluate('(message "MANAGER-NAME-%s" (buffer-name))', 'MANAGER-NAME-*Processes*');
+        await page.waitForTimeout(250);
         await page.screenshot({ path: path.join(output, 'applications.png'), fullPage: true });
         check('Bundled application manager opens in the browser guest');
 
