@@ -61,9 +61,13 @@ roadmap only when the stated criteria are satisfied. Skills:
 
 ## Contribution checks
 
+Use `make test` for fast host checks and `make check` for full native validation
+from a clean committed checkout. See [build and test](docs/build-and-test.md)
+for incremental builds, focused checks and optional browser acceptance.
+
 ```sh
 python3 scripts/check-contribution.py --require-clean-submodule
-python3 -m unittest discover -s scripts/tests -p 'test_contribution.py'
+make test-tooling
 ```
 
 Use `--base origin/main` to check added third-party text against a branch base.

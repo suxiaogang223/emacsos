@@ -12,12 +12,13 @@ test driver into the ignored build directory:
 npm install --prefix build/web-browser-tools --no-save --package-lock=false playwright@1.56.1
 build/web-browser-tools/node_modules/.bin/playwright install chromium
 EMACSOS_PLAYWRIGHT="$PWD/build/web-browser-tools/node_modules/playwright" \
-  node tests/web-browser.cjs http://127.0.0.1:18082/
+  make test-browser
 ```
 
 `EMACSOS_BROWSER` can select an already installed Chromium executable, and
 `EMACSOS_WEB_REPORT` can select a different output directory. The default is
-`build/web-browser`. The test runner uses Chromium without its sandbox, for
+`build/web-browser`. Set `WEB_URL` to test another server URL. The test runner
+uses Chromium without its sandbox, for
 local development against this trusted guest and server.
 
 The script checks isolation headers, five viewport widths, inactive disk-bay

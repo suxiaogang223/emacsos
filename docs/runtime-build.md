@@ -66,9 +66,11 @@ upstream Lisp function does not promise a corresponding backend.
 
 The packager limits the image to 128 MiB, at most 8190 entries and kernel-supported
 path/component lengths. The root coordinator owns the guest disk/header format;
-this pipeline supplies the standalone ELF and archive. Repackaging is explicit
-when parent Lisp changes; an old manifest must not be used as evidence for new
-source. The recipe fixes inputs/configuration and records artifacts; it does not
+this pipeline supplies the standalone ELF and archive. `make build` automatically
+repackages when parent Lisp changes, reusing the verified Emacs installation.
+Unchanged archives and images are retained; parent revision metadata is refreshed
+separately. See [build and test](build-and-test.md) for the incremental checks.
+The recipe fixes inputs/configuration and records artifacts; it does not
 claim byte-identical output across arbitrary build hosts or cached build trees.
 
 ## Host evidence and ABI discovery
@@ -83,7 +85,7 @@ To trace the same smoke inside the build container:
 ```sh
 docker run --rm --platform linux/amd64 \
   --user "$(id -u):$(id -g)" -v "$PWD:/work:z" -w /work \
-  emacsos-runtime:alpine3.22 python3 scripts/smoke-runtime.py --trace
+  emacsos-runtime:alpine3.22 python3 tests/runtime/smoke.py --trace
 ```
 
 This produces `host-syscalls.trace`, using the container's real Linux kernel.

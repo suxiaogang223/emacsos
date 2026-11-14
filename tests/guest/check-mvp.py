@@ -6,24 +6,20 @@ from pathlib import Path
 import selectors
 import subprocess
 import time
+import sys
 
-from importlib.util import module_from_spec, spec_from_file_location
-
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "build/mvp"
-spec = spec_from_file_location("mvp_manifest", ROOT / "scripts/mvp-manifest.py")
-identity = module_from_spec(spec)
-spec.loader.exec_module(identity)
+sys.path.insert(0, str(ROOT / "scripts"))
+import image as identity
+import qemu
 
 
 class Guest:
     def __init__(self):
-        self.process = subprocess.Popen([
-            "qemu-system-x86_64", "-M", "pc", "-m", "1G", "-nic", "none",
-            "-display", "none", "-monitor", "none", "-serial", "stdio", "-no-reboot",
-            "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04", "-drive",
-            f"file={OUT / 'emacsos.img'},format=raw,if=ide,snapshot=on"],
-            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.process = subprocess.Popen(qemu.command(OUT / "emacsos.img", debug_exit=True),
+                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                        stderr=subprocess.STDOUT)
         self.selector = selectors.DefaultSelector()
         self.selector.register(self.process.stdout, selectors.EVENT_READ)
         self.transcript = bytearray()

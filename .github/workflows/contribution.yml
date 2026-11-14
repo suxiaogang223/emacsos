@@ -34,5 +34,3 @@ jobs:
             args+=(--base "$CONTRIBUTION_BASE")
           fi
           python3 scripts/check-contribution.py "${args[@]}"
-      - name: Test contribution checks
-        run: python3 -m unittest discover -s scripts/tests -p 'test_contribution.py'

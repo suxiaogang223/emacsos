@@ -12,15 +12,17 @@ profile, volatile files and application policy are documented in
 Initialize the pinned submodule, then use Docker, Make, Python 3 and QEMU:
 
 ```sh
-make mvp
-make check-mvp
+make build
+make check
 make run
 ```
 
 Acceptance requires a clean committed parent and initialized submodule.
-`make mvp` builds the kernel and static runtime, installs parent-owned Lisp,
-packs the image and records build identity. `make check-mvp` rebuilds as needed
-and drives the real terminal command loop. `make run` launches the same image
+`make build` builds the kernel and static runtime, installs parent-owned Lisp,
+packs the image and records build identity. `make check` runs the host checks
+and kernel probes, rebuilds as needed, and drives the real terminal command loop.
+Use `make test-guest` for just native guest acceptance (`make check-mvp` remains
+an alias). `make run` launches the same image
 for manual interaction; `C-a x` exits QEMU and `C-a a` sends Emacs a literal
 `C-a`.
 

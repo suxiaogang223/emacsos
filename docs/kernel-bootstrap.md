@@ -40,7 +40,7 @@ use its nonrandom fallback canary. Secure randomness remains unsupported.
 The BIOS still loads only the small kernel. At disk byte offset 1 MiB, a 512-byte
 header contains `<8sQQ` little-endian fields: magic `EMACSOS1`, ELF byte length,
 and archive byte length, followed by zeros. Sector-padded ELF and archive bytes
-follow. `scripts/pack-runtime.py` builds this form. IDE PIO reads have bounded
+follow. `scripts/image.py pack` builds this form. IDE PIO reads have bounded
 LBA/RAM extents and a timeout after initialization. The archive format consumed
 by the separate filesystem integration is uncompressed newc CPIO.
 
@@ -71,8 +71,8 @@ run before those backend objects are linked. They provide no fake filesystem.
 
 ## Validation
 
-Run `python3 scripts/check-kernel-probe.py`. It builds a fresh static-musl probe
-in the existing Alpine build image, constructs three boot disks and executes
+Run `make test-probes`. It builds the kernel and fresh static-musl probes
+in the Alpine build image, constructs three boot disks and executes
 QEMU. The normal case verifies TLS-backed libc startup, mmap, RO protection,
 unmap, clock progress, sleep, output and exit. Two negative cases deliberately
 write a read-only page and execute an NX page; they must report the corresponding

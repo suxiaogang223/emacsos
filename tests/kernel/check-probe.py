@@ -2,14 +2,17 @@
 """Exercise static-musl startup and actual page protection in QEMU."""
 import hashlib
 import json
+import os
 import pathlib
 import subprocess
 import sys
 
-root = pathlib.Path(__file__).resolve().parents[1]
+root = pathlib.Path(__file__).resolve().parents[2]
 out = root / "build/skeleton"
 image = "emacsos-skeleton:alpine3.22"
-subprocess.run([str(root / "scripts/build-container.sh"), "make", "image"], cwd=root, check=True)
+sys.path.insert(0, str(root / "scripts"))
+import image as disk_image
+import qemu
 results = []
 for mode, define, marker in (
     ("normal", [], "MUSL-GUEST-PROBE-PASS"),
@@ -20,10 +23,12 @@ for mode, define, marker in (
     disk = out / f"probe-{mode}.img"
     archive = out / "empty.cpio"
     archive.write_bytes(b"")
-    subprocess.run(["docker", "run", "--rm", "-v", f"{root}:/work:z", "-w", "/work", image,
-                    "gcc", "-static", "-no-pie", "-O2", *define, "scripts/probes/runtime.c", "-o", str(elf.relative_to(root))], check=True)
-    subprocess.run([sys.executable, str(root / "scripts/pack-runtime.py"), str(out / "emacsos.img"), str(elf), str(archive), str(disk)], check=True)
-    command = ["qemu-system-x86_64", "-M", "pc", "-m", "1G", "-nic", "none", "-display", "none", "-monitor", "none", "-serial", "stdio", "-no-reboot", "-device", "isa-debug-exit,iobase=0xf4,iosize=0x04", "-drive", f"file={disk},format=raw,if=ide,snapshot=on"]
+    subprocess.run(["docker", "run", "--rm", "--platform", "linux/amd64",
+                    "--user", f"{os.getuid()}:{os.getgid()}",
+                    "-v", f"{root}:/work:z", "-w", "/work", image,
+                    "gcc", "-static", "-no-pie", "-O2", *define, "tests/kernel/runtime-probe.c", "-o", str(elf.relative_to(root))], check=True)
+    disk_image.pack_image(out / "emacsos.img", elf, archive, disk)
+    command = qemu.command(disk, debug_exit=True)
     try:
         run = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=10)
         output, status = run.stdout.decode(errors="replace"), run.returncode

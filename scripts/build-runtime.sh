@@ -19,14 +19,14 @@ if test ! -f build/runtime/build-key || test "$(cat build/runtime/build-key)" !=
     printf '%s\n' "$pin" > build/runtime/source-pin
     printf '%s\n' "$cache_key" > build/runtime/build-key
 fi
-if test ! -f build/runtime/source.tar; then
+if ! python3 scripts/package-runtime.py --check; then
     git -C emacs archive --format=tar "$pin" > build/runtime/source.tar.part
     mv build/runtime/source.tar.part build/runtime/source.tar
+    SOURCE_DATE_EPOCH=$(git -C emacs show -s --format=%ct HEAD)
+    export SOURCE_DATE_EPOCH
+    docker build --platform linux/amd64 -t "$image" -f scripts/Dockerfile.runtime scripts
+    docker run --rm --platform linux/amd64 --user "$(id -u):$(id -g)" \
+        -e HOME=/tmp -e TZ=UTC -e SOURCE_DATE_EPOCH -e JOBS="${JOBS:-4}" \
+        -v "$PWD:/work:z" -w /work "$image" ./scripts/build-runtime-inner.sh
 fi
-SOURCE_DATE_EPOCH=$(git -C emacs show -s --format=%ct HEAD)
-export SOURCE_DATE_EPOCH
-docker build --platform linux/amd64 -t "$image" -f scripts/Dockerfile.runtime scripts
-docker run --rm --platform linux/amd64 --user "$(id -u):$(id -g)" \
-    -e HOME=/tmp -e TZ=UTC -e SOURCE_DATE_EPOCH -e JOBS="${JOBS:-4}" \
-    -v "$PWD:/work:z" -w /work "$image" ./scripts/build-runtime-inner.sh
 python3 scripts/package-runtime.py

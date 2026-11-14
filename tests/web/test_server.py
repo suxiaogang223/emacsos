@@ -12,7 +12,7 @@ import threading
 import unittest
 from unittest.mock import patch
 
-SCRIPTS = Path(__file__).resolve().parent.parent
+SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 
 
 def module(name, path):

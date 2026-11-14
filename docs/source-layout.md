@@ -13,9 +13,9 @@ emacsos/
 │   ├── memory.c / hardware.c # Memory, serial and clocks
 │   └── kernel.ld          # Link layout
 ├── lisp/                  # Trusted application policy and counter demo
-├── tests/                 # Host ERT, file checks and guest acceptance source
+├── tests/                 # Kernel, Lisp, runtime, tooling and browser checks
 ├── web/                   # Retro console, browser bridge and asset identities
-├── scripts/               # Build, native/browser launchers and checks
+├── scripts/               # Build, packaging, native launcher and browser tools
 └── docs/                  # Current architecture and implementation plan
 ```
 
@@ -36,9 +36,10 @@ git submodule update --init --recursive
 
 The parent gitlink pins the exact fork commit. Do not float it implicitly with
 `git submodule update --remote`. A source checkout is not a runtime build.
-The default `make` target builds the complete MVP image. `make image` builds
-the kernel-only image; `make runtime` builds/packages static Emacs/musl and
-`make runtime-smoke` checks it in a host PTY. `make check-mvp` separately proves
+The default `make` target (`make build`) incrementally builds the complete MVP
+image. `make image` builds the kernel-only image; `make runtime` builds/packages
+static Emacs/musl and `make runtime-smoke` checks it in a host PTY.
+`make test-guest` separately proves
 the integrated guest subset; see [acceptance](mvp.md) and [runtime build](runtime-build.md).
 `make web` builds and serves that image through the pinned browser runtime;
 `make check-web` checks the asset cache and allowlisted server. Browser bridge,
