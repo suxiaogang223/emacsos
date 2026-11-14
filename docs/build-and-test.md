@@ -1,7 +1,7 @@
 # Build and test
 
 Run commands from the repository root. Building requires Git, Make, Python 3,
-Docker with Linux/amd64 support and an initialized `emacs/` submodule. Docker
+Docker with BuildKit and Linux/amd64 support and an initialized `emacs/` submodule. Docker
 supplies the kernel and static Emacs compilation toolchains; host LLVM tools
 are not required for the normal build. Native execution additionally needs
 `qemu-system-x86_64`.
@@ -24,7 +24,8 @@ acceptance retain separate results.
 
 Two Docker images provide the kernel and runtime toolchains. Each component
 build invokes `docker build`, allowing Docker to reuse unchanged layers, then
-runs the exact immutable image ID returned by that invocation. A mutable image
+runs the exact immutable image ID returned by that invocation. Local toolchain
+images disable BuildKit attestations so repeated cached builds keep a stable ID. A mutable image
 tag is a convenient name, not the toolchain identity used for execution.
 Worktrees on the same Docker daemon share these image layers. Each worktree has
 its own ignored `build/` directory, generated source and compilation output.

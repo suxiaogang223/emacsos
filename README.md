@@ -8,7 +8,7 @@ future work.
 
 ## Build and run
 
-Install Make, Python 3, Docker with Linux/amd64 support, and
+Install Make, Python 3, Docker with BuildKit and Linux/amd64 support, and
 `qemu-system-x86_64`. Initialize the pinned source dependency:
 
 ```sh

@@ -10,7 +10,7 @@ git submodule update --init emacs
 make runtime
 ```
 
-Docker, Python 3 and an initialized clean Emacs checkout matching the staged
+Docker with BuildKit, Python 3 and an initialized clean Emacs checkout matching the staged
 parent pin are required. The wrapper exports only tracked bytes from the exact pinned commit with
 `git archive`; ignored or generated dependency files cannot seed the build.
 Generated configure files, bytecode and build products stay under

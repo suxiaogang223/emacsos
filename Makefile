@@ -48,7 +48,7 @@ $(OUT)/emacsos.img: $(OUT)/boot.bin $(OUT)/kernel.bin
 # Docker owns the shared toolchain cache; each checkout owns its build output.
 kernel:
 	mkdir -p build/toolchains
-	docker build --platform linux/amd64 --iidfile build/toolchains/kernel.id.part \
+	docker build --provenance=false --platform linux/amd64 --iidfile build/toolchains/kernel.id.part \
 	  -t $(BUILD_IMAGE) -f scripts/Dockerfile.build scripts
 	@cmp -s build/toolchains/kernel.id.part build/toolchains/kernel.id || \
 	  cp build/toolchains/kernel.id.part build/toolchains/kernel.id
