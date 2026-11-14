@@ -7,7 +7,6 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
-import sys
 
 
 def sha256(path):
@@ -16,40 +15,6 @@ def sha256(path):
         for block in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
-
-
-def cached_manifest(out):
-    """Reuse only a complete installed tree and byte-verified build artifacts."""
-    try:
-        manifest = json.loads((out / "manifest.json").read_text())
-        if (manifest["build_key"] != (out / "build-key").read_text().strip()
-                or manifest["packager_sha256"] != sha256(Path(__file__))
-                or manifest["source_archive_sha256"] != sha256(out / "source.tar")):
-            return None
-        for name, record in (("emacs", manifest["elf"]), ("runtime.cpio", manifest["archive"])):
-            if sha256(out / name) != record["sha256"]:
-                return None
-        root = out / "root"
-        if {"/" + path.relative_to(root).as_posix() for path in root.rglob("*")} != {
-                entry["path"] for entry in manifest["files"]}:
-            return None
-        for entry in manifest["files"]:
-            path = root / entry["path"].lstrip("/")
-            if path.lstat().st_mode != entry["mode"]:
-                return None
-            if "symlink" in entry:
-                if not path.is_symlink() or os.readlink(path) != entry["symlink"]:
-                    return None
-            elif path.is_symlink():
-                return None
-            elif "directory" in entry:
-                if not path.is_dir():
-                    return None
-            elif not path.is_file() or sha256(path) != entry["sha256"]:
-                return None
-        return manifest
-    except (OSError, KeyError, ValueError, TypeError):
-        return None
 
 
 def write_newc(root, archive):
@@ -95,13 +60,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=Path("build/runtime"))
     parser.add_argument("--site-lisp", type=Path, action="append", default=[], help="Include parent system Lisp from an additional directory")
-    parser.add_argument("--check", action="store_true", help="Check whether the installed runtime can be reused")
     args = parser.parse_args()
     out = args.output.resolve()
     root = out / "root"
-    previous = cached_manifest(out)
-    if args.check:
-        return 0 if previous else 1
     parent = Path(__file__).resolve().parent.parent
     git = lambda *args: subprocess.check_output(["git", "-C", str(parent), *args], text=True).strip()
     identity = {"parent_commit": git("rev-parse", "HEAD"),
@@ -111,22 +72,14 @@ def main():
         if directory.is_dir():
             for path in directory.glob("*.el"):
                 sources[path.name] = path
-    site_inputs = {name: sha256(path) for name, path in sorted(sources.items())}
-    if previous and previous.get("site_lisp_inputs") == site_inputs:
-        if any(previous[key] != value for key, value in identity.items()):
-            previous.update(identity)
-            (out / "manifest.json").write_text(json.dumps(previous, indent=2) + "\n")
-        print("Reusing verified runtime archive")
-        return 0
     # Developer manuals and external Unix helpers are outside this runtime profile.
     for relative in ("usr/share/info", "usr/share/man", "usr/share/icons", "usr/share/applications", "usr/share/metainfo", "usr/share/emacs/site-lisp", "usr/share/emacs/30.2/site-lisp", "usr/var", "var"):
         shutil.rmtree(root / relative, ignore_errors=True)
     # Install one canonical executable rather than duplicating versioned bytes.
     executable = root / "usr/bin/emacs"
-    if executable.is_symlink() or executable.stat().st_nlink > 1:
-        contents = executable.read_bytes()
-        executable.unlink()
-        executable.write_bytes(contents)
+    contents = executable.read_bytes()
+    executable.unlink()
+    executable.write_bytes(contents)
     executable.chmod(0o755)
     for path in executable.parent.iterdir():
         if path.name != "emacs":
@@ -153,8 +106,7 @@ def main():
         alias.unlink(missing_ok=True)
         alias.symlink_to(dumps[0].name)
     # Expose a standalone artifact for the kernel ELF loader.
-    if not (out / "emacs").is_file() or sha256(out / "emacs") != sha256(executable):
-        shutil.copyfile(executable, out / "emacs")
+    shutil.copyfile(executable, out / "emacs")
     os.chmod(out / "emacs", 0o755)
     entries = write_newc(root, out / "runtime.cpio")
     if (out / "runtime.cpio").stat().st_size > 128 * 1024 * 1024:
@@ -168,11 +120,7 @@ def main():
         "profile": "GNU Emacs30.2 / static musl / x86-64 / terminal / pdumper",
         "source_date_epoch": (out / "source-date-epoch.txt").read_text().strip(),
         "build_key": (out / "build-key").read_text().strip(),
-        "packager_sha256": sha256(Path(__file__)),
-        "site_lisp_inputs": site_inputs,
-        "container_id": previous["container_id"] if previous else subprocess.check_output([
-            "docker", "image", "inspect", "emacsos-runtime:alpine3.22",
-            "--format", "{{.Id}}"], text=True).strip(),
+        "container_id": (out / "container-id").read_text().strip(),
         "container_recipe_sha256": sha256(parent / "scripts/Dockerfile.runtime"),
         "package_lock_sha256": sha256(parent / "scripts/runtime-packages.lock"),
         "archive_mtime": 0,
@@ -190,4 +138,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

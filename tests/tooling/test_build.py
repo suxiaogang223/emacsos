@@ -1,4 +1,4 @@
-"""Exercise runtime reuse and reject stale or corrupted image components."""
+"""Check installed-runtime packaging and reject corrupted image components."""
 import contextlib
 import importlib.util
 import io
@@ -18,7 +18,7 @@ package = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(package)
 
 
-class RuntimeCacheTests(unittest.TestCase):
+class RuntimePackagingTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
@@ -27,8 +27,9 @@ class RuntimeCacheTests(unittest.TestCase):
         self.site.mkdir()
         self.out.mkdir()
         for name in ("source.tar", "build-key", "packages.txt", "compiler.txt",
-                     "configure-arguments.txt", "source-date-epoch.txt"):
+                     "configure-arguments.txt", "source-date-epoch.txt", "container-id"):
             (self.out / name).write_text(name)
+        (self.out / "container-id").write_text("sha256:" + "1" * 64 + "\n")
         self.root = self.out / "root"
         for name, content in (("usr/bin/emacs", b"static executable"),
                               ("usr/libexec/emacs/emacs-identity.pdmp", b"matching dump")):
@@ -37,14 +38,12 @@ class RuntimeCacheTests(unittest.TestCase):
             path.write_bytes(content)
         self.repackage()
 
-    def repackage(self, parent=None):
+    def repackage(self):
         check_output = package.subprocess.check_output
 
         def command(args, **kwargs):
             if args[0] == "docker":
-                return "sha256:test-container\n"
-            if parent and args[-2:] == ["rev-parse", "HEAD"] and args[2] == str(SCRIPTS.parent):
-                return parent + "\n"
+                raise AssertionError("Packaging must record the used image ID, not resolve a mutable tag")
             return check_output(args, **kwargs)
 
         with mock.patch.object(sys, "argv", ["package-runtime", "--output", str(self.out),
@@ -53,15 +52,9 @@ class RuntimeCacheTests(unittest.TestCase):
                 contextlib.redirect_stdout(io.StringIO()):
             package.main()
 
-    def test_unchanged_archive_and_executable_are_not_rewritten(self):
-        paths = [self.out / "emacs", self.out / "runtime.cpio", self.out / "manifest.json"]
-        before = [path.stat().st_mtime_ns for path in paths]
-        self.repackage()
-        self.assertEqual(before, [path.stat().st_mtime_ns for path in paths])
-
     def test_lisp_add_change_and_removal_repackage_without_reinstall(self):
         executable = self.root / "usr/bin/emacs"
-        before = executable.stat().st_mtime_ns
+        original = executable.read_bytes()
         archive = self.out / "runtime.cpio"
         hashes = [package.sha256(archive)]
         source = self.site / "sample.el"
@@ -74,54 +67,16 @@ class RuntimeCacheTests(unittest.TestCase):
             hashes.append(package.sha256(archive))
             installed = self.root / "usr/share/emacs/site-lisp/sample.el"
             self.assertEqual(installed.exists(), text is not None)
-            self.assertEqual(before, executable.stat().st_mtime_ns)
+            self.assertEqual(original, executable.read_bytes())
         self.assertEqual(hashes[0], hashes[-1])
         self.assertEqual(len(set(hashes)), 3)
 
-    def test_parent_revision_refresh_does_not_rewrite_runtime_bytes(self):
-        archive = self.out / "runtime.cpio"
-        before = archive.stat().st_mtime_ns
-        self.repackage(parent="new-parent-revision")
+    def test_manifest_records_the_immutable_image_used_for_the_build(self):
         manifest = json.loads((self.out / "manifest.json").read_text())
-        self.assertEqual(manifest["parent_commit"], "new-parent-revision")
-        self.assertEqual(before, archive.stat().st_mtime_ns)
-
-    def test_packaging_recipe_change_requires_reinstallation(self):
-        path = self.out / "manifest.json"
-        manifest = json.loads(path.read_text())
-        manifest["packager_sha256"] = "old-recipe"
-        path.write_text(json.dumps(manifest))
-        self.assertIsNone(package.cached_manifest(self.out))
-
-    def test_changed_artifacts_and_installed_bytes_invalidate_cache(self):
-        for name in ("source.tar", "build-key", "emacs", "runtime.cpio", "root/usr/bin/emacs"):
-            with self.subTest(name=name):
-                path = self.out / name
-                original = path.read_bytes()
-                path.write_bytes(original + b"changed")
-                self.assertIsNone(package.cached_manifest(self.out))
-                path.write_bytes(original)
-                self.assertIsNotNone(package.cached_manifest(self.out))
-
-    def test_missing_extra_mode_and_symlink_changes_invalidate_cache(self):
-        path = self.root / "usr/bin/emacs"
-        content = path.read_bytes()
-        path.unlink()
-        self.assertIsNone(package.cached_manifest(self.out))
-        path.write_bytes(content)
-        path.chmod(0o755)
-        self.assertIsNotNone(package.cached_manifest(self.out))
-        path.chmod(0o644)
-        self.assertIsNone(package.cached_manifest(self.out))
-        path.chmod(0o755)
-        extra = self.root / "unexpected"
-        extra.touch()
-        self.assertIsNone(package.cached_manifest(self.out))
-        extra.unlink()
-        alias = self.root / "usr/libexec/emacs/emacs.pdmp"
-        alias.unlink()
-        alias.symlink_to("different.pdmp")
-        self.assertIsNone(package.cached_manifest(self.out))
+        self.assertEqual(manifest["container_id"], (self.out / "container-id").read_text().strip())
+        self.assertEqual(manifest["elf"]["sha256"], package.sha256(self.out / "emacs"))
+        self.assertEqual((self.out / "emacs").read_bytes(), (self.root / "usr/bin/emacs").read_bytes())
+        self.assertEqual((self.root / "usr/libexec/emacs/emacs.pdmp").read_bytes(), b"matching dump")
 
 
 class ImageTests(unittest.TestCase):
