@@ -397,7 +397,9 @@ long syscall_dispatch(unsigned long n, const unsigned long a[6]) {
     console_puts("\r\n");
     __asm__ volatile("outl %0,%1" ::"a"((unsigned)(a[0] ? 0x11 : 0x10)),
                      "Nd"((uint16_t)0xf4));
-    panic("runtime exit");
+    /* The runtime has stopped; retain safe checkpoint control for its files. */
+    for (;;)
+      wait_interrupt();
   case 63: {
     char *u = (void *)a[0];
     memset(u, 0, 390);
