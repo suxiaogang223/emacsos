@@ -1,7 +1,6 @@
 // Real-browser checks against a fresh browser-owned machine, never a shared guest.
 const { chromium } = require(process.env.EMACSOS_PLAYWRIGHT || 'playwright');
 const assert = require('node:assert/strict');
-const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
@@ -25,6 +24,19 @@ async function main() {
     const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
     page.on('pageerror', error => errors.push(String(error)));
     await page.addInitScript(() => Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' }));
+    await page.addInitScript(() => {
+        const fetch = window.fetch.bind(window);
+        window.fetch = async (...args) => {
+            const response = await fetch(...args);
+            if (new URL(response.url).pathname.endsWith('/emacsos.img') && response.ok) {
+                window.__imageHash = response.clone().arrayBuffer().then(async bytes => {
+                    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+                    return Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
+                });
+            }
+            return response;
+        };
+    });
     // Capture actual serial writes without a production debug API or fake guest.
     await page.route('**/vendor/xterm.js', async route => {
         const response = await route.fetch();
@@ -49,11 +61,9 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
             await route.fulfill({ status: 404, body: 'Missing test image' });
             return;
         }
-        const response = await route.fetch();
-        assert.equal(response.status(), 200);
-        const bytes = await response.body();
-        record.imageSha256 = crypto.createHash('sha256').update(bytes).digest('hex');
-        await route.fulfill({ response, body: bytes });
+        // Let the large image stream normally; passing it through the DevTools
+        // fulfillment channel can exceed Chromium's protocol message limit.
+        await route.continue();
     });
     const serialLength = () => page.evaluate(() => window.__serial?.length || 0);
     async function waitSerial(marker, start = 0, timeout = 30000) {
@@ -104,6 +114,7 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         await page.click('#boot');
         await state('running');
         record.bootSeconds = (Date.now() - begin) / 1000;
+        record.imageSha256 = await page.evaluate(() => window.__imageHash);
         assert.equal(record.imageSha256, record.guestBuild.components['build/mvp/emacsos.img']);
         assert(await page.locator('#boot').isDisabled());
         assert(await page.locator('#command-key').isEnabled());
