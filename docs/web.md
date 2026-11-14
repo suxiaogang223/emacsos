@@ -21,10 +21,11 @@ From the repository root:
 make web
 ```
 
-This builds the MVP image, verifies or downloads the pinned vendor assets into
+This builds the system image, verifies or downloads the pinned vendor assets into
 `build/web-vendor`, and serves the console at `http://127.0.0.1:18082/`. Building
-the MVP requires the tools described in [MVP acceptance](mvp.md). To serve an
-already built image without invoking its build again:
+the image requires the Docker toolchains described in
+[build and test](build-and-test.md). To serve an already built image without
+invoking its build again:
 
 ```sh
 make web-serve
@@ -33,7 +34,7 @@ make web-serve
 The server defaults to loopback. Override `WEB_HOST` and `WEB_PORT` when needed,
 or invoke `python3 scripts/serve-web.py --help`. It exposes an explicit list of
 UI, vendor, image, manifest and license routes. It does not expose the repository
-directory or accept uploaded files. Run `make check-web` for route, MIME,
+directory or accept uploaded files. Run `make test-web` for route, MIME,
 isolation-header, TLS and asset-cache tests.
 
 ## Access from another computer
@@ -100,7 +101,7 @@ isolation beyond the current MVP. See [the MVP scope](mvp.md).
 SHA-256 hashes, xterm.js 5.3.0 and xterm-pty 0.12.0. `make web-assets` accepts
 cached bytes only when their hashes match, and downloads replacements through
 a temporary file before atomic installation. The system image is independent
-of those cached assets: `build/mvp/manifest.json` binds its guest components.
+of those cached assets: `build/image/manifest.json` binds its guest components.
 
 The vendor emulator is a prebuilt experimental upstream artifact. This project
 has not reproduced its source/compiler build or audited the exact corresponding

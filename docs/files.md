@@ -34,11 +34,11 @@ save, backup, symlink-lock and error behavior must stay enabled in guest
 acceptance. No archived Emacs save changes were restored. The backend does not
 intercept Lisp application ownership; explicit application adoption is separate.
 
-Run `python3 scripts/check-files.py` with Clang and its sanitizer runtime. It
+Run `make test-files` with Clang and its sanitizer runtime. It
 compiles these exact PAL/adapter sources and exercises readonly archives,
 descriptor aliasing, open-unlink/rename identity, sparse data, reclamation,
 limits, symlinks, failure paths, alignment and malformed archive rejection on
-the host. `python3 scripts/check-kernel-probe.py` additionally checks that the
+the host. `make test-probes` additionally checks that the
 linked backend preserves the static-musl kernel probes. These checks alone do
 not establish interactive GNU Emacs file acceptance; the complete MVP needs
 actual guest save/reopen/load, backup, lock and original-error evidence.

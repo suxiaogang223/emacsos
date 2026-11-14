@@ -25,9 +25,10 @@ unsupported semantics. No asynchronous signal delivery, secure entropy, dynamic
 linker or external subprocess execution is claimed.
 
 The [runtime build](runtime-build.md) now pins a terminal-only static musl
-profile and packages matching artifacts. Host PTY/trace validation can establish
-requirements for exercised paths; it does not prove guest compatibility. The
-requirements below also derive from upstream source inspection.
+profile and packages matching artifacts. Compilation and artifact inspection do
+not prove guest compatibility; kernel probes and integrated guest checks retain
+separate evidence. The requirements below also derive from upstream source
+inspection.
 Running Emacs requires substantially more than dispatching syscalls.
 
 P1 uses the terminal-only static build with interpreted/bytecompiled Lisp. GUI,
@@ -126,9 +127,9 @@ Correct cleanup implies neither protection nor rollback of completed I/O.
 
 ## E0 evidence
 
-The [MVP tools](mvp.md) record parent/fork commits, build options,
-compiler/libc identity and hashes of executable, dump, Lisp/runtime data and
-boot image in one manifest. Verify sufficient mappings and reserved ranges,
+The [build and guest acceptance records](mvp.md) bind parent/fork commits, build
+options, compiler/libc identity and hashes of executable, dump, Lisp/runtime data
+and boot image through their manifests. Verify sufficient mappings and reserved ranges,
 artifact consistency, controlled initialization, actual terminal interaction and
 Elisp evaluation. Trace unsupported calls and real errors rather than broadening
 compatibility by assumption.

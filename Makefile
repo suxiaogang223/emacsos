@@ -1,26 +1,28 @@
-.DEFAULT_GOAL := mvp
+.DEFAULT_GOAL := build
 CC := clang
 LD := ld.lld
 OBJCOPY := llvm-objcopy
 NASM := nasm
-OUT := build/skeleton
+OUT := build/kernel
 CFLAGS := --target=x86_64-unknown-none-elf -std=c11 -O2 -g -Wall -Wextra -Werror \
           -ffreestanding -fno-stack-protector -fno-pic -fno-pie -mno-red-zone -mgeneral-regs-only
 
-.PHONY: image kernel container-image run
+.PHONY: kernel build run runtime \
+        test test-files test-lisp test-tooling test-web test-probes test-guest \
+        lint check web web-assets web-serve test-browser help
+.NOTPARALLEL: check
+BUILD_IMAGE := emacsos-kernel:alpine3.22
 KERNEL_C := main hardware memory loader runtime files file_abi
 KERNEL_ASM := entry interrupts syscall
 KERNEL_OBJS := $(addprefix $(OUT)/,$(addsuffix .o,$(KERNEL_C) $(KERNEL_ASM)))
-image: $(OUT)/emacsos.img
-kernel: $(OUT)/kernel.bin
 
 $(OUT):
 	mkdir -p $@
 
-$(OUT)/%.o: kernel/%.asm Makefile | $(OUT)
+$(OUT)/%.o: kernel/%.asm Makefile build/toolchains/kernel.id | $(OUT)
 	$(NASM) -f elf64 $< -o $@
 
-$(OUT)/%.o: kernel/%.c kernel/kernel.h kernel/files.h Makefile | $(OUT)
+$(OUT)/%.o: kernel/%.c kernel/kernel.h kernel/files.h Makefile build/toolchains/kernel.id | $(OUT)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(OUT)/kernel.elf: $(KERNEL_OBJS) kernel/kernel.ld
@@ -43,39 +45,76 @@ $(OUT)/emacsos.img: $(OUT)/boot.bin $(OUT)/kernel.bin
 	dd if=/dev/zero bs=1 count=$$padding >> $@.part 2>/dev/null; \
 	mv $@.part $@
 
-container-image:
-	./scripts/build-container.sh make image
+# Docker owns the shared toolchain cache; each checkout owns its build output.
+kernel:
+	mkdir -p build/toolchains
+	docker build --provenance=false --platform linux/amd64 --iidfile build/toolchains/kernel.id.part \
+	  -t $(BUILD_IMAGE) -f scripts/Dockerfile.build scripts
+	@cmp -s build/toolchains/kernel.id.part build/toolchains/kernel.id || \
+	  cp build/toolchains/kernel.id.part build/toolchains/kernel.id
+	rm -f build/toolchains/kernel.id.part
+	docker run --rm --platform linux/amd64 --user "$$(id -u):$$(id -g)" \
+	  -e HOME=/tmp -v "$(CURDIR):/work:z" -w /work \
+	  "$$(cat build/toolchains/kernel.id)" $(MAKE) $(OUT)/emacsos.img
 
-run: mvp
-	./scripts/run-qemu.sh
+run: build
+	python3 scripts/qemu.py
 
-.PHONY: runtime runtime-smoke
 runtime:
 	./scripts/build-runtime.sh
 
-runtime-smoke:
-	python3 scripts/smoke-runtime.py
+build: runtime kernel
+	python3 scripts/image.py
 
-.PHONY: mvp check-mvp
-mvp: runtime container-image
-	mkdir -p build/mvp
-	python3 scripts/pack-runtime.py $(OUT)/emacsos.img build/runtime/emacs build/runtime/runtime.cpio build/mvp/emacsos.img
-	python3 scripts/mvp-manifest.py
+test: test-files test-lisp test-tooling test-web
 
-check-mvp: mvp
-	python3 scripts/check-mvp.py
+test-files:
+	python3 tests/kernel/check-files.py
+
+test-lisp:
+	mkdir -p build/lisp
+	emacs -Q --batch -L lisp \
+	  --eval '(setq byte-compile-error-on-warn t byte-compile-dest-file-function (lambda (file) (expand-file-name (file-name-nondirectory (concat file "c")) "build/lisp/")))' \
+	  -f batch-byte-compile lisp/emacsos-app.el lisp/emacsos-counter.el
+	emacs -Q --batch -L lisp -l tests/lisp/emacsos-app-tests.el -f ert-run-tests-batch-and-exit
+
+test-tooling:
+	python3 -m unittest discover -s tests/tooling -p 'test_*.py'
+
+test-web:
+	python3 -m unittest discover -s tests/web -p 'test_*.py'
+
+lint:
+	python3 scripts/check-contribution.py --require-clean-submodule
+
+test-probes: kernel
+	python3 tests/kernel/check-probe.py
+
+test-guest: build
+	python3 tests/guest/check.py
+
+# Run in order even under make -j: probes and guest acceptance share kernel files.
+check: test lint test-probes test-guest
 
 WEB_HOST ?= 127.0.0.1
 WEB_PORT ?= 18082
-.PHONY: web web-assets web-serve check-web
+WEB_URL ?= http://$(WEB_HOST):$(WEB_PORT)/
 web-assets:
 	python3 scripts/fetch-web-assets.py
 
-web: mvp web-assets
+web: build web-assets
 	python3 scripts/serve-web.py --host $(WEB_HOST) --port $(WEB_PORT)
 
 web-serve: web-assets
 	python3 scripts/serve-web.py --host $(WEB_HOST) --port $(WEB_PORT)
 
-check-web:
-	python3 -m unittest discover -s scripts/tests -p 'test_web.py'
+test-browser:
+	node tests/web/browser.cjs '$(WEB_URL)'
+
+help:
+	@echo 'make build  - build the complete image using Docker (default)'
+	@echo 'make run    - build and launch the native console'
+	@echo 'make web    - build, verify browser assets and serve the browser console'
+	@echo 'make test   - run host file, Lisp, tooling and web server tests'
+	@echo 'make check  - run host tests, conventions, kernel probes and guest acceptance'
+	@echo 'make test-browser - test an already running web server (optional Playwright)'

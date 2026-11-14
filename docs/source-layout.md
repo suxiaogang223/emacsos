@@ -13,9 +13,9 @@ emacsos/
 │   ├── memory.c / hardware.c # Memory, serial and clocks
 │   └── kernel.ld          # Link layout
 ├── lisp/                  # Trusted application policy and counter demo
-├── tests/                 # Host ERT, file checks and guest acceptance source
+├── tests/                 # Kernel, Lisp, tooling, guest and browser checks
 ├── web/                   # Retro console, browser bridge and asset identities
-├── scripts/               # Build, native/browser launchers and checks
+├── scripts/               # Build, packaging, native launcher and browser tools
 └── docs/                  # Current architecture and implementation plan
 ```
 
@@ -36,13 +36,18 @@ git submodule update --init --recursive
 
 The parent gitlink pins the exact fork commit. Do not float it implicitly with
 `git submodule update --remote`. A source checkout is not a runtime build.
-The default `make` target builds the complete MVP image. `make image` builds
-the kernel-only image; `make runtime` builds/packages static Emacs/musl and
-`make runtime-smoke` checks it in a host PTY. `make check-mvp` separately proves
-the integrated guest subset; see [acceptance](mvp.md) and [runtime build](runtime-build.md).
-`make web` builds and serves that image through the pinned browser runtime;
-`make check-web` checks the asset cache and allowlisted server. Browser bridge,
-page and notices belong to the parent. Downloaded vendor assets stay in ignored
+The default `make` target (`make build`) builds the complete system image at
+`build/image/emacsos.img`. `make kernel` builds the kernel-only image in Docker;
+`make runtime` builds and packages static Emacs/musl. Docker shares toolchain
+layers across worktrees, while each checkout owns its generated source and
+build outputs. See [build and test](build-and-test.md) for prerequisites,
+incremental behavior and focused commands.
+
+`make test-guest` separately exercises the integrated guest subset; see
+[acceptance](mvp.md) and [runtime build](runtime-build.md). `make web` builds and
+serves the image through the pinned browser runtime; `make test-web` checks the
+asset verification and allowlisted server. Browser bridge, page and notices
+belong to the parent. Downloaded vendor assets stay in ignored
 `build/web-vendor`; see [browser hosting](web.md).
 
 Parent `lisp/` now contains trusted application policy and the counter example;

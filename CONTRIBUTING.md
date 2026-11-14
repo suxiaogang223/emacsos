@@ -61,9 +61,16 @@ roadmap only when the stated criteria are satisfied. Skills:
 
 ## Contribution checks
 
+Use `make test` for host component checks and `make check` for the full host,
+kernel-probe and native-guest sequence. Compilation uses Docker toolchains;
+host tests additionally need Clang, Emacs and OpenSSL. Worktrees share Docker
+images/layers and keep their generated outputs separate. See
+[build and test](docs/build-and-test.md) for prerequisites and focused commands.
+Guest results belong to the exact committed source and image under test.
+
 ```sh
 python3 scripts/check-contribution.py --require-clean-submodule
-python3 -m unittest discover -s scripts/tests -p 'test_contribution.py'
+make test-tooling
 ```
 
 Use `--base origin/main` to check added third-party text against a branch base.

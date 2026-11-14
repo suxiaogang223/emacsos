@@ -8,20 +8,27 @@ future work.
 
 ## Build and run
 
-Install Make, Python 3, Docker with Linux/amd64 support, and
+Install Make, Python 3, Docker with BuildKit and Linux/amd64 support, and
 `qemu-system-x86_64`. Initialize the pinned source dependency:
 
 ```sh
 git clone --single-branch --branch main --recurse-submodules https://github.com/suxiaogang223/emacsos.git emacsos
 cd emacsos
-make mvp
+make build
 make run
 ```
 
-The first build compiles static Emacs and its matching portable dump in pinned
-containers. Later builds reuse the runtime build directory. The image is
-`build/mvp/emacsos.img`; the launcher uses QEMU's fixed PC profile, 1 GiB RAM,
-COM1 and no network. Exit QEMU with `C-a x`; send Emacs a literal `C-a` with `C-a a`.
+The first build compiles the kernel, static Emacs and its matching portable dump
+in Docker toolchains. Later builds share Docker layers and use incremental
+compilation in this worktree's build directory. Runtime installation and packaging
+run each time. The image is `build/image/emacsos.img`; the launcher uses QEMU's
+fixed PC profile, 1 GiB RAM, COM1 and no network. Exit QEMU with `C-a x`; send Emacs a literal `C-a` with `C-a a`.
+
+Use `make test` for fast host tests and `make check` for host tests, contribution
+checks, kernel probes and native guest acceptance. Host tests additionally need
+Clang, Emacs and OpenSSL. Each worktree keeps separate build outputs while Docker
+shares toolchain images and layers. See
+[build and test](docs/build-and-test.md) for dependencies and focused commands.
 
 In Emacs, use `M-:` to evaluate `(+ 20 22)`, `C-x C-f` to create
 `/work/example.el`, and `C-x C-s` to save. Load your code with `M-x load-file`.
@@ -64,7 +71,7 @@ file and machine-control behavior against a fresh guest.
 
 ## Acceptance and architecture
 
-From a clean committed checkout, run `make check-mvp`. It boots the actual
+From a clean committed checkout, run `make check`. It boots the actual
 image, authors/saves/loads an Elisp application, checks normal backups, locks and
 errors, then exercises two instances through the manager. Build and acceptance
 manifests record source and artifact hashes. See [MVP acceptance](docs/mvp.md)

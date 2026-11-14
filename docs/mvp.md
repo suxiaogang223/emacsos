@@ -12,20 +12,23 @@ profile, volatile files and application policy are documented in
 Initialize the pinned submodule, then use Docker, Make, Python 3 and QEMU:
 
 ```sh
-make mvp
-make check-mvp
+make build
+make check
 make run
 ```
 
 Acceptance requires a clean committed parent and initialized submodule.
-`make mvp` builds the kernel and static runtime, installs parent-owned Lisp,
-packs the image and records build identity. `make check-mvp` rebuilds as needed
-and drives the real terminal command loop. `make run` launches the same image
+`make build` builds the kernel and static runtime, installs parent-owned Lisp,
+packs the image and records build identity. `make check` runs the host checks
+and kernel probes, rebuilds as needed, and drives the real terminal command loop.
+Use `make test-guest` for just native guest acceptance. The runner is
+`tests/guest/check.py`, with source fixture `tests/guest/counter.el`.
+`make run` launches the same image
 for manual interaction; `C-a x` exits QEMU and `C-a a` sends Emacs a literal
 `C-a`.
 
 The script enters normal terminal text and `M-:` forms. It creates
-`/work/mvp-program.el` with `find-file`, inserts source, saves, kills the buffer
+`/work/counter.el` with `find-file`, inserts source, saves, kills the buffer
 and loads the saved file. A second edit checks the ordinary symlink lock,
 backup contents and modified-state cleanup. It also checks directory, copy,
 rename, metadata and deletion APIs, and preserves a real read-only filesystem
@@ -46,13 +49,13 @@ Generated artifacts live under ignored `build/`:
 | Artifact | Meaning |
 | --- | --- |
 | `runtime/manifest.json` | Pinned runtime source, toolchain/packages, executable, dump and installed archive identity. |
-| `mvp/emacsos.img` | Complete kernel, static executable and runtime archive boot image. |
-| `mvp/manifest.json` | Parent commit/tree, fork pin, dirty state, component hashes, build container IDs and machine profile. Build identity alone proves no guest behavior. |
-| `mvp/guest.transcript` | Actual QEMU serial bytes for the latest acceptance attempt. |
-| `mvp/acceptance.json` | Success/failure, passed assertions, parent/fork, image/build-manifest and transcript hashes. |
+| `image/emacsos.img` | Complete kernel, static executable and runtime archive boot image. |
+| `image/manifest.json` | Parent commit/tree, fork pin, dirty state, component hashes, build container IDs and machine profile. Build identity alone proves no guest behavior. |
+| `image/guest.transcript` | Actual QEMU serial bytes for the latest acceptance attempt. |
+| `image/guest-results.json` | Success/failure, passed assertions, parent/fork, image/build-manifest and transcript hashes. |
 
-Only `passed: true` in the matching acceptance record establishes that this
-script completed for that image. Host ERT, file sanitizer tests and the three
+All fourteen guest checks must complete. Only `passed: true` in the matching
+acceptance record establishes that this script completed for that image. Host ERT, file sanitizer tests and the three
 kernel probes give separate component evidence. Compilation and a startup
 banner do not substitute for functional acceptance.
 

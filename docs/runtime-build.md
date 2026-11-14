@@ -8,16 +8,20 @@ capabilities. This is a host build pipeline; it does not establish guest support
 ```sh
 git submodule update --init emacs
 make runtime
-make runtime-smoke
 ```
 
-Docker, Python 3 and an initialized clean Emacs checkout matching the staged
+Docker with BuildKit, Python 3 and an initialized clean Emacs checkout matching the staged
 parent pin are required. The wrapper exports only tracked bytes from the exact pinned commit with
 `git archive`; ignored or generated dependency files cannot seed the build.
 Generated configure files, bytecode and build products stay under
 `build/runtime/`; the dependency checkout remains unchanged. The
-wrapper invalidates its generated source/build cache when the submodule pin,
-container recipe, package lock or inner build recipe changes. The container pins the complete installed package closure in
+wrapper invokes Docker on every build and runs the resulting immutable image ID.
+Docker reuses toolchain layers across worktrees. A local key covering the
+submodule pin, image identity and recipes resets generated source and objects
+when those inputs change. Otherwise GNU Make compiles incrementally. Every
+build clears the installation staging tree, installs the matching runtime and
+packages current parent Lisp. The container pins the complete installed package
+closure in
 [scripts/runtime-packages.lock](../scripts/runtime-packages.lock) and records
 actual installed versions in the artifact manifest. The base digest is pinned in
 [scripts/Dockerfile.runtime](../scripts/Dockerfile.runtime). Package repository
@@ -53,8 +57,7 @@ Runtime paths are `/usr/bin/emacs`,
 `/usr/share/emacs/30.2/lisp`, `/usr/share/emacs/30.2/etc` and
 `/usr/share/terminfo`. Minimal `/etc/passwd` and `/etc/group` describe uid/gid 0;
 no account/security system is implied. The guest supplies writable `/work` and
-`/tmp` separately. Neither the runtime archive nor the host smoke file is guest
-persistent storage.
+`/tmp` separately. The runtime archive is not guest persistent storage.
 
 Packaging excludes manuals, desktop integration, external Unix helper programs
 and Lisp source files with matching bytecode. It retains upstream runtime data,
@@ -65,34 +68,28 @@ all resulting bytes are included in the manifest. Runtime availability of an
 upstream Lisp function does not promise a corresponding backend.
 
 The packager limits the image to 128 MiB, at most 8190 entries and kernel-supported
-path/component lengths. The root coordinator owns the guest disk/header format;
-this pipeline supplies the standalone ELF and archive. Repackaging is explicit
-when parent Lisp changes; an old manifest must not be used as evidence for new
-source. The recipe fixes inputs/configuration and records artifacts; it does not
+path/component lengths. The kernel defines the guest disk/header format;
+this pipeline supplies the standalone ELF and archive. `make build` installs
+and repackages the runtime, including current parent Lisp, after incremental
+compilation. See [build and test](build-and-test.md) for the Docker/toolchain
+and worktree ownership model.
+The recipe fixes inputs/configuration and records artifacts; it does not
 claim byte-identical output across arbitrary build hosts or cached build trees.
 
-## Host evidence and ABI discovery
+## Validation scope
 
-`make runtime-smoke` launches the packaged executable/dump in a real host PTY
-with controlled startup (`-Q -nw`) and runtime data paths. It types text, runs a
-command-loop timer, evaluates Lisp and writes/reads a temporary host file before
-exiting. Results and the terminal transcript remain under `build/runtime/`.
+Building and inspecting the static executable establishes its build profile and
+artifact identity. It does not establish that the guest implements every Linux
+ABI operation available on the build host. Unsupported guest operations must
+retain explicit errors; upstream source inspection and actual guest execution
+bound the adapter's supported paths.
 
-To trace the same smoke inside the build container:
+Run `make test-probes` for static-musl startup and memory-protection probes in
+native QEMU, and `make test-guest` for the fourteen integrated Emacs checks.
+Their logs and results are separate from the runtime build manifest. See
+[guest acceptance](mvp.md) and [build and test](build-and-test.md).
 
-```sh
-docker run --rm --platform linux/amd64 \
-  --user "$(id -u):$(id -g)" -v "$PWD:/work:z" -w /work \
-  emacsos-runtime:alpine3.22 python3 scripts/smoke-runtime.py --trace
-```
-
-This produces `host-syscalls.trace`, using the container's real Linux kernel.
-A trace is evidence for exercised paths only. It includes host process creation
-by the harness and may include optional probes that should fail on emacsOS.
-For example, musl can attempt a Unix-domain nscd connection; this is not a reason
-to implement a general socket stack for this MVP. Compare requested semantics,
-results and runtime behavior when deriving the bounded guest ABI.
-
-Host compilation, host PTY success, kernel component probes, guest startup and
-interactive guest acceptance are separate validation levels. This document
-makes no guest boot, file, timer, persistence or isolation claim.
+Host compilation, host tests, kernel component probes, guest startup and
+interactive guest acceptance are separate validation levels. A successful
+runtime build alone makes no guest boot, file, timer, persistence or isolation
+claim.

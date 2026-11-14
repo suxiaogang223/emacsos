@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-SCRIPT = Path(__file__).resolve().parents[1] / "check-contribution.py"
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts/check-contribution.py"
 SPEC = importlib.util.spec_from_file_location("contribution", SCRIPT)
 CONTRIBUTION = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(CONTRIBUTION)

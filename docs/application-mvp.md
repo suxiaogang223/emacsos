@@ -119,7 +119,7 @@ Ordinary Emacs extensions and direct calls can bypass this tracking discipline.
 ## Validation
 
 ```sh
-emacs -Q --batch -L lisp -l tests/emacsos-app-tests.el -f ert-run-tests-batch-and-exit
+make test-lisp
 ```
 
 Host ERT exercises lifecycle, nested context, cleanup barriers, errors, quit,

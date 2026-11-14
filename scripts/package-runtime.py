@@ -39,6 +39,7 @@ def write_newc(root, archive):
                 record = {"path": "/" + name, "directory": True}
             else:
                 raise ValueError(f"Unsupported runtime entry: {name}")
+            record["mode"] = mode
             encoded = name.encode() + b"\0"
             values = [ino, mode, 0, 0, 1, 0, len(data), 0, 0, 0, 0, len(encoded), 0]
             header = b"070701" + b"".join(f"{v:08x}".encode() for v in values)
@@ -62,6 +63,15 @@ def main():
     args = parser.parse_args()
     out = args.output.resolve()
     root = out / "root"
+    parent = Path(__file__).resolve().parent.parent
+    git = lambda *args: subprocess.check_output(["git", "-C", str(parent), *args], text=True).strip()
+    identity = {"parent_commit": git("rev-parse", "HEAD"),
+                "parent_dirty": bool(git("status", "--porcelain"))}
+    sources = {}
+    for directory in [parent / "lisp", *args.site_lisp]:
+        if directory.is_dir():
+            for path in directory.glob("*.el"):
+                sources[path.name] = path
     # Developer manuals and external Unix helpers are outside this runtime profile.
     for relative in ("usr/share/info", "usr/share/man", "usr/share/icons", "usr/share/applications", "usr/share/metainfo", "usr/share/emacs/site-lisp", "usr/share/emacs/30.2/site-lisp", "usr/var", "var"):
         shutil.rmtree(root / relative, ignore_errors=True)
@@ -82,11 +92,8 @@ def main():
             path.unlink()
     site = root / "usr/share/emacs/site-lisp"
     site.mkdir(parents=True, exist_ok=True)
-    parent = Path(__file__).resolve().parent.parent
-    for directory in [parent / "lisp", *args.site_lisp]:
-        if directory.is_dir():
-            for path in directory.glob("*.el"):
-                shutil.copyfile(path, site / path.name)
+    for name, path in sources.items():
+        shutil.copyfile(path, site / name)
     etc = root / "etc"
     etc.mkdir(exist_ok=True)
     (etc / "passwd").write_text("root:x:0:0:emacsOS:/work:/bin/sh\n")
@@ -99,22 +106,21 @@ def main():
         alias.unlink(missing_ok=True)
         alias.symlink_to(dumps[0].name)
     # Expose a standalone artifact for the kernel ELF loader.
-    shutil.copyfile(root / "usr/bin/emacs", out / "emacs")
+    shutil.copyfile(executable, out / "emacs")
     os.chmod(out / "emacs", 0o755)
     entries = write_newc(root, out / "runtime.cpio")
     if (out / "runtime.cpio").stat().st_size > 128 * 1024 * 1024:
         raise ValueError("Runtime archive exceeds the 128 MiB packaging budget")
-    git = lambda *args: subprocess.check_output(["git", "-C", str(parent), *args], text=True).strip()
     manifest = {
         "format": 1,
         "scope": "Host-built static runtime; no guest acceptance implied",
-        "parent_commit": git("rev-parse", "HEAD"),
-        "parent_dirty": bool(git("status", "--porcelain")),
+        **identity,
         "emacs_commit": git("-C", "emacs", "rev-parse", "HEAD"),
         "source_archive_sha256": sha256(out / "source.tar"),
         "profile": "GNU Emacs30.2 / static musl / x86-64 / terminal / pdumper",
         "source_date_epoch": (out / "source-date-epoch.txt").read_text().strip(),
         "build_key": (out / "build-key").read_text().strip(),
+        "container_id": (out / "container-id").read_text().strip(),
         "container_recipe_sha256": sha256(parent / "scripts/Dockerfile.runtime"),
         "package_lock_sha256": sha256(parent / "scripts/runtime-packages.lock"),
         "archive_mtime": 0,

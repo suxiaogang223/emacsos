@@ -12,7 +12,7 @@ import threading
 import unittest
 from unittest.mock import patch
 
-SCRIPTS = Path(__file__).resolve().parent.parent
+SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 
 
 def module(name, path):
@@ -31,7 +31,7 @@ class ServerTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temporary = tempfile.TemporaryDirectory()
         cls.root = Path(cls.temporary.name)
-        files = {"web/index.html": b"<title>emacsOS</title>", "web/machine.js": b"export {};", "web/terminal.css": b"body{}", "build/mvp/emacsos.img": b"disk", "build/mvp/manifest.json": b"{}", "build/web-vendor/out.js": b"module", "build/web-vendor/machine.wasm": b"wasm", "build/web-vendor/rom.data": b"rom", "web/licenses/notice.txt": b"notice", ".git/config": b"must stay private", "AGENTS.md": b"must stay private"}
+        files = {"web/index.html": b"<title>emacsOS</title>", "web/machine.js": b"export {};", "web/terminal.css": b"body{}", "build/image/emacsos.img": b"disk", "build/image/manifest.json": b"{}", "build/web-vendor/out.js": b"module", "build/web-vendor/machine.wasm": b"wasm", "build/web-vendor/rom.data": b"rom", "web/licenses/notice.txt": b"notice", ".git/config": b"must stay private", "AGENTS.md": b"must stay private"}
         for name, data in files.items():
             target = cls.root / name
             target.parent.mkdir(parents=True, exist_ok=True)
