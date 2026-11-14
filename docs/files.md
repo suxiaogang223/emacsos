@@ -13,8 +13,10 @@ directories, rename, unlink, symlinks and metadata. File identity survives renam
 and unlink while an open description retains it. Duplicated descriptors share
 their offset and status; independent opens have independent offsets. Close
 consumes a descriptor, and final unlinked-object release returns its allocation.
-Mutable file storage is limited to 24 MiB total and 8 MiB per regular file, with
-8192 live namespace nodes and 192 descriptors including standard I/O. Symlink
+RAM file storage is limited to 24 MiB total. Both backends limit each regular
+file to 8 MiB and share 8192 live namespace nodes and 192 descriptors including
+standard I/O. DATA contents are streamed through bounded caches and do not
+consume the RAM-file quota. Symlink
 resolution is bounded to 16 traversals. Paths/components are bounded to
 1023/255 bytes. Capacity errors remain visible; writes are not transactional.
 

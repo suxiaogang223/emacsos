@@ -45,3 +45,14 @@ same driver environment. It uses real IndexedDB and Web Locks with a modeled
 COM2 peer to check transaction aborts, independent byte ownership, serialized
 barriers, stale sessions, invalid imports and session-only behavior. These checks
 are separate from actual guest storage acceptance and do not substitute for it.
+
+`node tests/web/disk-browser.cjs URL` runs separate real Wasm guests for automatic
+retention across page close/reopen, single-writer contention, export/import in a
+fresh browser context, rejected imports, and session-only operation when
+IndexedDB is unavailable. `EMACSOS_DISK_REPORT` selects its output directory
+(default `build/web-disk`); `EMACSOS_WEB_ROOT` identifies the local checkout served
+at the URL when it differs from the driver checkout. The report separately
+records driver source, selected server source, served build manifest and actual
+SYSTEM/template/export hashes. These identities do not attest a remote server's
+source. The exported image is retained in that output directory for native
+interoperability checks.

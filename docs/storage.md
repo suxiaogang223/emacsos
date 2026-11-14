@@ -18,7 +18,9 @@ replaced by the launcher. An existing image must be a regular 64 MiB file.
 A disk absent at boot preserves the volatile `/work` behavior. An attached but
 invalid, unsupported or unreadable DATA disk must not become a fresh writable
 filesystem. The guest exposes the mount failure and keeps DATA unavailable;
-remove or replace the image before rebooting. Formatting is an offline build
+remove or replace the image before rebooting. A fatal DATA I/O error keeps subsequent mutations read-only
+and is reported through STATUS without treating ordinary missing-file errors as
+device failure. Formatting is an offline build
 operation, never a recovery action performed on an imported image.
 
 Standard Elisp file operations use the same typed PAL and bounded ABI adapter
