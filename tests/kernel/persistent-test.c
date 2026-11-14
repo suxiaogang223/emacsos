@@ -282,6 +282,8 @@ static void stream(void)
     for (unsigned i = 0; i < sizeof bytes; i++)
         assert(bytes[i] == 0x5a);
     close_file(fd);
+    assert(fs_resize(node("/work/stream3"), FS_FILE_LIMIT + 1) == FS_TOO_BIG);
+    assert(fs_data_health_error() == FS_OK);
     puts("32MiB streams beyond the RAM file quota with bounded allocator use");
 }
 static void replace(void)
@@ -310,13 +312,19 @@ static void recovered(void)
 }
 static void io_failure(void)
 {
+    assert(fs_data_health_error() == FS_OK);
     int fd = open_file("/work/keep", 2);
     assert(fd >= 3);
     assert(call(18, fd, P("changed"), 7, 0, 0) == 7);
     failed_flush = -5;
     assert(call(74, fd, 0, 0, 0, 0) == -5);
+    assert(fs_data_health_error() == FS_IO);
+    assert(open_file("/work/after-fault", 64|2) == -30);
+    assert(fs_data_health_error() == FS_IO);
     assert(fs_freeze_data() == FS_IO && !fs_data_frozen());
+    failed_flush = -110;
     assert(call(3, fd, 0, 0, 0, 0) == -5);
+    assert(fs_data_health_error() == FS_IO && fs_data_last_error() == FS_IO);
     assert(call(3, fd, 0, 0, 0, 0) == -9);
     puts("Sync error propagates and close consumes the descriptor");
 }

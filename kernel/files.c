@@ -750,9 +750,12 @@ static enum fs_error persistent_result(int result)
             e = (enum fs_error)i;
             break;
         }
-    data_error = e;
-    if (e == FS_IO || e == FS_TIMEOUT || e == FS_CORRUPT)
-        data_failed = true;
+    /* Keep the first fatal device/format fault observable after recovery starts. */
+    if (!data_failed) {
+        data_error = e;
+        if (e == FS_IO || e == FS_TIMEOUT || e == FS_CORRUPT)
+            data_failed = true;
+    }
     return e;
 }
 static struct littlefs_metadata metadata(struct fs_node *n)
@@ -891,6 +894,10 @@ uint64_t fs_data_boot_id(void)
 enum fs_error fs_data_last_error(void)
 {
     return data_error;
+}
+enum fs_error fs_data_health_error(void)
+{
+    return data_mounted && data_failed ? data_error : FS_OK;
 }
 
 struct mount_context {

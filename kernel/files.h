@@ -75,6 +75,8 @@ bool fs_data_frozen(void);
 uint64_t fs_data_generation(void);
 uint64_t fs_data_boot_id(void);
 enum fs_error fs_data_last_error(void);
+/* Mounted media faults are latched; ordinary path/capacity errors are not health faults. */
+enum fs_error fs_data_health_error(void);
 long fs_error_errno(enum fs_error);
 
 bool abi_files(unsigned long, const unsigned long[6], long *);
