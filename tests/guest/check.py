@@ -204,6 +204,8 @@ def storage_main():
         source = '(defun retained-computation () (+ 19 23))\n(provide \'retained)\n'
         guest.evaluate('(progn (find-file "/work/retained.el") (erase-buffer) (insert %s) (save-buffer) (set-file-modes buffer-file-name 416) (kill-buffer) (make-symbolic-link "retained.el" "/work/source-link.el") (with-temp-file "/work/.#user-data" (insert "ordinary user filename")) (with-temp-file "/work/stale.el" (insert "previous content")) (make-symbolic-link (format "%%s@%%s.%%d" (user-login-name) (system-name) (emacs-pid)) "/work/.#stale.el") (message (concat "STORE-" "SAVED")))' % json.dumps(source), "STORE-SAVED")
         checks.append("save source, metadata, links and a real prior-boot lock")
+        guest.evaluate('(progn (find-file "/work/retained.el") (setq-local file-precious-flag t) (goto-char (point-max)) (insert ";; Atomic replacement through normal Emacs saving." (string 10)) (save-buffer) (when (buffer-modified-p) (error "Precious save remained modified")) (kill-buffer) (message (concat "STORE-" "PRECIOUS")))', "STORE-PRECIOUS")
+        checks.append("normal precious-file save uses atomic replacement and preserves metadata")
         frozen = channel.call(guest, "FREEZE")
         if frozen["state"] != "FROZEN" or not frozen["frozen"]:
             raise RuntimeError(f"No frozen checkpoint: {frozen}")
