@@ -123,7 +123,7 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         check('Current manifest-matched system boots in QEMU/Wasm');
         await page.waitForFunction(() => document.documentElement.dataset.storageState === 'saved', null, {timeout:60000});
         check('Guest-validated DATA receives an initial local checkpoint');
-        await evaluate('(progn (unless (and (equal (getenv "HOME") "/home/user") (equal (expand-file-name "~") "/home/user") (equal default-directory "/home/user/") (file-directory-p "~/projects") (not (file-exists-p "/work"))) (error "Unexpected home or legacy workspace")) (message (concat "HOME-" "READY")))', 'HOME-READY');
+        await evaluate('(progn (unless (and (equal (getenv "HOME") "/home/user") (equal (expand-file-name "~") "/home/user") (equal (expand-file-name default-directory) "/home/user/") (file-directory-p "~/projects") (not (file-exists-p "/work"))) (error "Unexpected home or legacy workspace")) (message (concat "HOME-" "READY")))', 'HOME-READY');
         check('Default HOME and initial directory use /home/user with a projects directory and no /work alias');
         await page.waitForTimeout(250);
         await page.screenshot({ path: path.join(output, 'running.png'), fullPage: true });
