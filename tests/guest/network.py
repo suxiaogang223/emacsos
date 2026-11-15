@@ -75,6 +75,9 @@ def main():
     try:
         guest.wait(b"*scratch*")
         guest.wait(b"Network: NE2000 IPv4")
+        status = channel.call(guest, "STATUS")
+        if not status["mounted"] or status["frozen"]:
+            raise RuntimeError(f"DATA not mounted normally: {status}")
         check("async TCP, 64 KiB echo, write half-close and timer progress",
               '(progn (setq net-data (make-string 65536 ?x) net-reply "" net-ticks 0) '
               '(setq net-timer (run-at-time 0 0.01 (lambda () (setq net-ticks (1+ net-ticks))))) '

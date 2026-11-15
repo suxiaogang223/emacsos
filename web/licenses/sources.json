@@ -34,5 +34,9 @@
   "zlib-README.txt": {
     "url": "https://raw.githubusercontent.com/madler/zlib/v1.3.1/README",
     "sha256": "d106dcdb2a0b3087cb3a2380b9f00a0bbadc7eb835cd80408f94a2d78d69727d"
+  },
+  "lwip-COPYING.txt": {
+    "url": "https://raw.githubusercontent.com/lwip-tcpip/lwip/77dcd25a72509eb83f72b033d219b1d40cd8eb95/COPYING",
+    "sha256": "ef4aac92e05e87cd1cdc140870ed52206ba03d4a7fe46c1e11d7ffa6c87d252b"
   }
 }
