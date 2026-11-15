@@ -4,8 +4,10 @@ emacsOS runs GNU Emacs 30.2 on its own x86-64 C kernel. Elisp is the public
 programming interface. The first MVP provides serial-terminal editing and
 evaluation, working files, and trusted cooperative applications managed from
 `*Processes*`. A littlefs DATA disk retains `/etc`, `/home`, `/tmp` and `/var` across boots; the browser
-automatically initializes and checkpoints it. Networking and isolated processes
-remain future work.
+automatically initializes and checkpoints it. A bounded outbound IPv4 TCP backend
+uses NE2000 and lwIP; the browser server supplies its network bridge automatically.
+DNS, TLS and isolated processes remain future work. See [guest networking](docs/network.md)
+for the implemented subset and separate acceptance gates.
 
 ## Build and run
 
@@ -23,7 +25,7 @@ The first build compiles the kernel, static Emacs and its matching portable dump
 in Docker toolchains. Later builds share Docker layers and use incremental
 compilation in this worktree's build directory. Runtime installation and packaging
 run each time. The image is `build/image/emacsos.img`; the launcher uses QEMU's
-fixed PC profile, 1 GiB RAM, COM1 and no network. Exit QEMU with `C-a x`; send Emacs a literal `C-a` with `C-a a`.
+fixed PC profile, 1 GiB RAM, COM1 and NE2000 ISA with QEMU user networking. Exit QEMU with `C-a x`; send Emacs a literal `C-a` with `C-a a`.
 
 Use `make test` for fast host tests and `make check` for host tests, contribution
 checks, kernel probes and native guest acceptance. Host tests additionally need
@@ -76,6 +78,9 @@ checkpoints in the browser for the same origin. Optional disk-image import and
 export support moving your files. Guest saves and completed browser checkpoints
 are distinct boundaries; retention failures remain visible. See
 [browser controls and hosting](docs/web.md) for controls, limits and asset provenance.
+The same server automatically bridges guest Ethernet to a private QEMU SLIRP
+session. An unavailable bridge permits offline boot; link status and guest TCP
+results are separate. See [network paths and limits](docs/network.md).
 The optional [browser checks](docs/web-browser-checks.md) exercise keyboard,
 file and machine-control behavior against a fresh guest.
 
@@ -96,8 +101,8 @@ Read the [architecture](docs/design.md), [runtime contract](docs/runtime-port.md
 The runtime uses static musl and a bounded Linux x86-64 ABI adapter over the
 parent kernel and file backend. It does not provide general Linux compatibility.
 
-`third_party/littlefs/` pins the official filesystem dependency; its sources
-remain outside the parent tree. `emacs/` pins [our GNU Emacs fork](https://github.com/suxiaogang223/emacs), whose
+`third_party/littlefs/` and `third_party/lwip/` pin official upstream filesystem
+and networking dependencies; their sources remain outside the parent tree. `emacs/` pins [our GNU Emacs fork](https://github.com/suxiaogang223/emacs), whose
 only changes are provenance documentation. System policy stays in the parent.
 Public documentation, comments and community discussion use English; private
 user discussion follows the user's preference. See [CONTRIBUTING.md](CONTRIBUTING.md).

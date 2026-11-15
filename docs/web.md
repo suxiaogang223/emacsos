@@ -7,7 +7,8 @@ JavaScript handles the display, keyboard and machine controls. Application and
 file operations remain in the guest.
 
 The profile is fixed: one x86-64 machine, 1 GiB guest memory, a raw system disk,
-no network device, no graphical adapter output, and no QEMU monitor. The browser
+an NE2000 ISA network device when the same-origin bridge is available, no
+graphical adapter output, and no QEMU monitor. The browser
 runtime's prebuilt Wasm heap reserves about 2.25 GiB of address space, in addition
 to browser and image overhead. Use a desktop browser with WebAssembly threads
 and enough available memory. Boot can take tens of seconds; the progress bar
@@ -34,7 +35,10 @@ make web-serve
 The server defaults to loopback. Override `WEB_HOST` and `WEB_PORT` when needed,
 or invoke `python3 scripts/serve-web.py --help`. It exposes an explicit list of
 UI, vendor, image, manifest and license routes. It does not expose the repository
-directory or accept uploaded files. Run `make test-web` for route, MIME,
+directory or accept uploaded files. The `/network` endpoint additionally
+provides a same-origin binary WebSocket upgrade and starts a private headless
+QEMU SLIRP relay automatically. Native `qemu-system-x86_64` is required for this
+online path; its absence permits offline boot. Run `make test-web` for route, MIME,
 isolation-header, TLS and asset-cache tests.
 
 ## Access from another computer
@@ -64,7 +68,9 @@ python3 scripts/serve-web.py --host 0.0.0.0 --port 18082 \
 
 A reverse proxy or static host must preserve the isolation headers, serve
 `.wasm` as `application/wasm`, and map the same allowlisted URLs. Serve vendor
-files from the same origin. The local server has no authentication and is for
+files from the same origin, and forward `/network` WebSocket upgrades for guest
+networking. HTTPS uses WSS automatically; SSH forwarding needs no additional
+port. The local server has no authentication and is for
 development; choose the listening address deliberately.
 
 ## Controls and lifecycle
@@ -91,6 +97,23 @@ Guest runtime-exit and kernel-fault diagnostics update the machine status, as do
 reported emulator exits or aborts. Machine diagnostics observe COM1 serial output; DATA
 checkpoints use a separate COM2 control protocol. A guest that hangs without a diagnostic
 can remain in its last displayed state.
+
+## Network link
+
+POWER automatically connects the guest Ethernet transport when the server
+advertises it. The network indicator reports link status separately from boot
+and DATA. A link connection does not prove a TCP destination is reachable.
+Closing the page or stopping the server tears down its relay. After a link
+disconnect, restart to reconnect; existing streams do not resume transparently.
+Offline boot still supports Lisp and the available files.
+
+Each connection owns a separate headless host QEMU SLIRP session, with at most
+four sessions. It requires no manual proxy or privileged TAP setup. The guest
+runs TCP/IP through NE2000/lwIP; the browser forwards Ethernet rather than doing
+HTTP requests on the guest's behalf. `10.0.2.2` identifies the server host, which
+may differ from the browser computer. Origin checks do not authenticate users
+or prevent access to services reachable by that host. See [networking](network.md)
+for supported APIs, resource bounds, deployment and validation limits.
 
 ## DATA controls
 
@@ -121,7 +144,7 @@ data or browser eviction can remove it; export supplies a portable backup. A
 Web Lock prevents simultaneous writers in two tabs. Browser environments without
 ownership/retention support use an explicitly labeled session-only disk. See
 [storage](storage.md) for sync, recovery and failure boundaries. This adds no
-guest networking or fault isolation.
+fault isolation; networking has its own transport and acceptance gates.
 
 ## Asset identity and licenses
 

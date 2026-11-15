@@ -12,10 +12,13 @@ emacsos/
 │   ├── files.c / file_abi.c # Readonly namespace/DATA files and ABI translation
 │   ├── block.c / littlefs_backend.c # DATA device and persistent objects
 │   ├── storage_control.c  # Safe COM2 checkpoint barrier
+│   ├── network.c / ne2000.c # Bounded IPv4 TCP streams and ISA device
+│   ├── lwipopts.h / arch/ / lwip-libc/ # Freestanding lwIP port
 │   ├── memory.c / hardware.c # Memory, serial and clocks
 │   └── kernel.ld          # Link layout
 ├── lisp/                  # Trusted application policy and counter demo
 ├── third_party/littlefs/  # Pinned official littlefs submodule
+├── third_party/lwip/      # Pinned official lwIP mirror submodule
 ├── tools/                 # Offline DATA template formatter
 ├── tests/                 # Kernel, Lisp, tooling, guest and browser checks
 ├── web/                   # Retro console, browser bridge and asset identities
@@ -38,7 +41,10 @@ git clone --single-branch --branch main --recurse-submodules https://github.com/
 git submodule update --init --recursive
 ```
 
-The parent gitlinks pin the exact Emacs fork and official littlefs commits.
+The parent gitlinks pin the exact Emacs fork, official littlefs and official
+lwIP mirror commits. Networking adapters/configuration belong to the parent.
+`third_party/lwip.json` records release identity and compiled-source/license hashes;
+see [networking](network.md) for the guest/host boundary.
 The littlefs release identity and compiled-source hashes are recorded in
 `third_party/littlefs.json`; its unchanged sources and license stay upstream.
 Our filesystem adapter and freestanding configuration remain in `kernel/`. Do not float it implicitly with
@@ -54,7 +60,8 @@ incremental behavior and focused commands.
 [acceptance](mvp.md) and [runtime build](runtime-build.md). `make web` builds and
 serves the image through the pinned browser runtime; `make test-web` checks the
 asset verification and allowlisted server. Browser bridge, page and notices
-belong to the parent. Downloaded vendor assets stay in ignored
+belong to the parent. `scripts/network.py` owns the automatic per-session
+WebSocket-to-headless-QEMU SLIRP relay; guest TCP/IP stays in the kernel. Downloaded vendor assets stay in ignored
 `build/web-vendor`; see [browser hosting](web.md).
 
 Parent `lisp/` now contains trusted application policy and the counter example;

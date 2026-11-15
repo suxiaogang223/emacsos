@@ -10,15 +10,18 @@ Read the [design](docs/design.md), [roadmap](docs/roadmap.md) and
 runtime runs a trusted Emacs with cooperative applications on the fixed QEMU
 profile. All writable files use littlefs DATA at `/etc`, `/home`, `/tmp` and `/var`;
 missing or rejected DATA enters read-only recovery. Describe that bounded
-behavior separately from networking and protected processes; see
-[core acceptance](docs/mvp.md) and [storage](docs/storage.md).
+behavior separately from the bounded numeric IPv4 TCP backend and protected
+processes; see [core acceptance](docs/mvp.md), [storage](docs/storage.md) and
+[networking](docs/network.md). Native kernel TCP, real Emacs and real browser
+acceptance are separate claims; do not imply DNS, TLS or isolation.
 
 ## Source ownership
 
-Initialize both `emacs/` and `third_party/littlefs/` with
+Initialize `emacs/`, `third_party/littlefs/` and `third_party/lwip/` with
 `git submodule update --init --recursive`. The littlefs submodule pins an official
-upstream commit; its adapter/configuration belongs in the parent kernel.
-Update `third_party/littlefs.json` together with an intentional littlefs pin change. Necessary
+upstream commit, as does lwIP; adapters/configuration belong in the parent kernel.
+Update the matching `third_party/littlefs.json` or `third_party/lwip.json` receipt
+together with an intentional pin change. Necessary
 runtime modifications belong to the fork; parent system features and future PAL
 backends belong here. Publish fork commits before updating the parent gitlink.
 Stage the intended pin before contribution checks. CI requires a clean,

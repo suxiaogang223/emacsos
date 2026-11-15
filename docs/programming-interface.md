@@ -3,8 +3,9 @@
 Elisp is the intended public language. Reuse standard evaluation, library
 loading, buffers, file functions and network connection objects. Buffers and
 Eshell are tool clients of those APIs. The [MVP](mvp.md) runs interactive guest
-Elisp and file APIs; F1 supplies littlefs DATA for all writable directories. Networking and external subprocesses remain
-unimplemented. [The architecture](design.md) defines the implementation boundaries;
+Elisp and file APIs; F1 supplies littlefs DATA for all writable directories.
+The numeric IPv4 TCP backend now implements the initial stream subset described
+in [networking](network.md); external subprocesses remain unimplemented. [The architecture](design.md) defines the implementation boundaries;
 [runtime support](runtime-port.md) explains the first static Emacs/musl port.
 
 ## API and resource rules
@@ -20,7 +21,7 @@ level-style and rechecked after wake; deadlines are monotonic. Close consumes
 the handle even if final cleanup fails; duplicated descriptors share an open
 description/offset, separate opens do not. The implemented profile and bounds
 are recorded in [kernel bootstrap](kernel-bootstrap.md)
-and [files](files.md).
+[files](files.md) and [networking](network.md).
 Neither a handle nor an Emacs process object establishes isolation.
 
 ## Application management
@@ -65,19 +66,22 @@ manager or configuration-snapshot protocol is required for the basic file interf
 
 ## Network APIs
 
-N0 remains open: prove native and future Wasm transport feasibility and disclose
-any host bridge before selecting a NIC, protocol stack or event transport.
-A host mock or direct JavaScript fetch is not a working guest network path.
+N0 proved bidirectional Ethernet on native QEMU and the pinned Wasm artifact,
+including the explicit host bridge. N1 implements outbound numeric IPv4 TCP
+through standard `make-network-process`, plain `open-network-stream`,
+`process-send-string`, filters/sentinels, status, `process-send-eof` and
+`delete-process`. [Networking](network.md) records the supported profile,
+limits and separate host, native kernel, Emacs and browser validation gates.
+A host mock or direct JavaScript fetch never establishes guest networking.
 
-N1 then supports outbound TCP to numeric addresses via `make-network-process`,
-`open-network-stream`, `process-send-string`, filters/sentinels, status and
-`delete-process`. Specify connect progress, short send/receive, readiness, EOF,
-timeouts, real failure and cleanup. `:nowait` does not guarantee every later
-send is nonblocking; document actual behavior. Callbacks must return promptly;
-continuous Lisp/C computation can still block interaction.
+Connect progress, partial I/O, would-block, queued-data-before-EOF, original
+errors and final-close ownership remain explicit. `:nowait t` does not guarantee
+every later send is nonblocking. Callbacks must return promptly; continuous
+Lisp/C computation can still block interaction. The browser server automatically
+bridges Ethernet to a per-session headless QEMU SLIRP backend; this dependency
+and its host-access scope are part of the supported deployment.
 
-N2 adds DNS and a controlled HTTP-to-file program. TLS/HTTPS, strong entropy,
-listening sockets and UDP are separate decisions. The eventual program is
-authored inside emacsOS, receives data and saves/reads it through standard APIs;
-continuing from retained source requires F1. None of those capabilities is
-implemented by the MVP.
+The numeric HTTP-to-file example uses TCP and F1 without DNS. Its separate-boot
+and browser-checkpoint gates must pass before retention is claimed. DNS remains
+the deferred part of N2; TLS/HTTPS, secure randomness, listening sockets, UDP and
+IPv6 are not implemented.
