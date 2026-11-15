@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include "../../third_party/littlefs/lfs.h"
 
 static int disk_fd, failed_writes, failed_flush;
 static unsigned writes, cut, flushes, fail_flush_at;
@@ -183,6 +184,30 @@ static void seed(void)
     assert(call(82, P("/work/movable"), P("/home/user/movable"), 0, 0, 0) == 0);
     assert(call(82, P("/home/user/movable"), P("/tmp/movable"), 0, 0, 0) == 0);
     assert(call(82, P("/tmp/movable"), P("/work/moved-back"), 0, 0, 0) == 0);
+    int cross_source = open_file("/work/cross-source", 64 | 2);
+    int cross_old = open_file("/tmp/cross-destination", 64 | 2);
+    assert(cross_source >= 3 && cross_old >= 3);
+    assert(call(1, cross_source, P("source"), 6, 0, 0) == 6);
+    assert(call(1, cross_old, P("old target"), 10, 0, 0) == 10);
+    assert(call(82, P("/work/cross-source"), P("/tmp/cross-destination"), 0, 0, 0) == 0);
+    assert(call(17, cross_old, P(buffer), sizeof buffer, 0, 0) == 10 &&
+           !memcmp(buffer, "old target", 10));
+    assert(call(82, P("/tmp/cross-destination"), P("/home/user/cross-open"), 0, 0, 0) == 0);
+    assert(call(17, cross_source, P(buffer), sizeof buffer, 0, 0) == 6 &&
+           !memcmp(buffer, "source", 6));
+    struct stat source_info, named_info, old_info;
+    assert(call(5, cross_source, P(&source_info), 0, 0, 0) == 0);
+    assert(call(4, P("/home/user/cross-open"), P(&named_info), 0, 0, 0) == 0);
+    assert(call(5, cross_old, P(&old_info), 0, 0, 0) == 0);
+    assert(source_info.st_ino == named_info.st_ino && old_info.st_nlink == 0);
+    close_file(cross_source);
+    close_file(cross_old);
+    assert(call(88, P("/home/user/cross-open"), P("/tmp/cross-link"), 0, 0, 0) == 0);
+    check_contents("/tmp/cross-link", "source");
+    assert(call(83, P("/tmp/cross-dir"), 0700, 0, 0, 0) == 0);
+    write_file("/tmp/cross-dir/child", "cross-directory child");
+    assert(call(82, P("/tmp/cross-dir"), P("/home/user/cross-dir"), 0, 0, 0) == 0);
+    assert(call(82, P("/home/user/cross-dir"), P("/work/cross-dir"), 0, 0, 0) == 0);
     assert(open_file("/arbitrary-file", 64 | 2) == -30);
     assert(call(84, P("/work"), 0, 0, 0, 0) == -16);
 
@@ -197,6 +222,9 @@ static void seed(void)
     assert(open_file("/work/blocked", 64 | 2) == -16);
     assert(open_file("/home/user/blocked", 64 | 2) == -16);
     assert(open_file("/tmp/blocked", 64 | 2) == -16);
+    assert(call(82, P("/work/moved-back"), P("/tmp/frozen-move"), 0, 0, 0) == -16);
+    assert(fs_chmod(node("/home/user/home-file"), 0600) == FS_BUSY);
+    check_contents("/tmp/temp-file", "persistent temporary directory");
     assert(fs_chmod(node("/work/keep"), 0600) == FS_BUSY);
     assert(fs_resize(node("/work/keep"), 0) == FS_BUSY);
     assert(call(87, P("/work/keep"), 0, 0, 0, 0) == -16);
@@ -205,7 +233,7 @@ static void seed(void)
     fs_thaw_data();
     assert(!fs_data_frozen() && fs_data_generation() > generation);
     write_file("/work/source", "new destination");
-    write_file("/work/destination", "old destination");
+    write_file("/home/user/destination", "old destination");
     assert(fs_sync_all() == FS_OK);
     printf("Persistent PAL/ABI semantics pass; peak allocator=%zu\n", peak);
 }
@@ -217,6 +245,9 @@ static void verify(void)
     check_contents("/home/user/home-file", "persistent home");
     check_contents("/tmp/temp-file", "persistent temporary directory");
     check_contents("/work/moved-back", "same volume");
+    check_contents("/home/user/cross-open", "source");
+    check_contents("/tmp/cross-link", "source");
+    check_contents("/work/cross-dir/child", "cross-directory child");
     struct fs_info info;
     fs_info(node("/work/keep"), &info);
     assert(info.mode == 0640 && info.modified_ns == 200);
@@ -243,10 +274,13 @@ static void create_case(const char *kind, bool recovery)
     enum fs_kind type = !strcmp(kind, "directory") ? FS_DIRECTORY
                         : !strcmp(kind, "symlink") ? FS_SYMLINK
                                                    : FS_REGULAR;
+    const char *path = type == FS_DIRECTORY ? "/home/user/created"
+                       : type == FS_SYMLINK ? "/tmp/created"
+                                            : "/work/created";
     if (!recovery) {
         arm_fault();
         struct fs_node *n;
-        enum fs_error e = fs_create(fs_root(), "/work/created", type, target, 0711, true, &n);
+        enum fs_error e = fs_create(fs_root(), path, type, target, 0711, true, &n);
         if (fail_flush_at)
             assert(e == FS_IO);
         else
@@ -255,7 +289,7 @@ static void create_case(const char *kind, bool recovery)
         return;
     }
     struct fs_node *n;
-    enum fs_error e = fs_lookup(fs_root(), "/work/created", false, &n);
+    enum fs_error e = fs_lookup(fs_root(), path, false, &n);
     assert(e == FS_OK || e == FS_NOT_FOUND);
     if (e == FS_NOT_FOUND)
         return;
@@ -339,10 +373,10 @@ static void capacity(void)
 }
 static void replace(void)
 {
-    int old = open_file("/work/destination", 0);
+    int old = open_file("/home/user/destination", 0);
     assert(old >= 3);
     arm_fault();
-    assert(call(82, P("/work/source"), P("/work/destination"), 0, 0, 0) == 0);
+    assert(call(82, P("/work/source"), P("/home/user/destination"), 0, 0, 0) == 0);
     char bytes[32];
     assert(call(0, old, P(bytes), sizeof bytes, 0, 0) == 15 &&
            !memcmp(bytes, "old destination", 15));
@@ -355,10 +389,10 @@ static void recovered(void)
     enum fs_error found = fs_lookup(fs_root(), "/work/source", false, &source);
     if (found == FS_OK) {
         check_contents("/work/source", "new destination");
-        check_contents("/work/destination", "old destination");
+        check_contents("/home/user/destination", "old destination");
     } else {
         assert(found == FS_NOT_FOUND);
-        check_contents("/work/destination", "new destination");
+        check_contents("/home/user/destination", "new destination");
     }
 }
 static void io_failure(void)
@@ -379,6 +413,116 @@ static void io_failure(void)
     assert(call(3, fd, 0, 0, 0, 0) == -9);
     puts("Sync error propagates and close consumes the descriptor");
 }
+static int fixture_read(const struct lfs_config *c, lfs_block_t b, lfs_off_t o, void *p,
+                        lfs_size_t n)
+{
+    (void)c;
+    return data_disk_read((uint64_t)b * 8 + o / 512, p, n / 512);
+}
+static int fixture_prog(const struct lfs_config *c, lfs_block_t b, lfs_off_t o, const void *p,
+                        lfs_size_t n)
+{
+    (void)c;
+    return data_disk_write((uint64_t)b * 8 + o / 512, p, n / 512);
+}
+static int fixture_erase(const struct lfs_config *c, lfs_block_t b)
+{
+    (void)c;
+    unsigned char bytes[512];
+    memset(bytes, 255, sizeof bytes);
+    for (unsigned i = 0; i < 8; i++) {
+        int e = data_disk_write((uint64_t)b * 8 + i, bytes, 1);
+        if (e)
+            return e;
+    }
+    return 0;
+}
+static int fixture_sync(const struct lfs_config *c)
+{
+    (void)c;
+    return data_disk_flush();
+}
+static void fixture_bytes64(unsigned char *p, uint64_t n)
+{
+    for (unsigned i = 0; i < 8; i++) {
+        p[i] = (unsigned char)n;
+        n >>= 8;
+    }
+}
+static void fixture_file(lfs_t *lfs, const char *path, const void *data, size_t size,
+                         void *metadata)
+{
+    unsigned char cache[512];
+    struct lfs_attr attr = {.type = 0xe0, .buffer = metadata, .size = 48};
+    const struct lfs_file_config cfg = {
+        .buffer = cache, .attrs = metadata ? &attr : NULL, .attr_count = metadata ? 1 : 0};
+    lfs_file_t f;
+    assert(!lfs_file_opencfg(lfs, &f, path, LFS_O_WRONLY | LFS_O_CREAT | LFS_O_EXCL, &cfg));
+    assert(lfs_file_write(lfs, &f, data, size) == (lfs_ssize_t)size);
+    assert(!lfs_file_close(lfs, &f));
+}
+static void damage_fixture(const char *kind)
+{
+    unsigned char read[512], prog[512], look[128];
+    struct lfs_config cfg = {.read = fixture_read,
+                             .prog = fixture_prog,
+                             .erase = fixture_erase,
+                             .sync = fixture_sync,
+                             .read_size = 512,
+                             .prog_size = 512,
+                             .block_size = 4096,
+                             .block_count = 16384,
+                             .block_cycles = 500,
+                             .cache_size = 512,
+                             .lookahead_size = 128,
+                             .read_buffer = read,
+                             .prog_buffer = prog,
+                             .lookahead_buffer = look,
+                             .name_max = 255,
+                             .file_max = FS_FILE_LIMIT,
+                             .attr_max = 1022};
+    lfs_t lfs;
+    assert(!lfs_mount(&lfs, &cfg));
+    if (!strcmp(kind, "legacy")) {
+        assert(!lfs_remove(&lfs, "/tree/home/user"));
+        assert(!lfs_remove(&lfs, "/tree/home"));
+        assert(!lfs_remove(&lfs, "/tree/work"));
+        assert(!lfs_remove(&lfs, "/tree/tmp"));
+        unsigned char metadata[48], id[8];
+        assert(lfs_getattr(&lfs, "/tree", 0xe0, metadata, sizeof metadata) == 48);
+        fixture_bytes64(metadata + 8, 2);
+        fixture_bytes64(metadata + 16, (uint64_t)0600 << 32);
+        fixture_bytes64(id, 2);
+        fixture_file(&lfs, "/objects/0000000000000002", "legacy file remains intact", 26, metadata);
+        fixture_file(&lfs, "/tree/keep", id, sizeof id, NULL);
+        fixture_bytes64(id, 3);
+        assert(!lfs_setattr(&lfs, "/", 0xf1, id, sizeof id));
+        assert(!lfs_setattr(&lfs, "/", 0xf0, "EOSDATA1", 8));
+    } else if (!strcmp(kind, "missing"))
+        assert(!lfs_remove(&lfs, "/tree/tmp"));
+    else if (!strcmp(kind, "extra"))
+        assert(!lfs_rename(&lfs, "/tree/tmp", "/tree/unexpected"));
+    else if (!strcmp(kind, "duplicate")) {
+        unsigned char metadata[48];
+        assert(lfs_getattr(&lfs, "/tree/work", 0xe0, metadata, sizeof metadata) == 48);
+        fixture_bytes64(metadata + 8, 3);
+        assert(!lfs_setattr(&lfs, "/tree/work", 0xe0, metadata, sizeof metadata));
+    } else if (!strcmp(kind, "wrong-type")) {
+        unsigned char metadata[48], id[8];
+        assert(lfs_getattr(&lfs, "/tree/tmp", 0xe0, metadata, sizeof metadata) == 48);
+        assert(!lfs_remove(&lfs, "/tree/tmp"));
+        fixture_bytes64(metadata + 8, 6);
+        fixture_bytes64(metadata + 16, (uint64_t)0600 << 32);
+        fixture_bytes64(id, 6);
+        fixture_file(&lfs, "/objects/0000000000000006", "", 0, metadata);
+        fixture_file(&lfs, "/tree/tmp", id, sizeof id, NULL);
+        fixture_bytes64(id, 7);
+        assert(!lfs_setattr(&lfs, "/", 0xf1, id, sizeof id));
+    } else
+        abort();
+    assert(!lfs_unmount(&lfs));
+    assert(!data_disk_flush());
+}
 int main(int argc, char **argv)
 {
     assert(argc == 3);
@@ -390,14 +534,22 @@ int main(int argc, char **argv)
         close(disk_fd);
         return 0;
     }
-    if (!strcmp(argv[2], "reject")) {
+    if (!strncmp(argv[2], "damage-", 7)) {
+        damage_fixture(argv[2] + 7);
+        close(disk_fd);
+        return 0;
+    }
+    if (!strcmp(argv[2], "reject") || !strcmp(argv[2], "reject-legacy")) {
         fs_init(NULL, 0);
-        assert(fs_mount_data() != FS_OK && !fs_data_mounted());
+        enum fs_error rejected = fs_mount_data();
+        assert(rejected != FS_OK && !fs_data_mounted());
+        if (!strcmp(argv[2], "reject-legacy"))
+            assert(rejected == FS_NOT_SUPPORTED);
         assert(writes == 0);
         assert(open_file("/work/unsafe", 64 | 2) == -30);
         assert(open_file("/home/user/unsafe", 64 | 2) == -30);
         assert(open_file("/tmp/unsafe", 64 | 2) == -30);
-        puts("Unrecognized DATA remains unchanged and /work is read-only");
+        puts("Rejected DATA remains unchanged and all file directories are read-only");
         close(disk_fd);
         return 0;
     }
