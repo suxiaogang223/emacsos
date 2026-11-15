@@ -97,7 +97,7 @@ def main():
         check("plain open-network-stream HTTP download, hash, save and explicit load",
               '(progn (require \'network-stream) (setq net-http-buffer (generate-new-buffer " *controlled-http*")) '
               '(setq net-http (open-network-stream "guest-http" net-http-buffer "10.0.2.2" %d :type \'plain :coding \'binary)) '
-              '(set-process-query-on-exit-flag net-http nil) (set-process-sentinel net-http #'ignore) (set-process-coding-system net-http \'binary \'binary) '
+              '(set-process-query-on-exit-flag net-http nil) (set-process-sentinel net-http \'ignore) (set-process-coding-system net-http \'binary \'binary) '
               '(process-send-string net-http "GET /source.el HTTP/1.0\\r\\nHost: fixture\\r\\n\\r\\n") '
               '(while (memq (process-status net-http) \'(open connect)) (accept-process-output net-http 0.1)) '
               '(with-current-buffer net-http-buffer (goto-char (point-min)) (unless (search-forward "\\r\\n\\r\\n" nil t) (error "Missing HTTP header")) '
