@@ -8,7 +8,9 @@ const { execFileSync } = require('node:child_process');
 
 const url = process.argv[2] || 'http://127.0.0.1:18082/';
 const output = path.resolve(process.env.EMACSOS_WEB_REPORT || 'build/web-network');
-const payload = `browser-network-${Date.now()}-${'x'.repeat(2048)}`;
+const payloadPrefix = `browser-network-${Date.now()}-`;
+const payload = payloadPrefix + 'x'.repeat(2048);
+const guestPayload = `(concat ${JSON.stringify(payloadPrefix)} (make-string 2048 ?x))`;
 const checks = [], errors = [], sockets = new Set();
 const report = { passed: false, url, checks, errors,
     scope: 'Actual pinned QEMU/Wasm guest TCP to a local numeric-address fixture, file save, completed DATA checkpoint and restart. No DNS or TLS claim.' };
@@ -89,7 +91,7 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         'The actual fetched SYSTEM bytes must match the build manifest');
     checks.push('Automatic same-origin network link and actual Emacs boot');
     // Timer progress occurs while the fixture intentionally delays the final bytes.
-    const setup = `(progn (setq eos-net-payload ${JSON.stringify(payload)} eos-net-reply "" eos-net-ticks 0) (setq eos-net-timer (run-at-time 0 0.05 (lambda () (setq eos-net-ticks (1+ eos-net-ticks))))) (setq eos-net-process (make-network-process :name "browser-network" :host "10.0.2.2" :service ${port} :family 'ipv4 :nowait t :coding 'binary :noquery t :sentinel (lambda (p _e) (when (eq (process-status p) 'open) (process-send-string p (substring eos-net-payload 0 17)) (process-send-string p (substring eos-net-payload 17)))) :filter (lambda (p bytes) (setq eos-net-reply (concat eos-net-reply bytes)) (when (= (length eos-net-reply) (length eos-net-payload)) (cancel-timer eos-net-timer) (if (and (equal eos-net-reply eos-net-payload) (> eos-net-ticks 0)) (progn (with-temp-file "/home/user/projects/browser-network.txt" (insert eos-net-reply)) (message (concat "WEB-NET-ECHO-" "SAVE-PASS"))) (error "Network payload or timer mismatch")) (delete-process p))))) (message "WEB-NET-STARTED"))`;
+    const setup = `(progn (setq eos-net-payload ${guestPayload} eos-net-reply "" eos-net-ticks 0) (setq eos-net-timer (run-at-time 0 0.05 (lambda () (setq eos-net-ticks (1+ eos-net-ticks))))) (setq eos-net-process (make-network-process :name "browser-network" :host "10.0.2.2" :service ${port} :family 'ipv4 :nowait t :coding 'binary :noquery t :sentinel (lambda (p _e) (when (eq (process-status p) 'open) (process-send-string p (substring eos-net-payload 0 17)) (process-send-string p (substring eos-net-payload 17)))) :filter (lambda (p bytes) (setq eos-net-reply (concat eos-net-reply bytes)) (when (= (length eos-net-reply) (length eos-net-payload)) (cancel-timer eos-net-timer) (if (and (equal eos-net-reply eos-net-payload) (> eos-net-ticks 0)) (progn (with-temp-file "/home/user/projects/browser-network.txt" (insert eos-net-reply)) (message (concat "WEB-NET-ECHO-" "SAVE-PASS"))) (error "Network payload or timer mismatch")) (delete-process p))))) (message "WEB-NET-STARTED"))`;
     await evaluate(setup, 'WEB-NET-ECHO-SAVE-PASS');
     assert.equal(received.toString(), payload);
     checks.push('Guest nowait TCP, fragmented echo, timer progress and DATA save');
@@ -100,7 +102,7 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
     await Promise.all([page.waitForNavigation({ waitUntil: 'domcontentloaded' }), page.click('#reset')]);
     await page.click('#boot');
     await waitState('running');
-    await evaluate(`(message "WEB-NET-RETAINED:%s" (equal (with-temp-buffer (insert-file-contents "/home/user/projects/browser-network.txt") (buffer-string)) ${JSON.stringify(payload)}))`, 'WEB-NET-RETAINED:t');
+    await evaluate(`(message "WEB-NET-RETAINED:%s" (equal (with-temp-buffer (insert-file-contents "/home/user/projects/browser-network.txt") (buffer-string)) ${guestPayload}))`, 'WEB-NET-RETAINED:t');
     checks.push('Restart restores exact network-received file');
     assert.deepEqual(errors, []);
     fs.writeFileSync(path.join(output, 'serial.txt'), await page.evaluate(() => window.__serial));
