@@ -88,11 +88,11 @@ async function metadata(page) {
         };
     }));
 }
-async function waitCheckpoint(page,previous) {
+async function waitCheckpoint(page,previous,generation) {
     const deadline=Date.now()+30000;
     while(Date.now()<deadline){
         const next=await metadata(page);
-        if(next&&next.sha256!==previous.sha256)return next;
+        if(next&&next.sha256!==previous.sha256&&BigInt("0x"+next.generation)>=BigInt("0x"+generation))return next;
         await new Promise(resolve=>setTimeout(resolve,500));
     }
     throw new Error('Automatic DATA checkpoint did not retain new bytes');
@@ -113,7 +113,12 @@ async function verifySource(page) {
         const initial=await metadata(page);
         await evaluate(page,'(progn (unless (and (equal (getenv "HOME") "/home/user") (equal (expand-file-name default-directory) "/home/user/") (file-directory-p "~/projects") (file-directory-p "/var/log") (file-directory-p "/var/cache") (not (file-exists-p "/work"))) (error "Unexpected Unix layout")) (message (concat "DISK-" "HOME")))','DISK-HOME');
         await evaluate(page,'(progn (find-file "/home/user/projects/browser-retained.el") (insert "(setq browser-retained-number 73)\\n") (save-buffer) (kill-buffer) (set-file-modes "/home/user/projects/browser-retained.el" 416) (make-directory "/home/user/projects/browser-dir") (make-symbolic-link "../browser-retained.el" "/home/user/projects/browser-dir/source.el") (with-temp-file "/home/user/browser-note.txt" (insert "persistent home")) (with-temp-file "/tmp/browser-temp.txt" (insert "ordinary temporary directory")) (with-temp-file "/etc/emacsos/browser.conf" (insert "saved configuration")) (with-temp-file "/var/lib/emacsos/browser-state.txt" (insert "saved application state")) (message (concat "DISK-" "CREATED")))','DISK-CREATED');
-        report.automaticCheckpoint=await waitCheckpoint(page,initial);
+        // Startup can retain a checkpoint before this form finishes. Wait for
+        // the guest generation after all intended files have been saved, rather
+        // than accepting an earlier snapshot merely because its hash changed.
+        report.creationStatus=await page.evaluate(()=>window.__testDisk.serialize(()=>window.__testDisk.control.request("STATUS")));
+        assert(report.creationStatus.mounted&&!report.creationStatus.errno&&!report.creationStatus.frozen);
+        report.automaticCheckpoint=await waitCheckpoint(page,initial,report.creationStatus.generation);
         log('Automatic first DATA disk supplies HOME/projects and retains source, configuration, state and temporary files');
         await page.evaluate(async()=>{
             const disk=window.__testDisk;
