@@ -13,7 +13,7 @@ const checks = [], errors = [], sockets = new Set();
 const report = { passed: false, url, checks, errors,
     scope: 'Actual pinned QEMU/Wasm guest TCP to a local numeric-address fixture, file save, completed DATA checkpoint and restart. No DNS or TLS claim.' };
 fs.mkdirSync(output, { recursive: true });
-let browser;
+let browser, page;
 let received = Buffer.alloc(0);
 const fixture = net.createServer(socket => {
     sockets.add(socket);
@@ -37,7 +37,7 @@ async function main() {
     browser = await chromium.launch({ headless: true,
         ...(process.env.EMACSOS_BROWSER ? { executablePath: process.env.EMACSOS_BROWSER } : {}),
         args: ['--no-sandbox'] });
-    const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
+    page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
     page.on('pageerror', error => errors.push(String(error)));
     await page.addInitScript(() => {
         const fetch = window.fetch.bind(window);
@@ -103,8 +103,16 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
     report.passed = true;
 }
 
-main().catch(error => { report.failure = String(error.stack || error); process.exitCode = 1; })
+main().catch(async error => {
+    report.failure = String(error.stack || error);
+    process.exitCode = 1;
+    if (page && !page.isClosed()) {
+        try { fs.writeFileSync(path.join(output, 'serial.txt'), await page.evaluate(() => window.__serial || '')); } catch {}
+        try { await page.screenshot({ path: path.join(output, 'failure.png'), fullPage: true }); } catch {}
+    }
+})
     .finally(async () => {
+        report.fixtureReceivedBytes = received.length;
         if (browser) await browser.close();
         for (const socket of sockets) socket.destroy();
         await new Promise(resolve => fixture.close(resolve));
