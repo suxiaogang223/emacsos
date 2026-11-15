@@ -198,6 +198,22 @@ static long open_file(int dirfd, const char *path, unsigned flags, unsigned mode
     return install(node, flags, 0);
 }
 
+static long stream_transfer(struct description *open, void *buffer, size_t count,
+                            bool write, bool may_wait)
+{
+    if (count && !buffer) return -14;
+    if (count > INT64_MAX) return -22;
+    size_t done = 0;
+    enum net_error e;
+    do {
+        e = write ? stream_write(open->stream, buffer, count, &done)
+                  : stream_read(open->stream, buffer, count, &done);
+        if (e != NET_WOULD_BLOCK || done || !may_wait || (open->flags & O_NONBLOCK)) break;
+        wait_interrupt();
+    } while (true);
+    return done || e == NET_OK ? (long) done : network_error(e);
+}
+
 static long transfer(int fd, void *buffer, size_t count, bool write, bool positioned, uint64_t offset)
 {
     if (!valid(fd)) return -9;
@@ -205,16 +221,7 @@ static long transfer(int fd, void *buffer, size_t count, bool write, bool positi
     struct description *open = descriptors[fd].open;
     if (open->kind == DESCRIPTION_STREAM) {
         if (positioned) return -29;
-        if (count > INT64_MAX) return -22;
-        size_t done = 0;
-        enum net_error e;
-        do {
-            e = write ? stream_write(open->stream, buffer, count, &done)
-                      : stream_read(open->stream, buffer, count, &done);
-            if (e != NET_WOULD_BLOCK || done || (open->flags & O_NONBLOCK)) break;
-            wait_interrupt();
-        } while (true);
-        return done || e == NET_OK ? (long) done : network_error(e);
+        return stream_transfer(open, buffer, count, write, true);
     }
     if (open->flags & O_PATH) return -9;
     unsigned access = open->flags & O_ACCESS;
@@ -524,7 +531,11 @@ bool abi_files(unsigned long number, const unsigned long a[6], long *out)
         for (size_t i = 0; i < a[2]; ++i) {
             struct vector vector;
             copy(&vector, vectors + i * sizeof vector, sizeof vector);
-            long n = transfer(fd, vector.base, vector.size, number == 20, false, 0);
+            /* A stream readv may wait for its first byte, never for another
+             * vector after already consuming available input. */
+            long n = number == 19 && result > 0 && is_stream(fd)
+                ? stream_transfer(descriptors[fd].open, vector.base, vector.size, false, false)
+                : transfer(fd, vector.base, vector.size, number == 20, false, 0);
             if (n < 0) { if (!result) result = n; break; }
             result += n; if ((size_t) n != vector.size) break;
         }

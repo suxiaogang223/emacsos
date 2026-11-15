@@ -298,6 +298,17 @@ int main(int argc, char **argv)
     }
     fd = socket_fd(false); unsigned prior_waits = waits;
     assert(connect_fd(fd, 80) == 0 && waits > prior_waits);
+    assert(call(1, fd, P("abc"), 3, 0, 0) == 3);
+    vectors[0] = (struct vector) {a, 3}; vectors[1] = (struct vector) {a + 3, 3};
+    memcpy(packed + 1, vectors, sizeof vectors);
+    delayed_read = last_stream; delayed_at = now + 2000000; prior_waits = waits;
+    assert(call(19, fd, P(packed + 1), 2, 0, 0) == 3 && waits == prior_waits && !memcmp(a, "abc", 3));
+    delayed_read = 0;
+    assert(call(1, fd, P("1234567"), 7, 0, 0) == 7);
+    assert(call(19, fd, P(packed + 1), 2, 0, 0) == 6 && waits == prior_waits && !memcmp(a, "123456", 6));
+    assert(call(0, fd, P(a), sizeof a, 0, 0) == 1 && a[0] == '7');
+    delayed_read = last_stream; delayed_at = now + 2000000; prior_waits = waits;
+    assert(call(19, fd, P(packed + 1), 2, 0, 0) == 4 && waits == prior_waits + 2 && !memcmp(a, "late", 4));
     delayed_read = last_stream; delayed_at = now + 2000000; prior_waits = waits;
     assert(call(0, fd, P(a), sizeof a, 0, 0) == 4 && waits > prior_waits && !memcmp(a, "late", 4));
     assert(call(1, fd, P("1234567"), 7, 0, 0) == 7);
