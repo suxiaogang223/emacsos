@@ -38,6 +38,9 @@ with tempfile.TemporaryDirectory(prefix="emacsos-files-") as directory:
                     str(ROOT / "tests/kernel/files-test.c"), "-o", str(program)], check=True)
     archive = (entry("usr", 0o40755) + entry("usr/readonly", 0o100644, b"upstream")
                + entry("usr/alias", 0o120777, b"readonly")
+               + entry("etc", 0o40755)
+               + entry("etc/passwd", 0o100644, b"root:x:0:0:emacsOS:/home/user:\n")
+               + entry("etc/group", 0o100644, b"root:x:0:\n")
                + entry("TRAILER!!!", 0))
     fixture = temporary / "runtime.cpio"
     fixture.write_bytes(archive)
@@ -111,10 +114,11 @@ with tempfile.TemporaryDirectory(prefix="emacsos-files-") as directory:
     print(run("reject"), end="")
     assert hashlib.sha256(trial.read_bytes()).digest() == before
 
-    for damage in ("legacy", "missing", "extra", "duplicate", "wrong-type"):
+    for damage in ("legacy1", "legacy2", "missing", "extra", "duplicate", "wrong-type",
+                   "missing-home-user"):
         run("format")
         run("damage-" + damage)
         before = hashlib.sha256(trial.read_bytes()).digest()
-        run("reject-legacy" if damage == "legacy" else "reject")
+        run("reject-legacy" if damage.startswith("legacy") else "reject")
         assert hashlib.sha256(trial.read_bytes()).digest() == before, damage
-    print("EOSDATA1 and missing/extra/duplicate/wrong-type anchors reject without modifying DATA")
+    print("EOSDATA1/2, malformed anchors and missing user home reject without modifying DATA")
