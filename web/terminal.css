@@ -156,3 +156,8 @@ html[data-machine-state="failed"] #power-led { background: #d88c64; }
 html[data-storage-state="saved"] #data-led { background: #90a85f; box-shadow: 0 0 3px #8c9f5c66; }
 html[data-storage-state="pending"] #data-led { background: #d6b475; }
 html[data-storage-state="error"] #data-led, html[data-storage-state="session-only"] #data-led { background: #d88c64; }
+
+.network-readout { display: flex; flex-direction: column; gap: 4px; font-size: 9px; line-height: 1.6; color: #626958; grid-column: 1 / -1; }
+.network-readout > span:first-child { font-size: 7px; letter-spacing: 1px; }
+html[data-network-state="connected"] #network-status { color: #405c32; }
+html[data-network-state="disconnected"] #network-status { color: #873c29; }

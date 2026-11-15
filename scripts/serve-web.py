@@ -6,8 +6,11 @@ import json
 import os
 from pathlib import Path
 import shutil
+import signal
 import ssl
 from urllib.parse import unquote, urlsplit
+
+from network import NetworkManager, upgrade
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -41,6 +44,8 @@ def handler_for(root):
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "emacsOSWeb/1"
+        protocol_version = "HTTP/1.1"
+        rbufsize = 0  # Do not prefetch WebSocket bytes beyond the HTTP headers.
         sys_version = ""
 
         def end_headers(self):
@@ -62,6 +67,22 @@ def handler_for(root):
                 name = unquote(urlsplit(self.path).path, errors="strict")
             except (UnicodeError, ValueError):
                 self.send_error(400)
+                return
+            if name == "/network":
+                manager = getattr(self.server, "network", None)
+                if body and self.headers.get("Upgrade"):
+                    if manager is None:
+                        self.send_error(503, "Network unavailable")
+                    else:
+                        upgrade(self, manager)
+                    return
+                data = json.dumps({"available": bool(manager and manager.available), "path": "/network"}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                if body:
+                    self.wfile.write(data)
                 return
             target = allowed.get(name)
             if target is None:
@@ -103,14 +124,21 @@ def main():
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain(args.cert, args.key)
     server = ThreadingHTTPServer((args.host, args.port), handler_for(ROOT))
+    server.network = NetworkManager()
+    server.network_host = args.host
+    server.network_tls = bool(context)
     if context:
         server.socket = context.wrap_socket(server.socket, server_side=True)
+    def terminate(signum, frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, terminate)
     print(f"emacsOS: {'https' if context else 'http'}://{args.host}:{server.server_port}/", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        server.network.close()
         server.server_close()
 
 
