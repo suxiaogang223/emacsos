@@ -9,7 +9,10 @@ separately through the typed file hooks.
 ## Machine and memory contract
 
 Use QEMU's `pc` machine with exactly 1 GiB RAM, the default primary IDE disk and
-COM1 at 115200 baud. This port does not discover arbitrary hardware or RAM.
+COM1 at 115200 baud. Networking adds a fixed NE2000 ISA device at I/O `0x300`
+with NIC interrupts masked, static IPv4 `10.0.2.15/24` and gateway `10.0.2.2`.
+See [networking](network.md) for transport and limits. This port does not discover
+arbitrary hardware or RAM.
 The entry maps the first 1 GiB; the runtime loader reserves these ranges:
 
 | Physical / identity virtual range | Owner |
@@ -47,7 +50,9 @@ by the separate filesystem integration is uncompressed newc CPIO.
 ## Console, time and syscall boundary
 
 COM1 has a bounded input ring and IRQ4 readiness; IRQ0/PIT advances a monotonic
-millisecond clock. Waits recheck level readiness after each interrupt. RTC date
+millisecond clock. Waits recheck level readiness after each interrupt. NIC work
+and lwIP NO_SYS timers run at syscall/wait boundaries, never in IRQ callbacks;
+COM1 remains terminal-only and COM2 remains the DATA checkpoint channel. RTC date
 initialization supplies a UTC epoch plus elapsed monotonic time, with one-second
 initial precision. This fixed QEMU profile expects the usual 24-hour RTC mode.
 IDT exception diagnostics report vector, error, RIP and CR2, then halt. Exceptions
@@ -56,6 +61,9 @@ are not isolated or recovered.
 SYSCALL enters a dedicated kernel stack and translates the bounded x86-64 Linux
 call subset. The initial port supports FS-base setup for libc TLS, memory,
 console and terminal attributes, clocks/waits, identity and resource queries.
+The file/stream adapter also supplies bounded numeric IPv4 TCP descriptors,
+nonblocking connect and level readiness; unsupported socket operations return
+real errors. No DNS, TLS, UDP or listening sockets are implied.
 Timer descriptors occupy 240–255 and report real expiration/readiness; file
 integration must keep its descriptors below 240. SIGACTION, alternate signal
 stacks, POSIX signal timers, futex and secure randomness return ENOSYS. There
@@ -98,3 +106,6 @@ Unsupported mremap returns ENOSYS so musl can use allocate/copy/free. File mmap
 checks descriptor validity and offset alignment before replacing fixed mappings.
 These profile additions need acceptance with the matching runtime and file
 backend; the standalone musl probes do not establish full Emacs behavior.
+`make test-probes` additionally runs a separate actual NE2000/lwIP TCP probe,
+including backpressure, half-close, reset, timeout and absent-NIC behavior. Its
+results remain distinct from `make test-network-guest` and actual browser checks.

@@ -1,5 +1,7 @@
 #include "kernel.h"
 #include "storage_control.h"
+/* Kernel probes can exercise runtime waits without linking a network backend. */
+__attribute__((weak)) void network_service(void) {}
 __attribute__((weak)) bool abi_files(unsigned long n, const unsigned long a[6],
                                      long *r) {
   (void)n;
@@ -65,6 +67,10 @@ static long timer_syscall(unsigned long nr, const unsigned long a[6],
       }
     return -24;
   }
+  if ((nr == 42 || nr == 43 || nr == 48 || nr == 49 || nr == 50 || nr == 51 ||
+       nr == 52 || nr == 54 || nr == 55 || nr == 288) &&
+      a[0] >= 240 && a[0] < 256)
+    return timers[a[0] - 240].used ? -88 : -9;
   if ((nr == 0 || nr == 3 || nr == 72 || nr == 286 || nr == 287) &&
       a[0] >= 240 && a[0] < 256) {
     struct timer_descriptor *t = &timers[a[0] - 240];
@@ -220,13 +226,15 @@ static long select_wait(const unsigned long *a, bool pselect) {
   if (a[3])
     memcpy(xin, (void *)a[3], bytes);
   if (pselect && a[5]) {
-    const unsigned long *mask = (void *)a[5];
+    unsigned long mask[2];
+    memcpy(mask, (void *)a[5], sizeof mask);
     if (mask[0])
       return -38;
   }
   uint64_t deadline = UINT64_MAX;
   if (a[4]) {
-    struct timespec time = *(const struct timespec *)a[4];
+    struct timespec time;
+    memcpy(&time, (void *)a[4], sizeof time);
     if (!pselect) {
       if (time.nsec < 0 || time.nsec >= 1000000)
         return -22;
@@ -243,31 +251,32 @@ static long select_wait(const unsigned long *a, bool pselect) {
       if (descriptor_ready(fd, false) < 0)
         return -9;
   for (;;) {
-    if (a[1])
-      memset((void *)a[1], 0, bytes);
-    if (a[2])
-      memset((void *)a[2], 0, bytes);
+    uint64_t rout[16] = {0}, wout[16] = {0};
     if (a[3])
       memset((void *)a[3], 0, bytes);
     long count = 0;
     for (unsigned fd = 0; fd < nfds; fd++) {
       uint64_t bit = 1UL << (fd % 64);
       if ((rin[fd / 64] & bit) && descriptor_ready(fd, false) > 0) {
-        ((uint64_t *)a[1])[fd / 64] |= bit;
+        rout[fd / 64] |= bit;
         count++;
       }
       if ((win[fd / 64] & bit) && descriptor_ready(fd, true) > 0) {
-        ((uint64_t *)a[2])[fd / 64] |= bit;
+        wout[fd / 64] |= bit;
         count++;
       }
     }
-    if (count || clock_monotonic_ns() >= deadline)
+    if (count || clock_monotonic_ns() >= deadline) {
+      if (a[1]) memcpy((void *)a[1], rout, bytes);
+      if (a[2]) memcpy((void *)a[2], wout, bytes);
       return count;
+    }
     wait_interrupt();
   }
 }
 static uint64_t signal_mask;
 long syscall_dispatch(unsigned long n, const unsigned long a[6]) {
+  network_service();
   storage_control_service();
   long result;
   bool timer_handled;

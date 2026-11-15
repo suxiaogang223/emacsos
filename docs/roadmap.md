@@ -16,7 +16,10 @@ contracts rather than implied capabilities.
 | A0 | MVP subset | Host ERT and guest two-instance manager lifecycle; message queues, completion subscriptions and deadline waits remain open. |
 | Browser presentation | Implemented | Pinned QEMU/Wasm boots the same MVP image; xterm.js supplies the raw serial terminal and retro computer controls. See web.md for browser evidence and limits. |
 | F1 | Implemented subset | Littlefs is the only writable backend for `/etc`, `/home`, `/tmp`, `/var`; native sync/reboot acceptance and separate browser checkpoint/import/export acceptance; see storage.md. |
-| N0–N2 / K0 | Not implemented | Transport/networking and independent protected execution require separate decisions and evidence. |
+| N0 | Transport proved | Actual native and pinned-Wasm Ethernet/ARP, including the explicit browser host bridge. |
+| N1 | Implemented subset | NE2000 ISA/lwIP numeric IPv4 TCP; native Emacs echo, half-close, timers, refusal and timeout pass. Separate pinned-Wasm TCP, file save, checkpoint and restart acceptance passes; see network.md. |
+| N2a / N2b | Native numeric HTTP/file loop validated; DNS deferred | Actual native HTTP download/hash/save/manual load and fresh-boot source retention pass. Browser TCP/file retention has separate acceptance; DNS and guest TLS are unimplemented. |
+| K0 | Not implemented | Independent protected execution requires separate design and evidence. |
 
 ## Staged work and dependencies
 
@@ -31,15 +34,17 @@ contracts rather than implied capabilities.
 | F1 | Minimal persistent file backend. | F0; choose format, sync/recovery and error contracts, then prove retained data separately. No service/startup manager prerequisite. |
 | N0 | Native and browser guest-network transport feasibility. | After P0 event/ownership contracts, research may run alongside file work. Prove available transport before selecting NIC/stack/bridge; a working browser console does not prove guest networking. |
 | N1 | Guest outbound TCP. | N0 and E0; connection/readiness integration, numeric-address connect, send/receive, EOF, timeout, error and leak-free close on the supported transport. |
-| N2 | DNS and controlled HTTP-to-file example. | N1 and F0. Receive/save/read in the guest; retained source/results require F1. Assess TLS/HTTPS separately. |
+| N2a | Controlled numeric HTTP-to-file example. | N1 and F0. Receive/save/read in actual guest Emacs; retained source/results require F1 and separate reboot/browser-checkpoint evidence. |
+| N2b | DNS. | After numeric TCP: select resolution behavior and validate actual guest names, errors and deadlines. DNS is not implied by HTTP over a numeric address. |
 | K0 | Protected kernel processes and independent execution. | P1/E0 plus A0 ownership/context contracts; real address spaces, scheduling, implemented resource limits and fault/exit cleanup. Terminating a hung worker leaves kernel/main Emacs progressing. Basic files/network do not depend on K0. |
 
 Further implementation needs a deliberate reviewable scope.
 A0 can start with buffers/timers after E0; file/network resources are adopted
 only when available. F0/F1 and N0/N1 do not depend on A0 or K0.
 F0 and N0 can proceed independently once their shared handle/error/event contracts
-are settled. Networking research must address both native QEMU and the pinned
-browser Wasm target before promising equivalent guest capabilities.
+are settled. N0 has now selected NE2000 ISA and lwIP after proving native and
+pinned-Wasm frame transport. [Networking](network.md) records the automatic
+browser bridge and distinct TCP/Emacs/browser acceptance gates.
 
 ## DATA disk boundaries
 

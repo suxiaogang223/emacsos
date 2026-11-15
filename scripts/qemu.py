@@ -33,11 +33,16 @@ def prepare_data(path, template=Path("build/image/data-empty.img")):
     return path
 
 
-def command(image, *, interactive=False, debug_exit=False, data=None, control=None):
-    args = ["qemu-system-x86_64", "-M", "pc", "-m", "1G", "-nic", "none",
+def command(image, *, interactive=False, debug_exit=False, data=None, control=None, network=True):
+    args = ["qemu-system-x86_64", "-M", "pc", "-m", "1G",
             "-display", "none", "-monitor", "none", "-serial",
             "mon:stdio" if interactive else "stdio", "-no-reboot",
             "-drive", f"file={drive_path(image)},format=raw,if=ide,index=0,media=disk,snapshot=on"]
+    if network:
+        args += ["-netdev", "user,id=n0", "-device",
+                 "ne2k_isa,netdev=n0,iobase=0x300,irq=9,mac=52:54:00:12:34:56"]
+    else:
+        args += ["-nic", "none"]
     if data is not None:
         args += ["-drive", f"file={drive_path(data)},format=raw,if=ide,index=1,media=disk,cache=writeback"]
     if control is not None:
@@ -55,10 +60,11 @@ if __name__ == "__main__":
                         default=os.environ.get("EMACSOS_DATA", "build/data/emacsos-data.img"))
     parser.add_argument("--no-data", action="store_true",
                         help="Start read-only recovery without a DATA disk")
+    parser.add_argument("--no-network", action="store_true", help="Start without a network device")
     args, extra = parser.parse_known_args()
     try:
         data = None if args.no_data else prepare_data(args.data)
     except (OSError, ValueError) as error:
         parser.error(str(error))
-    native = command(args.image, interactive=True, data=data) + extra
+    native = command(args.image, interactive=True, data=data, network=not args.no_network) + extra
     os.execvp(native[0], native)

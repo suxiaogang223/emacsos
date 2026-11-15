@@ -7,6 +7,7 @@ from pathlib import Path
 import shutil
 import ssl
 import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -18,7 +19,8 @@ SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 def module(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
     loaded = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(loaded)
+    with patch.object(sys, "path", [str(SCRIPTS), *sys.path]):
+        spec.loader.exec_module(loaded)
     return loaded
 
 

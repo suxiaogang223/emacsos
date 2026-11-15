@@ -33,7 +33,7 @@ with tempfile.TemporaryDirectory(prefix="emacsos-files-") as directory:
                     "-Wall", "-Wextra", "-Werror", "-Wno-unused-function", "-fsanitize=address,undefined",
                     "-DLFS_CONFIG=littlefs_config.h", "-DEMACSOS_HOST_TEST",
                     "-I", str(ROOT / "kernel"), str(ROOT / "kernel/files.c"),
-                    str(ROOT / "kernel/file_abi.c"), str(ROOT / "kernel/littlefs_backend.c"),
+                    str(ROOT / "kernel/file_abi.c"), str(ROOT / "tests/kernel/network-stub.c"), str(ROOT / "kernel/littlefs_backend.c"),
                     str(ROOT / "third_party/littlefs/lfs.c"),
                     str(ROOT / "tests/kernel/files-test.c"), "-o", str(program)], check=True)
     archive = (entry("usr", 0o40755) + entry("usr/readonly", 0o100644, b"upstream")
@@ -62,7 +62,7 @@ with tempfile.TemporaryDirectory(prefix="emacsos-files-") as directory:
                     "-Wall", "-Wextra", "-Werror", "-Wno-unused-function",
                     "-fsanitize=address,undefined", "-DLFS_CONFIG=littlefs_config.h",
                     "-DEMACSOS_HOST_TEST", "-I", str(ROOT / "kernel"),
-                    str(ROOT / "kernel/files.c"), str(ROOT / "kernel/file_abi.c"),
+                    str(ROOT / "kernel/files.c"), str(ROOT / "kernel/file_abi.c"), str(ROOT / "tests/kernel/network-stub.c"),
                     str(ROOT / "kernel/littlefs_backend.c"),
                     str(ROOT / "third_party/littlefs/lfs.c"),
                     str(ROOT / "tests/kernel/persistent-test.c"), "-o", str(persistent)], check=True)

@@ -50,7 +50,9 @@ and unlink while an open description retains it. Duplicated descriptors share
 their offset and status; independent opens have independent offsets. Close
 consumes a descriptor, and final unlinked-object release returns its allocation.
 Each regular file is limited to 8 MiB; the namespace has at most 8192 live nodes
-and 192 descriptors including standard I/O. File contents stream through bounded
+and the descriptor table has 192 entries shared by files, standard I/O and TCP
+streams. The [network backend](network.md) separately limits unique streams to
+16; duplicating a descriptor does not create another stream. File contents stream through bounded
 littlefs caches. In-memory indexes, readonly archive backing and private mapping
 copies are not a second writable filesystem. Symlink
 resolution is bounded to 16 traversals. Paths/components are bounded to

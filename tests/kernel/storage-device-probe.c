@@ -3,6 +3,8 @@
 #include "block.h"
 #include "files.h"
 #include "storage_control.h"
+/* This storage-only probe intentionally supplies no network backend. */
+void network_service(void) {}
 static bool frozen;
 static uint64_t generation = 7;
 bool fs_data_mounted(void) { return data_disk_sectors() != 0; }

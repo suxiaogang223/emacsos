@@ -12,6 +12,32 @@ let machine;
 let slave;
 let observed = "";
 let storageAttached = false;
+let networkSocket;
+function networkView(next, message) {
+    document.documentElement.dataset.networkState = next;
+    element("network-status").textContent = message;
+}
+function closeNetwork() {
+    if (networkSocket) {
+        networkSocket.close();
+        networkSocket = undefined;
+    }
+    networkView("offline", "Offline");
+}
+async function networkConfiguration() {
+    networkView("connecting", "Checking network…");
+    try {
+        const response = await fetch(new URL("./network", import.meta.url), { signal: AbortSignal.timeout(3000) });
+        if (response.ok && (await response.json()).available === true) {
+            const endpoint = new URL("./network", import.meta.url);
+            endpoint.protocol = location.protocol === "https:" ? "wss:" : "ws:";
+            networkView("connecting", "Connecting…");
+            return endpoint.href;
+        }
+    } catch { /* Static hosting and an unavailable network still permit offline boot. */ }
+    networkView("offline", "Offline · files and Lisp remain available");
+    return undefined;
+}
 const decoder = new TextDecoder();
 function storageView(disk) {
     document.documentElement.dataset.storageState = disk.state;
@@ -54,6 +80,7 @@ function render(next, message, error = "") {
 }
 
 function fail(error) {
+    closeNetwork();
     const reason = error instanceof Error ? error.message : String(error);
     render("failed", initializationStarted ? "Machine error. Restart to try again." : "Power-on failed. You can retry.", reason);
     console.error(error);
@@ -65,6 +92,7 @@ function observe(bytes) {
     if (["exited", "failed"].includes(state)) return;
     const exit = observed.match(/\r\nRuntime exited status=(0x[0-9a-fA-F]{16})\r\n/);
     if (exit) {
+        closeNetwork();
         render("exited", `Emacs exited (${exit[1]}). Restart for a fresh machine.`);
     } else if (/\r\n(?:PANIC: |FAULT vector=)/.test(observed)) {
         fail(new Error("The guest stopped with a kernel fault. The terminal contains its diagnostic."));
@@ -126,7 +154,7 @@ async function start() {
         if (typeof Terminal !== "function" || typeof openpty !== "function") {
             throw new Error("Terminal assets are unavailable. Run make web-assets and reload.");
         }
-        const [image, bios] = await Promise.all([bootImage(), biosPackage(), disk.prepare()]);
+        const [image, bios, network] = await Promise.all([bootImage(), biosPackage(), networkConfiguration(), disk.prepare()]);
         terminal = new Terminal({
             cols: 80, rows: 24, cursorBlink: true, macOptionIsMeta: true,
             fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 16,
@@ -143,7 +171,10 @@ async function start() {
         terminal.options.disableStdin = true;
         const moduleUrl = new URL("out.js", vendor).href;
         const config = {
-            arguments: ["-M", "pc", "-m", "1G", "-nic", "none", "-display", "none", "-monitor", "none",
+            arguments: ["-M", "pc", "-m", "1G",
+                ...(network ? ["-netdev", "socket,id=network,connect=127.0.0.1:1",
+                    "-device", "ne2k_isa,netdev=network,iobase=0x300,irq=9,mac=52:54:00:12:34:56"] : ["-nic", "none"]),
+                "-display", "none", "-monitor", "none",
                 "-serial", "stdio", "-chardev", "pipe,id=control,path=/control", "-serial", "chardev:control",
                 "-L", "/pack-rom", "-accel", "tcg,tb-size=64",
                 "-drive", "file=/emacsos.img,format=raw,if=ide,index=0,media=disk",
@@ -153,12 +184,27 @@ async function start() {
             getPreloadedPackage: () => bios,
             pty: slave, preRun: [],
             onExit: code => {
+                closeNetwork();
                 if (state === "failed") return;
                 if (code) fail(new Error(`Emulator exited unexpectedly (${code}).`));
                 else render("exited", "Emulator exited. Restart for a fresh machine.");
             },
             onAbort: reason => fail(new Error(`Emulator aborted: ${reason}`)),
         };
+        if (network) {
+            config.websocket = { url: network, subprotocol: "binary" };
+            const BrowserSocket = window.WebSocket;
+            window.WebSocket = class extends BrowserSocket {
+                constructor(url, protocols) {
+                    super(url, protocols);
+                    if (new URL(url, location.href).href !== network) return;
+                    networkSocket = this;
+                    this.addEventListener("open", () => networkView("connected", "Network link connected"));
+                    this.addEventListener("close", () => networkView("disconnected", "Disconnected · restart to reconnect"));
+                    this.addEventListener("error", () => networkView("disconnected", "Network unavailable · restart to retry"));
+                }
+            };
+        }
         // The upstream BIOS loader attaches its package callbacks to this object.
         window.Module = config;
         initializationStarted = true;
@@ -253,7 +299,7 @@ element("disk-new").addEventListener("click", async () => {
 element("disk-export").addEventListener("click", () => disk.checkpoint({ exportImage: true }).catch(storageError));
 element("disk-save").addEventListener("click", () => disk.checkpoint().catch(storageError));
 element("disk-resume").addEventListener("click", () => disk.recover().catch(storageError));
-window.addEventListener("pagehide", () => disk.close());
+window.addEventListener("pagehide", () => { disk.close(); closeNetwork(); });
 element("command-key").addEventListener("click", () => send("\x1bx"));
 element("cancel-key").addEventListener("click", () => send("\x07"));
 element("eval-key").addEventListener("click", () => send("\x1b:"));

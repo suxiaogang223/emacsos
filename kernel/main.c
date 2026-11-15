@@ -2,6 +2,7 @@
 #include "block.h"
 #include "files.h"
 #include "storage_control.h"
+#include "network.h"
 _Noreturn void kernel_main(void) {
   console_init();
   console_puts("emacsOS runtime bootstrap: fixed QEMU 1 GiB, trusted shared "
@@ -19,6 +20,10 @@ _Noreturn void kernel_main(void) {
     console_hex((uint64_t)-fs_error_errno(mounted));
     console_puts("\r\n");
   }
+  network_init();
+  console_puts(network_available()
+                   ? "Network: NE2000 IPv4 10.0.2.15, outbound TCP\r\n"
+                   : "Network unavailable: offline\r\n");
   storage_control_init();
   runtime_enter(&image);
 }

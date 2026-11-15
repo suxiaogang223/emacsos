@@ -1,5 +1,6 @@
 #include "kernel.h"
 #include "storage_control.h"
+#include "network.h"
 static inline void out8(uint16_t p, uint8_t v) {
   __asm__ volatile("outb %0,%1" ::"a"(v), "Nd"(p));
 }
@@ -68,6 +69,7 @@ long console_read(void *p, size_t n) {
 uint64_t clock_monotonic_ns(void) { return ticks * 1000000UL; }
 void wait_interrupt(void) {
   storage_control_service();
+  network_service();
   __asm__ volatile("sti; hlt" ::: "memory");
 }
 _Noreturn void panic(const char *s) {

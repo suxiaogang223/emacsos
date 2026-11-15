@@ -12,8 +12,10 @@ The parent contains BIOS boot, static ELF loading, page mappings/protection,
 serial input/output, PIT/RTC time, readiness waits, a bounded syscall adapter,
 and read-only runtime plus littlefs working files. GNU Emacs executes with its
 matching portable dump. Parent-owned Lisp provides cooperative application
-management. The fixed DATA disk supplies persistence at `/etc`, `/home`, `/tmp` and `/var`; networking and
-isolated execution remain unimplemented. See [storage](storage.md) for disk and
+management. The fixed DATA disk supplies persistence at `/etc`, `/home`, `/tmp`
+and `/var`. A bounded numeric IPv4 TCP backend now uses NE2000 ISA and lwIP;
+[networking](network.md) separates implemented behavior from acceptance gates.
+DNS, TLS and isolated execution remain unimplemented. See [storage](storage.md) for disk and
 browser-retention boundaries.
 The fixed-machine profile and limits are in [kernel bootstrap](kernel-bootstrap.md)
 and [files](files.md); the fork itself remains unchanged except provenance.
@@ -25,7 +27,8 @@ remain in the guest. There is no terminal-server or host Emacs substitute in
 this route. Browser RAM is discarded when the page closes or restarts; completed
 DATA checkpoints are retained separately in IndexedDB for the same origin.
 
-The following diagram shows responsibilities; network streams remain future work:
+The following diagram shows responsibilities; the network backend is bounded
+by the fixed-machine profile:
 
 ```mermaid
 flowchart TB
@@ -41,7 +44,7 @@ flowchart TB
     end
     subgraph kernel["3. Own C kernel and backends"]
       core["Memory/resource ownership, events and actual device operations"]
-      backend["Console; readonly runtime and littlefs files; future network"]
+      backend["Console; readonly runtime and littlefs files; bounded IPv4 TCP"]
       core --> backend
     end
     runtime --> adapter
@@ -107,8 +110,8 @@ implementation documents; broader operations remain design requirements.
 | Memory | Available/reserved ranges; aligned allocations/maps with explicit size, lifetime, release and failure rules; define any supported protection semantics honestly. |
 | Time/wait | Monotonic time, absolute deadlines, readiness sets, timeout and interruption outcomes; define wake/recheck behavior. |
 | Runtime files | Read-only lookup, metadata, open/read/seek/map or a documented equivalent sufficient for executable, dump, Lisp and data loading. |
-| Working files | Later typed file/directory operations, creation flags, offsets, metadata, rename, cleanup and synchronization. |
-| Network streams | Later connection setup, pending/connected/failed state, byte I/O, readiness, EOF, timeout and close. |
+| Working files | Typed littlefs file/directory operations, creation flags, offsets, metadata, rename, cleanup and synchronization. |
+| Network streams | Bounded numeric IPv4 TCP: pending/connected/failed state, byte I/O, readiness, EOF, timeout, half-close and close; see network.md. |
 
 Share read/write/close/wait conventions where meaningful. Keep directory
 iteration, rename and connection setup typed rather than forcing them into a
@@ -124,7 +127,7 @@ memory_map / memory_unmap
 clock_monotonic / wait_ready(interests, absolute_deadline)
 file_open / file_read / file_write / file_seek / file_metadata / file_sync
 file_rename / file_remove / directory_open / directory_next
-after N0: stream_connect / stream_read / stream_write / stream_status
+stream_connect / stream_read / stream_write / stream_take_error
 close_file / close_directory / close_stream
 ```
 
@@ -209,8 +212,9 @@ resource cleanup cover only paths that retain control.
 
 Accounts, service managers, durable startup snapshots, scheduling experiments
 and protected-process implementation are later stages. The browser console
-provides the presentation and DATA retention controls; guest networking remains
-unimplemented.
+provides presentation, DATA retention controls and a same-origin Ethernet
+bridge to a private headless QEMU SLIRP session. Guest TCP/IP stays in lwIP;
+[networking](network.md) documents host access and separate browser acceptance.
 Do not restore their previous implementations implicitly. Buffers should be clients of working APIs
 when those tools are introduced.
 
@@ -248,8 +252,8 @@ and does not gate basic file/network capability work.
 | Implemented subset | Concrete interfaces | Bootstrap operations and readonly namespace and littlefs file backend; see kernel-bootstrap.md and files.md. |
 | MVP validated | Runtime artifacts | Pinned build, matching executable/dump/archive, controlled startup, real terminal input and timers. |
 | Implemented: F1 | DATA retention | Fixed 64 MiB littlefs at `/etc`, `/home`, `/tmp`, `/var`, guest sync/ATA flush, frozen browser checkpoints and optional import/export; see storage.md for scope. |
-| Implemented presentation | Browser console | QEMU/Wasm runs the current image; xterm.js exposes COM1, while COM2 supplies DATA checkpoint barriers. Guest networking remains separate. |
-| Open: N0 | Network transport | Prove native and Wasm guest-network transport feasibility, including any explicit host bridge, before selecting device/stack. |
+| Implemented presentation | Browser console | QEMU/Wasm runs the current image; xterm.js exposes COM1, while COM2 supplies DATA checkpoint barriers. Guest network acceptance remains separate from presentation. |
+| N0 proved; N1 subset validated | Network transport and streams | NE2000 ISA + lwIP NO_SYS IPv4 TCP; native QEMU user networking and automatic browser WebSocket/SLIRP bridge. Actual native and pinned-Wasm Emacs TCP/file acceptance pass separately; see network.md. |
 | MVP subset | Trusted application instances | Lifecycle/context, explicit ownership and management implemented; messaging/subscriptions/deadline waits remain future work. |
 | Planned: K0 | Kernel processes | After runtime/ownership contracts: independent execution/address spaces, scheduling, enforced limits and exit cleanup; no implementation yet. |
 | Deferred | Other expansion | Direct libc replacement, runtime latency optimization, broad Unix subprocess compatibility and service frameworks. |

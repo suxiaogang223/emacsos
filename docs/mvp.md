@@ -66,15 +66,17 @@ banner do not substitute for functional acceptance.
 All writable files use the DATA volume at `/etc`, `/home`, `/tmp` and `/var`.
 Missing or rejected DATA leaves the machine in read-only recovery. The runtime
 image is read-only. Cross-boot and browser retention require their separate
-[storage acceptance](storage.md#validation-boundaries). There is no networking, external subprocess
-support, service startup, account isolation or per-application address space.
+[storage acceptance](storage.md#validation-boundaries). Numeric IPv4 TCP has
+its own [network acceptance](network.md#validation-boundaries), beyond this
+core editing/application script. External subprocess support, service startup,
+account isolation and per-application address spaces remain unimplemented.
 The kernel and Emacs share privilege. Tracked resource counts are bookkeeping,
 not enforced heap quotas. Application stop relies on callbacks returning;
 non-yielding Lisp or a runtime fault can stop the whole environment.
 
 This MVP implements the first application-management subset, not every A0
 contract in the broader process model. Message queues, completion subscriptions
-and deadline waits remain future work. DATA retention, N0 transport feasibility
+and deadline waits remain future work. DATA retention, native/browser networking
 and K0 independent execution retain separate acceptance gates.
 
 The original MVP established these editing/application checks using volatile

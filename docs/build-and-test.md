@@ -1,7 +1,7 @@
 # Build and test
 
 Run commands from the repository root. Building requires Git, Make, Python 3,
-Docker with BuildKit and Linux/amd64 support and initialized `emacs/` and `third_party/littlefs/` submodules. Run
+Docker with BuildKit and Linux/amd64 support and initialized `emacs/`, `third_party/littlefs/` and `third_party/lwip/` submodules. Run
 `git submodule update --init --recursive` before building or running host file
 tests. Docker
 supplies the kernel and static Emacs compilation toolchains; host LLVM tools
@@ -41,8 +41,9 @@ build performs a fresh installation into its staging tree and packages that
 installation together with current parent-owned Lisp.
 
 Kernel builds and host file tests verify that littlefs is initialized, clean and
-matches the recorded gitlink/source hashes before compilation. The image
-manifest records its exact upstream commit. Kernel objects use ordinary Make
+matches the recorded gitlink/source hashes before compilation. Kernel builds
+also verify the lwIP pin and receipt. The image manifest records both exact
+upstream commits. Kernel objects use ordinary Make
 dependencies, including the kernel toolchain
 image identity. Image assembly checks component identities and writes a build
 manifest. Pinned inputs and recorded outputs do not establish byte-identical
@@ -63,6 +64,8 @@ documented platform configuration.
 | `build/image/data-empty.img` | Initialized 64 MiB littlefs DATA template; never a user disk. |
 | `build/data/emacsos-data.img` | Default native user disk, created only when missing. |
 | `build/image/storage/` | Separate-boot persistent guest transcripts, disk copies and results. |
+| `build/network-probe/` | Native kernel network images, packet capture, transcripts and exact-source results. |
+| `build/image/network/` | Actual Emacs network and HTTP/DATA reboot acceptance attempts and evidence. |
 | `build/image/manifest.json` | Source/component hashes, toolchain identities and fixed machine profile. |
 | `build/image/guest.transcript` | Actual serial bytes from the latest native guest acceptance attempt. |
 | `build/image/guest-results.json` | Native guest acceptance outcome and source/image/transcript identities. |
@@ -81,15 +84,20 @@ Docker and native QEMU in addition to the build prerequisites.
 | `make test-lisp` | Warning-free byte compilation and application-policy ERT on host Emacs. |
 | `make test-tooling` | Build, image and contribution-tool unit tests. |
 | `make test-web` | Web server routes, isolation headers, TLS and asset verification. |
-| `make test-probes` | Static-musl startup and deliberate RO/NX page faults in native QEMU. |
+| `make test-network` | Real ABI objects with a fake stream PAL; socket errors/flags, readiness and ownership, without proving guest TCP. |
+| `make test-probes` | Static-musl startup, deliberate RO/NX faults, storage device probes and actual native kernel TCP/absent-NIC probes. |
 | `make test-guest` | Complete native guest editing, littlefs files and application lifecycle. |
 | `make test-storage` | Sync/copy/reboot all DATA directories, cross-directory rename, stale locks and read-only recovery. |
+| `make test-network-guest` | Actual Emacs numeric TCP, timers, HTTP/file sync and fresh-boot DATA acceptance; separate from DNS and browser acceptance. |
 | `make test-browser` | Optional real-browser checks against an already running web server. |
+| `make test-browser-network` | Actual pinned-Wasm TCP, timers, DATA save/checkpoint and restart through the automatic host bridge. |
 
 Tests live under `tests/kernel`, `tests/lisp`, `tests/tooling`, `tests/guest`
 and `tests/web`. Lisp compilation outputs stay under ignored `build/lisp`.
 See [browser checks](web-browser-checks.md) for the optional Node.js/Playwright
-driver installation and scope. Browser checks are not included in `make check`
+driver installation and scope. See [networking](network.md) for native SLIRP and the automatic same-origin
+browser bridge; the web server also needs native QEMU for online operation.
+Browser checks are not included in `make check`
 and are not replaced by web server unit tests.
 
 Native guest acceptance requires a clean committed parent checkout and the
