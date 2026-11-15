@@ -114,8 +114,15 @@ main().catch(async error => {
     report.failure = String(error.stack || error);
     process.exitCode = 1;
     if (page && !page.isClosed()) {
-        try { fs.writeFileSync(path.join(output, 'serial.txt'), await page.evaluate(() => window.__serial || '')); } catch {}
-        try { await page.screenshot({ path: path.join(output, 'failure.png'), fullPage: true }); } catch {}
+        let timer;
+        try {
+            const serial = await Promise.race([
+                page.evaluate(() => window.__serial || ''),
+                new Promise(resolve => { timer = setTimeout(() => resolve('Guest page did not answer diagnostics within five seconds.'), 5000); }),
+            ]);
+            fs.writeFileSync(path.join(output, 'serial.txt'), serial);
+        } catch {} finally { clearTimeout(timer); }
+        try { await page.screenshot({ path: path.join(output, 'failure.png'), fullPage: true, timeout: 5000 }); } catch {}
     }
 })
     .finally(async () => {
