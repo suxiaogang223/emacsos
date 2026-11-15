@@ -177,9 +177,15 @@ static void seed(void)
     check_contents("/work/renamed/child", "child");
     assert(fs_chmod(node("/work/keep"), 0640) == FS_OK);
     assert(fs_set_times(node("/work/keep"), 100, 200) == FS_OK);
-    assert(call(82, P("/work/keep"), P("/tmp/not-persistent"), 0, 0, 0) == -18);
+    write_file("/home/user/home-file", "persistent home");
+    write_file("/tmp/temp-file", "persistent temporary directory");
+    write_file("/work/movable", "same volume");
+    assert(call(82, P("/work/movable"), P("/home/user/movable"), 0, 0, 0) == 0);
+    assert(call(82, P("/home/user/movable"), P("/tmp/movable"), 0, 0, 0) == 0);
+    assert(call(82, P("/tmp/movable"), P("/work/moved-back"), 0, 0, 0) == 0);
+    assert(open_file("/arbitrary-file", 64 | 2) == -30);
     assert(call(84, P("/work"), 0, 0, 0, 0) == -16);
-    assert(fs_ram_used() == 0);
+
     int orphan = open_file("/work/frozen-orphan", 64 | 2);
     assert(orphan >= 3);
     assert(call(1, orphan, P("orphan"), 6, 0, 0) == 6);
@@ -189,6 +195,8 @@ static void seed(void)
     unsigned saved_writes = writes;
     check_contents("/work/keep", "persisted source");
     assert(open_file("/work/blocked", 64 | 2) == -16);
+    assert(open_file("/home/user/blocked", 64 | 2) == -16);
+    assert(open_file("/tmp/blocked", 64 | 2) == -16);
     assert(fs_chmod(node("/work/keep"), 0600) == FS_BUSY);
     assert(fs_resize(node("/work/keep"), 0) == FS_BUSY);
     assert(call(87, P("/work/keep"), 0, 0, 0, 0) == -16);
@@ -199,14 +207,16 @@ static void seed(void)
     write_file("/work/source", "new destination");
     write_file("/work/destination", "old destination");
     assert(fs_sync_all() == FS_OK);
-    printf("Persistent PAL/ABI semantics pass; peak allocator=%zu, file RAM=%zu\n", peak,
-           fs_ram_used());
+    printf("Persistent PAL/ABI semantics pass; peak allocator=%zu\n", peak);
 }
 static void verify(void)
 {
     assert(fs_data_boot_id() > 1);
     check_contents("/work/keep", "persisted source");
     check_contents("/work/renamed/child", "child");
+    check_contents("/home/user/home-file", "persistent home");
+    check_contents("/tmp/temp-file", "persistent temporary directory");
+    check_contents("/work/moved-back", "same volume");
     struct fs_info info;
     fs_info(node("/work/keep"), &info);
     assert(info.mode == 0640 && info.modified_ns == 200);
@@ -274,7 +284,7 @@ static void stream(void)
         assert(call(74, fd, 0, 0, 0, 0) == 0);
         close_file(fd);
     }
-    assert(fs_ram_used() == 0 && peak < 1024 * 1024);
+    assert(peak < 1024 * 1024);
     int fd = open_file("/work/stream3", 0);
     assert(fd >= 3);
     memset(bytes, 0, sizeof bytes);
@@ -284,7 +294,7 @@ static void stream(void)
     close_file(fd);
     assert(fs_resize(node("/work/stream3"), FS_FILE_LIMIT + 1) == FS_TOO_BIG);
     assert(fs_data_health_error() == FS_OK);
-    puts("32MiB streams beyond the RAM file quota with bounded allocator use");
+    puts("32MiB streams through littlefs with bounded allocator use");
 }
 static void capacity(void)
 {
@@ -385,6 +395,8 @@ int main(int argc, char **argv)
         assert(fs_mount_data() != FS_OK && !fs_data_mounted());
         assert(writes == 0);
         assert(open_file("/work/unsafe", 64 | 2) == -30);
+        assert(open_file("/home/user/unsafe", 64 | 2) == -30);
+        assert(open_file("/tmp/unsafe", 64 | 2) == -30);
         puts("Unrecognized DATA remains unchanged and /work is read-only");
         close(disk_fd);
         return 0;

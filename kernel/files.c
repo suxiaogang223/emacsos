@@ -10,11 +10,11 @@ extern _Noreturn void panic(const char *);
 struct fs_node {
     struct fs_node *parent, *children, *next;
     const unsigned char *data;
-    size_t size, capacity;
+    size_t size;
     uint64_t inode, accessed_ns, modified_ns, changed_ns;
     unsigned mode, references;
     enum fs_kind kind;
-    bool writable, linked, allocated, persistent, metadata_dirty;
+    bool writable, linked, persistent, metadata_dirty;
     uint64_t object_id;
     struct littlefs_handle *handle;
     struct fs_node *data_next;
@@ -23,9 +23,9 @@ struct fs_node {
 };
 
 static struct fs_node *root_node;
-static size_t node_count, ram_bytes;
+static size_t node_count;
 static uint64_t next_inode;
-static struct fs_node *data_root, *data_nodes, *deferred;
+static struct fs_node *data_nodes, *deferred;
 static bool data_mounted, data_frozen, data_failed;
 static uint64_t data_generation, data_boot;
 static enum fs_error data_error;
@@ -39,7 +39,10 @@ static enum fs_error data_path(struct fs_node *, char *);
 static enum fs_error ensure_handle(struct fs_node *);
 static enum fs_error write_allowed(struct fs_node *n)
 {
-    return n->persistent ? data_frozen ? FS_BUSY : data_failed ? FS_READ_ONLY : FS_OK : FS_OK;
+    return !n->persistent ? FS_READ_ONLY
+           : data_frozen  ? FS_BUSY
+           : data_failed  ? FS_READ_ONLY
+                          : FS_OK;
 }
 static void data_changed(struct fs_node *n)
 {
@@ -121,7 +124,6 @@ static enum fs_error destroy_if_unused(struct fs_node *n)
         if (*p)
             *p = n->data_next;
     }
-    if (n->allocated) { ram_bytes -= n->capacity; kfree((void *) n->data); }
     --node_count;
     kfree(n);
     return result;
@@ -145,7 +147,6 @@ void fs_release(struct fs_node *n)
     (void)fs_release_checked(n);
 }
 struct fs_node *fs_root(void) { return root_node; }
-size_t fs_ram_used(void) { return ram_bytes; }
 
 static enum fs_error walk(struct fs_node *base, const char *path, bool follow,
                            unsigned links, struct fs_node **out)
@@ -232,49 +233,38 @@ enum fs_error fs_create(struct fs_node *base, const char *path, enum fs_kind kin
         if (exclusive) return FS_EXISTS;
         *out = n; return FS_OK;
     }
-    if (!parent->writable) return FS_READ_ONLY;
+    if (!parent->writable || !parent->persistent)
+        return FS_READ_ONLY;
     if ((error = write_allowed(parent)) != FS_OK)
         return error;
     if (kind != FS_REGULAR && kind != FS_DIRECTORY && kind != FS_SYMLINK) return FS_INVALID;
     size_t target_size = target ? text_length(target) : 0;
     if (kind == FS_SYMLINK && (!target_size || target_size >= FS_PATH_MAX)) return FS_NAME_TOO_LONG;
-    if (!parent->persistent && kind == FS_SYMLINK && target_size > FS_RAM_LIMIT - ram_bytes)
-        return FS_NO_SPACE;
     n = new_node(parent, name, kind, mode, true);
     if (!n) return FS_NO_MEMORY;
-    if (parent->persistent) {
-        n->persistent = true;
-        n->size = kind == FS_SYMLINK ? target_size : 0;
-        char full[FS_PATH_MAX];
-        error = data_path(n, full);
-        struct littlefs_metadata m = metadata(n);
-        ++data_generation;
-        if (error == FS_OK)
-            error = persistent_result(littlefs_backend_create(full, &m, target));
-        if (error != FS_OK) {
-            n->persistent = false;
-            parent->children = n->next;
-            n->linked = false;
-            (void)destroy_if_unused(n);
-            return error;
-        }
-        n->object_id = m.id;
-        n->inode = (1ULL << 63) | m.id;
-        n->data_next = data_nodes;
-        data_nodes = n;
-    } else if (kind == FS_SYMLINK) {
-        unsigned char *data = kmalloc(target_size);
-        if (!data) {
-            parent->children = n->next; n->linked = false; destroy_if_unused(n);
-            return FS_NO_MEMORY;
-        }
-        copy_bytes(data, target, target_size);
-        n->data = data; n->size = n->capacity = target_size; n->allocated = true;
-        ram_bytes += target_size;
+    n->persistent = true;
+    n->size = kind == FS_SYMLINK ? target_size : 0;
+    char full[FS_PATH_MAX];
+    error = data_path(n, full);
+    struct littlefs_metadata m = metadata(n);
+    ++data_generation;
+    if (error == FS_OK)
+        error = persistent_result(littlefs_backend_create(full, &m, target));
+    if (error != FS_OK) {
+        n->persistent = false;
+        parent->children = n->next;
+        n->linked = false;
+        (void)destroy_if_unused(n);
+        return error;
     }
+    n->object_id = m.id;
+    n->inode = (1ULL << 63) | m.id;
+    n->data_next = data_nodes;
+    data_nodes = n;
+
     changed(parent);
     *out = n;
-    return parent->persistent ? fs_sync_node(parent) : FS_OK;
+    return fs_sync_node(parent);
 }
 
 static enum fs_error create_regular(struct fs_node *base, const char *path,
@@ -320,7 +310,7 @@ enum fs_error fs_remove(struct fs_node *base, const char *path, bool directory)
     struct fs_node *n = child(parent, name);
     if (!n) return FS_NOT_FOUND;
     if (trailing_slash(path) && n->kind != FS_DIRECTORY) return FS_NOT_DIRECTORY;
-    if (n == data_root)
+    if (n->persistent && n->parent == root_node)
         return FS_BUSY;
     if (!parent->writable || !n->writable) return FS_READ_ONLY;
     if ((error = write_allowed(n)) != FS_OK)
@@ -358,7 +348,8 @@ enum fs_error fs_rename(struct fs_node *old_base, const char *old_path,
     if (trailing_slash(old_path) && source->kind != FS_DIRECTORY) return FS_NOT_DIRECTORY;
     if (trailing_slash(new_path) && source->kind != FS_DIRECTORY)
         return FS_NOT_DIRECTORY;
-    if (data_root && (source == data_root || dest == data_root))
+    if ((source->persistent && source->parent == root_node) ||
+        (dest && dest->persistent && dest->parent == root_node))
         return FS_BUSY;
     if (source->persistent != new_parent->persistent)
         return FS_CROSS_DEVICE;
@@ -476,53 +467,26 @@ enum fs_error fs_read(struct fs_node *n, uint64_t offset, void *buffer,
     return FS_OK;
 }
 
-static enum fs_error reserve(struct fs_node *n, size_t needed)
-{
-    if (needed <= n->capacity) return FS_OK;
-    if (needed > FS_FILE_LIMIT) return FS_TOO_BIG;
-    size_t capacity = n->capacity ? n->capacity : 256;
-    while (capacity < needed) capacity *= 2;
-    if (capacity > FS_FILE_LIMIT) capacity = FS_FILE_LIMIT;
-    if (capacity - n->capacity > FS_RAM_LIMIT - ram_bytes) return FS_NO_SPACE;
-    unsigned char *data = kmalloc(capacity);
-    if (!data) return FS_NO_MEMORY;
-    copy_bytes(data, n->data, n->size);
-    if (n->allocated) kfree((void *) n->data);
-    ram_bytes += capacity - n->capacity;
-    n->data = data; n->capacity = capacity; n->allocated = true;
-    return FS_OK;
-}
-
 enum fs_error fs_resize(struct fs_node *n, uint64_t size)
 {
     if (n->kind != FS_REGULAR) return n->kind == FS_DIRECTORY ? FS_IS_DIRECTORY : FS_INVALID;
-    if (!n->writable) return FS_READ_ONLY;
+    if (!n->writable || !n->persistent)
+        return FS_READ_ONLY;
     if (size > FS_FILE_LIMIT) return FS_TOO_BIG;
     enum fs_error allowed = write_allowed(n);
     if (allowed != FS_OK)
         return allowed;
-    if (n->persistent) {
-        enum fs_error e = ensure_handle(n);
-        if (e != FS_OK)
-            return e;
-        ++data_generation;
-        e = persistent_result(littlefs_backend_resize(n->handle, size));
-        if (e == FS_OK) {
-            n->size = (size_t)size;
-            changed(n);
-        } else
-            n->pending_error = e;
-        return finish_transient(n, e);
-    }
-    enum fs_error e = reserve(n, (size_t) size);
-    if (e != FS_OK) return e;
-    if (size > n->size) zero_bytes((unsigned char *) n->data + n->size, size - n->size);
-    if (!size && n->allocated) {
-        ram_bytes -= n->capacity; kfree((void *) n->data);
-        n->data = 0; n->capacity = 0; n->allocated = false;
-    }
-    n->size = size; changed(n);
-    return FS_OK;
+    enum fs_error e = ensure_handle(n);
+    if (e != FS_OK)
+        return e;
+    ++data_generation;
+    e = persistent_result(littlefs_backend_resize(n->handle, size));
+    if (e == FS_OK) {
+        n->size = (size_t)size;
+        changed(n);
+    } else
+        n->pending_error = e;
+    return finish_transient(n, e);
 }
 
 enum fs_error fs_write(struct fs_node *n, uint64_t offset, const void *data,
@@ -530,36 +494,28 @@ enum fs_error fs_write(struct fs_node *n, uint64_t offset, const void *data,
 {
     *written = 0;
     if (n->kind != FS_REGULAR) return n->kind == FS_DIRECTORY ? FS_IS_DIRECTORY : FS_INVALID;
-    if (!n->writable) return FS_READ_ONLY;
+    if (!n->writable || !n->persistent)
+        return FS_READ_ONLY;
     if (offset > FS_FILE_LIMIT || count > FS_FILE_LIMIT - offset) return FS_TOO_BIG;
     if (!count) return FS_OK;
     enum fs_error allowed = write_allowed(n);
     if (allowed != FS_OK)
         return allowed;
-    if (n->persistent) {
-        enum fs_error e = ensure_handle(n);
-        if (e != FS_OK)
-            return e;
-        ++data_generation;
-        int nwrite = littlefs_backend_write(n->handle, offset, data, count);
-        if (nwrite < 0) {
-            e = persistent_result(nwrite);
-            n->pending_error = e;
-        } else {
-            *written = (size_t)nwrite;
-            if (offset + (uint64_t)nwrite > n->size)
-                n->size = (size_t)(offset + nwrite);
-            changed(n);
-        }
-        return finish_transient(n, e);
+    enum fs_error e = ensure_handle(n);
+    if (e != FS_OK)
+        return e;
+    ++data_generation;
+    int nwrite = littlefs_backend_write(n->handle, offset, data, count);
+    if (nwrite < 0) {
+        e = persistent_result(nwrite);
+        n->pending_error = e;
+    } else {
+        *written = (size_t)nwrite;
+        if (offset + (uint64_t)nwrite > n->size)
+            n->size = (size_t)(offset + nwrite);
+        changed(n);
     }
-    enum fs_error e = reserve(n, (size_t) offset + count);
-    if (e != FS_OK) return e;
-    if (offset > n->size) zero_bytes((unsigned char *) n->data + n->size, offset - n->size);
-    copy_bytes((unsigned char *) n->data + offset, data, count);
-    if (offset + count > n->size) n->size = offset + count;
-    changed(n); *written = count;
-    return FS_OK;
+    return finish_transient(n, e);
 }
 
 enum fs_error fs_readlink(struct fs_node *n, char *out, size_t size, size_t *count)
@@ -599,25 +555,27 @@ enum fs_error fs_directory(struct fs_node *n, uint64_t index, char *name,
 
 enum fs_error fs_chmod(struct fs_node *n, unsigned mode)
 {
-    if (!n->writable) return FS_READ_ONLY;
+    if (!n->writable || !n->persistent)
+        return FS_READ_ONLY;
     enum fs_error e = write_allowed(n);
     if (e != FS_OK)
         return e;
     n->mode = mode & 07777;
     n->changed_ns = clock_realtime_ns();
     data_changed(n);
-    return n->persistent ? finish_transient(n, fs_sync_node(n)) : FS_OK;
+    return finish_transient(n, fs_sync_node(n));
 }
 enum fs_error fs_set_times(struct fs_node *n, uint64_t accessed, uint64_t modified)
 {
-    if (!n->writable) return FS_READ_ONLY;
+    if (!n->writable || !n->persistent)
+        return FS_READ_ONLY;
     enum fs_error e = write_allowed(n);
     if (e != FS_OK)
         return e;
     n->accessed_ns = accessed; n->modified_ns = modified;
     n->changed_ns = clock_realtime_ns();
     data_changed(n);
-    return n->persistent ? finish_transient(n, fs_sync_node(n)) : FS_OK;
+    return finish_transient(n, fs_sync_node(n));
 }
 
 static bool hex_field(const unsigned char *p, uint32_t *value)
@@ -712,8 +670,9 @@ static struct fs_node *seed_directory(const char *name, bool writable)
 
 void fs_init(const void *archive, size_t length)
 {
-    root_node = 0; node_count = ram_bytes = next_inode = 0;
-    data_root = data_nodes = deferred = 0;
+    root_node = 0;
+    node_count = next_inode = 0;
+    data_nodes = deferred = 0;
     data_mounted = data_frozen = data_failed = false;
     data_generation = data_boot = 0;
     data_error = FS_OK;
@@ -723,9 +682,11 @@ void fs_init(const void *archive, size_t length)
         if (!archive) panic("missing runtime archive data");
         seed_archive(archive, length);
     }
-    seed_directory("work", true); seed_directory("tmp", true);
-    struct fs_node *home = seed_directory("home", true);
-    if (!new_node(home, "user", FS_DIRECTORY, 0755, true)) panic("cannot allocate user directory");
+    seed_directory("work", false);
+    seed_directory("tmp", false);
+    struct fs_node *home = seed_directory("home", false);
+    if (!new_node(home, "user", FS_DIRECTORY, 0755, false))
+        panic("cannot allocate user directory");
     struct fs_node *dev = seed_directory("dev", false);
     if (!new_node(dev, "tty", FS_CONSOLE, 0666, false)
         || !new_node(dev, "null", FS_NULL, 0666, false)) panic("cannot allocate device entries");
@@ -803,10 +764,14 @@ static enum fs_error data_path(struct fs_node *n, char *out)
     enum fs_error e = fs_path(n, path, sizeof path);
     if (e != FS_OK)
         return e;
-    if (path[0] != '/' || path[1] != 'w' || path[2] != 'o' || path[3] != 'r' || path[4] != 'k' ||
-        (path[5] && path[5] != '/'))
+    struct fs_node *anchor = n;
+    while (anchor->parent && anchor->parent != root_node)
+        anchor = anchor->parent;
+    if (!anchor->persistent || anchor->parent != root_node ||
+        (!text_equal(anchor->name, "work") && !text_equal(anchor->name, "home") &&
+         !text_equal(anchor->name, "tmp")))
         return FS_INVALID;
-    copy_bytes(out, path + 5, text_length(path + 5) + 1);
+    copy_bytes(out, path, text_length(path) + 1);
     return FS_OK;
 }
 static enum fs_error ensure_handle(struct fs_node *n)
@@ -918,6 +883,7 @@ struct mount_context {
     struct fs_node **queue, *parent;
     uint64_t *ids;
     size_t count;
+    unsigned anchors;
 };
 static int mount_entry(void *opaque, const char *name, const struct littlefs_metadata *m)
 {
@@ -927,9 +893,21 @@ static int mount_entry(void *opaque, const char *name, const struct littlefs_met
     for (size_t i = 0; i < c->count; i++)
         if (c->ids[i] == m->id)
             return -84;
+    if (!c->parent) {
+        unsigned bit = text_equal(name, "work")   ? 1
+                       : text_equal(name, "home") ? 2
+                       : text_equal(name, "tmp")  ? 4
+                                                  : 0;
+        if (!bit || (c->anchors & bit) || m->kind != FS_DIRECTORY)
+            return -84;
+        c->anchors |= bit;
+    }
+    /* Top-level candidates remain detached until the entire volume validates. */
     struct fs_node *n = new_node(c->parent, name, m->kind, m->mode, true);
     if (!n)
         return -12;
+    if (!c->parent)
+        n->parent = root_node;
     import_metadata(n, m);
     n->metadata_dirty = false;
     n->data_next = data_nodes;
@@ -938,49 +916,61 @@ static int mount_entry(void *opaque, const char *name, const struct littlefs_met
     c->ids[c->count++] = m->id;
     return 0;
 }
+static bool unused_tree(struct fs_node *n)
+{
+    if (n->references)
+        return false;
+    for (struct fs_node *p = n->children; p; p = p->next)
+        if (!unused_tree(p))
+            return false;
+    return true;
+}
+static void discard_readonly_tree(struct fs_node *n)
+{
+    while (n->children) {
+        struct fs_node *p = n->children;
+        n->children = p->next;
+        discard_readonly_tree(p);
+    }
+    n->linked = false;
+    (void)destroy_if_unused(n);
+}
 enum fs_error fs_mount_data(void)
 {
     if (data_mounted)
         return FS_BUSY;
-    struct fs_node *work = child(root_node, "work");
-    if (!work || work->children || work->references)
-        return FS_BUSY;
+    const char *names[] = {"work", "home", "tmp"};
+    for (unsigned i = 0; i < 3; i++) {
+        struct fs_node *anchor = child(root_node, names[i]);
+        if (!anchor || !unused_tree(anchor))
+            return FS_BUSY;
+    }
     int result;
     if (data_disk_sectors() != 131072) {
         unsigned char sector[512];
         result = data_disk_read(0, sector, 1);
         if (!result)
             result = -95;
-        enum fs_error e = persistent_result(result);
-        if (e != FS_NO_DEVICE)
-            work->writable = false;
-        return e;
+        return persistent_result(result);
     }
     struct fs_node **queue = kmalloc(FS_NODE_LIMIT * sizeof *queue);
     uint64_t *ids = kmalloc(FS_NODE_LIMIT * sizeof *ids);
     if (!queue || !ids) {
         kfree(queue);
         kfree(ids);
-        work->writable = false;
         data_error = FS_NO_MEMORY;
         return data_error;
     }
-    struct fs_node original = *work;
     struct mount_context context = {.queue = queue, .ids = ids, .count = 1};
-    queue[0] = work;
+    queue[0] = NULL;
     ids[0] = 1;
     uint64_t boot = 0;
     result = littlefs_backend_mount(&boot);
-    if (!result) {
-        struct littlefs_metadata root;
-        result = littlefs_backend_root_metadata(&root);
-        if (!result) {
-            import_metadata(work, &root);
-            data_nodes = work;
-            work->metadata_dirty = false;
-        }
-    }
-    for (size_t at = 0; !result && at < context.count; at++) {
+    if (!result)
+        result = littlefs_backend_list("", mount_entry, &context);
+    if (!result && context.anchors != 7)
+        result = -84;
+    for (size_t at = 1; !result && at < context.count; at++) {
         if (queue[at]->kind != FS_DIRECTORY)
             continue;
         context.parent = queue[at];
@@ -1001,13 +991,22 @@ enum fs_error fs_mount_data(void)
             n->linked = false;
             (void)destroy_if_unused(n);
         }
-        *work = original;
-        work->writable = false;
         data_nodes = 0;
         littlefs_backend_unmount();
         data_error = persistent_result(result);
     } else {
-        data_root = work;
+        for (size_t i = 1; i < context.count; i++) {
+            struct fs_node *n = queue[i];
+            if (n->parent != root_node)
+                continue;
+            struct fs_node **p = &root_node->children;
+            while (*p && !text_equal((*p)->name, n->name))
+                p = &(*p)->next;
+            struct fs_node *old = *p;
+            n->next = old->next;
+            *p = n;
+            discard_readonly_tree(old);
+        }
         data_mounted = true;
         data_failed = false;
         data_boot = boot;

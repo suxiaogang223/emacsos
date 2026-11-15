@@ -1,36 +1,42 @@
+#define _POSIX_C_SOURCE 200809L
 /* Host tests exercise the same PAL and ABI objects linked into the guest. */
 #include "files.h"
+#include "littlefs_backend.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
+static int disk_fd = -1;
 int data_disk_init(void)
 {
-    return -19;
+    return disk_fd < 0 ? -19 : 0;
 }
-int data_disk_read(uint64_t s, void *p, size_t n)
+int data_disk_read(uint64_t sector, void *p, size_t n)
 {
-    (void)s;
-    (void)p;
-    (void)n;
-    return -19;
+    if (disk_fd < 0)
+        return -19;
+    if (sector > 131072 || n > 131072 - sector)
+        return -22;
+    return pread(disk_fd, p, n * 512, (off_t)sector * 512) == (ssize_t)(n * 512) ? 0 : -5;
 }
-int data_disk_write(uint64_t s, const void *p, size_t n)
+int data_disk_write(uint64_t sector, const void *p, size_t n)
 {
-    (void)s;
-    (void)p;
-    (void)n;
-    return -19;
+    if (disk_fd < 0)
+        return -19;
+    if (sector > 131072 || n > 131072 - sector)
+        return -22;
+    return pwrite(disk_fd, p, n * 512, (off_t)sector * 512) == (ssize_t)(n * 512) ? 0 : -5;
 }
 int data_disk_flush(void)
 {
-    return -19;
+    return disk_fd < 0 ? -19 : fsync(disk_fd) ? -5 : 0;
 }
 uint64_t data_disk_sectors(void)
 {
-    return 0;
+    return disk_fd < 0 ? 0 : 131072;
 }
 static size_t allocated;
 union allocation { max_align_t alignment; size_t size; };
@@ -66,6 +72,17 @@ int main(int argc, char **argv)
     void *archive = malloc((size_t) size); assert(archive);
     assert(fread(archive, 1, (size_t) size, f) == (size_t) size); fclose(f);
     fs_init(archive, (size_t) size);
+    assert(fs_mount_data() == FS_NO_DEVICE);
+    struct fs_node *refused;
+    assert(fs_create_regular(fs_root(), "/work/no-fallback", 0600, &refused) == FS_READ_ONLY);
+    assert(fs_create_regular(fs_root(), "/home/user/no-fallback", 0600, &refused) == FS_READ_ONLY);
+    assert(fs_create_regular(fs_root(), "/tmp/no-fallback", 0600, &refused) == FS_READ_ONLY);
+    FILE *disk = tmpfile();
+    assert(disk);
+    disk_fd = fileno(disk);
+    assert(!ftruncate(disk_fd, 64 * 1024 * 1024));
+    assert(!littlefs_backend_format());
+    assert(fs_mount_data() == FS_OK);
     struct fs_node *n; struct fs_info info;
     assert(fs_lookup(fs_root(), "/usr/alias", true, &n) == FS_OK);
     char buffer[64] = {0}; size_t count;
@@ -113,9 +130,7 @@ int main(int argc, char **argv)
     assert(open_path("/work/project/renamed", 0) == -2);
     assert(call(5, fd, P(&after), 0, 0, 0) == 0 && after.st_nlink == 0);
     assert(call(1, fd, P("Z"), 1, 0, 0) == 1);
-    assert(fs_ram_used() > 0);
     close_file(fd); close_file(duplicate); close_file(independent);
-    assert(fs_ram_used() == 0);
     assert(call(3, fd, 0, 0, 0, 0) == -9);
 
     fd = open_path("/work/sparse", 64 | 2); assert(fd >= 3);
@@ -135,7 +150,6 @@ int main(int argc, char **argv)
     assert(call(87, P("/work/cycle"), 0, 0, 0, 0) == 0);
     assert(call(87, P("/work/alias"), 0, 0, 0, 0) == 0);
     assert(call(87, P("/work/sparse"), 0, 0, 0, 0) == 0); close_file(fd);
-    assert(fs_ram_used() == 0);
     assert(call(88, P("created-target"), P("/work/dangling"), 0, 0, 0) == 0);
     assert(open_path("/work/dangling", 64 | 128 | 2) == -17);
     fd = open_path("/work/dangling", 64 | 2); assert(fd >= 3);
@@ -156,20 +170,7 @@ int main(int argc, char **argv)
         assert(call(1, fd, P(buffer), sizeof buffer, 0, 0) == sizeof buffer);
         assert(call(87, P("/work/repeated"), 0, 0, 0, 0) == 0); close_file(fd);
     }
-    assert(allocated == baseline && fs_ram_used() == 0);
-    int large[3];
-    for (unsigned i = 0; i < 3; ++i) {
-        char path[32]; snprintf(path, sizeof path, "/work/large%u", i);
-        large[i] = open_path(path, 64 | 2); assert(large[i] >= 3);
-        assert(call(77, large[i], FS_FILE_LIMIT, 0, 0, 0) == 0);
-    }
-    assert(fs_ram_used() == FS_RAM_LIMIT);
-    assert(call(88, P("x"), P("/work/full"), 0, 0, 0) == -28);
-    for (unsigned i = 0; i < 3; ++i) {
-        char path[32]; snprintf(path, sizeof path, "/work/large%u", i);
-        assert(call(87, P(path), 0, 0, 0, 0) == 0); close_file(large[i]);
-    }
-    assert(fs_ram_used() == 0 && allocated == baseline);
+    assert(allocated == baseline);
     assert(file_ready(177, false) == -9 && file_ready(0, false) == 0);
     assert(call(33, 0, 0, 0, 0, 0) == 0);
     close_file(0);
@@ -180,5 +181,6 @@ int main(int argc, char **argv)
     assert(fs_lookup(fs_root(), "/work", true, &n) == FS_OK);
     fs_info(n, &info); assert(info.kind == FS_DIRECTORY);
     puts("File PAL and Linux descriptor/namespace checks passed");
+    fclose(disk);
     return 0;
 }

@@ -8,7 +8,6 @@
 #define FS_PATH_MAX 1024
 #define FS_NAME_MAX 255
 #define FS_NODE_LIMIT 8192
-#define FS_RAM_LIMIT (24UL * 1024 * 1024)
 #define FS_FILE_LIMIT (8UL * 1024 * 1024)
 
 enum fs_error {
@@ -63,7 +62,6 @@ enum fs_error fs_readlink(struct fs_node *, char *, size_t, size_t *);
 enum fs_error fs_directory(struct fs_node *, uint64_t, char *, struct fs_info *);
 enum fs_error fs_chmod(struct fs_node *, unsigned);
 enum fs_error fs_set_times(struct fs_node *, uint64_t, uint64_t);
-size_t fs_ram_used(void);
 /* DATA mount validates existing bytes; only offline tooling may format. */
 enum fs_error fs_mount_data(void);
 enum fs_error fs_sync_node(struct fs_node *);

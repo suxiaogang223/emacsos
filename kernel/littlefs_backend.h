@@ -1,13 +1,14 @@
 #ifndef EMACSOS_LITTLEFS_BACKEND_H
 #define EMACSOS_LITTLEFS_BACKEND_H
 #include "files.h"
+#define EMACSOS_DATA_FORMAT "EOSDATA2"
 struct littlefs_metadata {
     uint64_t id, size, accessed_ns, modified_ns, changed_ns;
     unsigned mode;
     enum fs_kind kind;
 };
 struct littlefs_handle;
-/* Paths are relative to the projected /work root, never raw volume paths. */
+/* Guest absolute paths live under /tree; only work/home/tmp are projected. */
 int littlefs_backend_object_metadata(uint64_t, struct littlefs_metadata *);
 int littlefs_backend_root_metadata(struct littlefs_metadata *);
 int littlefs_backend_mount(uint64_t *boot_id);

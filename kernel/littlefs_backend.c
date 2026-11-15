@@ -280,8 +280,8 @@ int littlefs_backend_mount(uint64_t *boot_id)
         return e;
     active = true;
     e = lfs_getattr(&volume, "/", VERSION_ATTR, version, sizeof version);
-    if (e != 8 || memcmp(version, "EOSDATA1", 8))
-        return e < 0 ? e : -84;
+    if (e != 8 || memcmp(version, EMACSOS_DATA_FORMAT, 8))
+        return e < 0 ? e : -95;
     if ((e = attribute64(NEXT_ATTR, &next_id)) || (e = attribute64(BOOT_ATTR, &previous_boot)))
         return e;
     if (next_id < 2 || next_id >= (1ULL << 63) || previous_boot >= 2147483646ULL)
@@ -670,12 +670,20 @@ int littlefs_backend_format(void)
                                      .changed_ns = now};
     if (!e)
         e = set_metadata("/tree", &root);
+    const char *anchors[] = {"/tree/work", "/tree/home", "/tree/tmp", "/tree/home/user"};
+    for (unsigned i = 0; i < 4 && !e; i++) {
+        e = lfs_mkdir(&volume, anchors[i]);
+        root.id = i + 2;
+        root.mode = i == 2 ? 01777 : 0755;
+        if (!e)
+            e = set_metadata(anchors[i], &root);
+    }
     if (!e)
-        e = set64(NEXT_ATTR, 2);
+        e = set64(NEXT_ATTR, 6);
     if (!e)
         e = set64(BOOT_ATTR, 0);
     if (!e)
-        e = lfs_setattr(&volume, "/", VERSION_ATTR, "EOSDATA1", 8);
+        e = lfs_setattr(&volume, "/", VERSION_ATTR, EMACSOS_DATA_FORMAT, 8);
     if (!e)
         e = data_disk_flush();
     int closed = lfs_unmount(&volume);
