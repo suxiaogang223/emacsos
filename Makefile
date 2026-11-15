@@ -5,18 +5,21 @@ OBJCOPY := llvm-objcopy
 NASM := nasm
 OUT := build/kernel
 CFLAGS := --target=x86_64-unknown-none-elf -std=c11 -O2 -g -Wall -Wextra -Werror \
-          -I kernel -I third_party/littlefs -DLFS_CONFIG=littlefs_config.h \
-          -ffreestanding -fno-stack-protector -fno-pic -fno-pie -mno-red-zone -mgeneral-regs-only
+          -I kernel/lwip-libc -I kernel -I third_party/littlefs -I third_party/lwip/src/include \
+          -DLFS_CONFIG=littlefs_config.h -ffreestanding -fno-stack-protector -fno-pic -fno-pie -mno-red-zone -mgeneral-regs-only
 
 .PHONY: kernel build run runtime \
-        test test-files test-lisp test-tooling test-web test-probes test-guest test-storage \
+        test test-files test-lisp test-tooling test-web test-probes test-guest test-storage test-network test-network-guest \
         lint check web web-assets web-serve test-browser help
 .NOTPARALLEL: check
 BUILD_IMAGE := emacsos-kernel:alpine3.22
-KERNEL_C := main hardware memory loader runtime files file_abi block storage_control littlefs_backend
+KERNEL_C := main hardware memory loader runtime files file_abi block storage_control littlefs_backend network ne2000
 KERNEL_ASM := entry interrupts syscall
-KERNEL_HEADERS := $(wildcard kernel/*.h) $(wildcard third_party/littlefs/*.h)
-KERNEL_OBJS := $(addprefix $(OUT)/,$(addsuffix .o,$(KERNEL_C) $(KERNEL_ASM))) $(OUT)/lfs.o
+KERNEL_HEADERS := $(wildcard kernel/*.h kernel/arch/*.h kernel/lwip-libc/*.h) \
+                  $(wildcard third_party/littlefs/*.h) $(shell find third_party/lwip/src/include -name "*.h" 2>/dev/null)
+LWIP_SOURCES := $(addprefix core/,$(addsuffix .c,init def inet_chksum ip mem memp netif pbuf stats sys tcp tcp_in tcp_out timeouts)) \
+                $(addprefix core/ipv4/,$(addsuffix .c,etharp icmp ip4 ip4_addr)) netif/ethernet.c
+KERNEL_OBJS := $(addprefix $(OUT)/,$(addsuffix .o,$(KERNEL_C) $(KERNEL_ASM))) $(OUT)/lfs.o $(addprefix $(OUT)/lwip/,$(LWIP_SOURCES:.c=.o))
 
 $(OUT):
 	mkdir -p $@
@@ -25,6 +28,10 @@ $(OUT)/%.o: kernel/%.asm Makefile build/toolchains/kernel.id | $(OUT)
 	$(NASM) -f elf64 $< -o $@
 
 $(OUT)/%.o: kernel/%.c $(KERNEL_HEADERS) Makefile build/toolchains/kernel.id | $(OUT)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(OUT)/lwip/%.o: third_party/lwip/src/%.c $(KERNEL_HEADERS) Makefile build/toolchains/kernel.id
+	mkdir -p $(@D)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(OUT)/lfs.o: third_party/littlefs/lfs.c $(KERNEL_HEADERS) Makefile build/toolchains/kernel.id | $(OUT)
@@ -83,10 +90,13 @@ runtime:
 build: runtime kernel
 	python3 scripts/image.py
 
-test: test-files test-lisp test-tooling test-web
+test: test-files test-network test-lisp test-tooling test-web
 
 test-files:
 	python3 tests/kernel/check-files.py
+
+test-network:
+	python3 tests/kernel/network-abi.py
 
 test-lisp:
 	mkdir -p build/lisp
@@ -107,6 +117,7 @@ lint:
 test-probes: kernel
 	python3 tests/kernel/check-probe.py
 	python3 tests/kernel/check-storage-device.py
+	python3 tests/kernel/check-network.py
 
 test-guest: build
 	python3 tests/guest/check.py
@@ -114,8 +125,11 @@ test-guest: build
 test-storage: build
 	python3 tests/guest/check.py --storage
 
+test-network-guest: build
+	python3 tests/guest/network.py
+
 # Run in order even under make -j: probes and guest acceptance share kernel files.
-check: test lint test-probes test-guest test-storage
+check: test lint test-probes test-guest test-storage test-network-guest
 
 WEB_HOST ?= 127.0.0.1
 WEB_PORT ?= 18082
