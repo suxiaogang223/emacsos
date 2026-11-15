@@ -265,6 +265,35 @@ class BridgeTests(unittest.TestCase):
         connection.close()
         self.await_cleanup(process)
 
+    @unittest.skipUnless(shutil.which("qemu-system-x86_64") and shutil.which("openssl"), "QEMU and openssl required")
+    def test_tls_backpressure_preserves_queued_frames(self):
+        cert, key = self.root / "cert.pem", self.root / "key.pem"
+        subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(key), "-out", str(cert), "-days", "1", "-subj", "/CN=localhost"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(cert, key)
+        self.httpd.shutdown()
+        self.thread.join()
+        self.httpd.socket = context.wrap_socket(self.httpd.socket, server_side=True)
+        self.httpd.network_tls = True
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+        connection, response = self.request(origin=f"https://127.0.0.1:{self.httpd.server_port}")
+        self.assertIn(b"101 Switching Protocols", response)
+        session = next(iter(self.manager.sessions))
+        session.connection.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1024)
+        connection.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1024)
+        count = 700
+        connection.sendall(masked(2, ethernet() * (count // 2)))
+        time.sleep(.2)
+        connection.sendall(masked(2, ethernet() * (count // 2)))
+        time.sleep(.2)
+        for index in range(count):
+            opcode, reply = receive(connection)
+            self.assertEqual(opcode, 2, f"reply {index}: {reply.hex()}")
+            self.assertEqual(reply[4 + 20:4 + 22], b"\0\2")
+        connection.close()
+        self.await_cleanup(session.process)
+
     @unittest.skipUnless(shutil.which("qemu-system-x86_64"), "native QEMU required")
     def test_backend_failure_closes_websocket(self):
         connection, _ = self.request()

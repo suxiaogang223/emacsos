@@ -242,13 +242,14 @@ class NetworkSession:
         backend.setblocking(False)
         websocket, outgoing, incoming = WebSocketFrames(), EthernetFrames(), EthernetFrames()
         to_backend, to_client = bytearray(), bytearray()
+        client_chunk = b""
         close_payload = struct.pack("!H", 1001)
         try:
             while not self.stopped:
                 if self.process.poll() is not None:
                     raise ProtocolError("Network backend stopped", 1011)
                 readable, writable, _ = select.select([client, backend],
-                    ([backend] if to_backend else []) + ([client] if to_client else []), [], 0.25)
+                    ([backend] if to_backend else []) + ([client] if to_client or client_chunk else []), [], 0.25)
                 if isinstance(client, ssl.SSLSocket) and client.pending() and client not in readable:
                     readable.append(client)
                 for channel in readable:
@@ -271,17 +272,25 @@ class NetworkSession:
                             if opcode == 2:
                                 for packet in outgoing.feed(payload):
                                     to_backend.extend(packet)
-                    if len(to_client) > MAX_PENDING or len(to_backend) > MAX_PENDING:
+                    if len(to_client) + len(client_chunk) > MAX_PENDING or len(to_backend) > MAX_PENDING:
                         raise ProtocolError("Network queue limit reached", 1013)
                 for channel in writable:
-                    pending = to_client if channel is client else to_backend
+                    if channel is client and not client_chunk:
+                        client_chunk = bytes(to_client[:16384])
+                        del to_client[:len(client_chunk)]
+                    # SSLWantWrite requires the same bytes on the next retry;
+                    # newly received frames must not alter this in-flight write.
+                    pending = client_chunk if channel is client else to_backend
                     try:
                         sent = channel.send(pending)
                     except (BlockingIOError, ssl.SSLWantReadError, ssl.SSLWantWriteError):
                         continue
                     if sent <= 0:
                         return
-                    del pending[:sent]
+                    if channel is client:
+                        client_chunk = client_chunk[sent:]
+                    else:
+                        del to_backend[:sent]
         except ProtocolError as error:
             close_payload = struct.pack("!H", error.code)
         except (OSError, ValueError):
