@@ -68,9 +68,11 @@ python3 scripts/serve-web.py --host 0.0.0.0 --port 18082 \
 
 A reverse proxy or static host must preserve the isolation headers, serve
 `.wasm` as `application/wasm`, and map the same allowlisted URLs. Serve vendor
-files from the same origin, and forward `/network` WebSocket upgrades for guest
-networking. HTTPS uses WSS automatically; SSH forwarding needs no additional
-port. The local server has no authentication and is for
+files from the same origin. Guest networking is tested with direct loopback HTTP
+or the server's own HTTPS listener; WSS is selected automatically. The bridge
+validates Host/Origin against that listener. TLS-terminating HTTP reverse proxies
+and arbitrary public hostnames need additional deployment support. SSH forwarding
+needs no additional port. The local server has no authentication and is for
 development; choose the listening address deliberately.
 
 ## Controls and lifecycle

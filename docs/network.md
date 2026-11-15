@@ -61,8 +61,10 @@ error/timeout behavior.
 
 Static hosting or a missing host QEMU permits offline boot without a NIC.
 An SSH tunnel needs only the existing web port: the network endpoint shares the
-same origin. HTTPS hosting uses WSS automatically. A reverse proxy must forward
-the `/network` WebSocket upgrade as well as the documented isolation headers.
+same origin. Direct HTTPS hosting uses WSS automatically. The bridge requires
+Host/Origin to match the server's scheme and local/listening authority.
+TLS-terminating HTTP proxies and arbitrary public hostnames require additional
+deployment support and are outside the tested profile.
 
 The development server has no user authentication. Origin checks are not account
 permissions, and SLIRP allows outbound access including services reachable on
