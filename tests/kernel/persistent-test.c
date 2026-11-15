@@ -589,8 +589,19 @@ static void damage_fixture(const char *kind)
         fixture_file(&lfs, "/tree/tmp", id, sizeof id, NULL);
         fixture_bytes64(id, 101);
         assert(!lfs_setattr(&lfs, "/", 0xf1, id, sizeof id));
-    } else if (!strcmp(kind, "missing-home-user")) {
+    } else if (!strcmp(kind, "missing-home-user") || !strcmp(kind, "symlink-home-user")) {
+        unsigned char metadata[48], id[8];
+        assert(lfs_getattr(&lfs, "/tree/home/user", 0xe0, metadata, sizeof metadata) == 48);
         fixture_remove_tree(&lfs, "/tree/home/user");
+        if (!strcmp(kind, "symlink-home-user")) {
+            fixture_bytes64(metadata + 8, 100);
+            fixture_bytes64(metadata + 16, ((uint64_t)0777 << 32) | FS_SYMLINK);
+            fixture_bytes64(id, 100);
+            fixture_file(&lfs, "/objects/0000000000000064", "/tmp", 4, metadata);
+            fixture_file(&lfs, "/tree/home/user", id, sizeof id, NULL);
+            fixture_bytes64(id, 101);
+            assert(!lfs_setattr(&lfs, "/", 0xf1, id, sizeof id));
+        }
     } else
         abort();
     assert(!lfs_unmount(&lfs));

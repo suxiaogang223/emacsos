@@ -93,6 +93,15 @@ int main(int argc, char **argv)
     assert(!ftruncate(disk_fd, 64 * 1024 * 1024));
     assert(!littlefs_backend_format());
     assert(fs_mount_data() == FS_OK);
+    char cwd[64];
+    assert(call(79, P(cwd), sizeof cwd, 0, 0, 0) == 11);
+    assert(!strcmp(cwd, "/home/user"));
+    int relative = open_path("relative-file", 64 | 2);
+    assert(relative >= 3);
+    close_file(relative);
+    struct fs_node *relative_node;
+    assert(fs_lookup(fs_root(), "/home/user/relative-file", true, &relative_node) == FS_OK);
+    assert(call(87, P("relative-file"), 0, 0, 0, 0) == 0);
     struct fs_node *n; struct fs_info info;
     assert(fs_lookup(fs_root(), "/usr/alias", true, &n) == FS_OK);
     char buffer[64] = {0}; size_t count;

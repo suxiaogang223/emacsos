@@ -115,10 +115,10 @@ with tempfile.TemporaryDirectory(prefix="emacsos-files-") as directory:
     assert hashlib.sha256(trial.read_bytes()).digest() == before
 
     for damage in ("legacy1", "legacy2", "missing", "extra", "duplicate", "wrong-type",
-                   "missing-home-user"):
+                   "missing-home-user", "symlink-home-user"):
         run("format")
         run("damage-" + damage)
         before = hashlib.sha256(trial.read_bytes()).digest()
         run("reject-legacy" if damage.startswith("legacy") else "reject")
         assert hashlib.sha256(trial.read_bytes()).digest() == before, damage
-    print("EOSDATA1/2, malformed anchors and missing user home reject without modifying DATA")
+    print("EOSDATA1/2, malformed anchors and missing/symlink user home reject without modifying DATA")
