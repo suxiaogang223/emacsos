@@ -1,6 +1,7 @@
 #include "files.h"
 #include "littlefs_backend.h"
 #include "block.h"
+#include "data_layout.h"
 
 extern void *kmalloc(size_t);
 extern void kfree(void *);
@@ -29,6 +30,20 @@ static struct fs_node *data_nodes, *deferred;
 static bool data_mounted, data_frozen, data_failed;
 static uint64_t data_generation, data_boot;
 static enum fs_error data_error;
+
+#define ANCHOR_NAME(name) name,
+static const char *const data_anchors[] = {EMACSOS_DATA_ANCHORS(ANCHOR_NAME)};
+#undef ANCHOR_NAME
+#define DATA_ANCHOR_COUNT (sizeof data_anchors / sizeof data_anchors[0])
+
+static bool text_equal(const char *, const char *);
+static unsigned anchor_bit(const char *name)
+{
+    for (unsigned i = 0; i < DATA_ANCHOR_COUNT; i++)
+        if (text_equal(name, data_anchors[i]))
+            return 1U << i;
+    return 0;
+}
 
 static enum fs_error persistent_result(int);
 static enum fs_error finish_transient(struct fs_node *, enum fs_error);
@@ -682,11 +697,22 @@ void fs_init(const void *archive, size_t length)
         if (!archive) panic("missing runtime archive data");
         seed_archive(archive, length);
     }
-    seed_directory("work", false);
-    seed_directory("tmp", false);
-    struct fs_node *home = seed_directory("home", false);
-    if (!new_node(home, "user", FS_DIRECTORY, 0755, false))
-        panic("cannot allocate user directory");
+#define RECOVERY_DIRECTORY(path, mode) {path, mode},
+    static const struct { const char *path; unsigned mode; } directories[] = {
+        EMACSOS_DATA_DIRECTORIES(RECOVERY_DIRECTORY)
+    };
+#undef RECOVERY_DIRECTORY
+    for (size_t i = 0; i < sizeof directories / sizeof directories[0]; i++) {
+        char name[FS_NAME_MAX + 1];
+        struct fs_node *parent = seed_parent(directories[i].path, name);
+        struct fs_node *n = child(parent, name);
+        if (!n)
+            n = new_node(parent, name, FS_DIRECTORY, directories[i].mode, false);
+        if (!n || n->kind != FS_DIRECTORY)
+            panic("invalid recovery directory");
+        n->writable = false;
+        n->mode = directories[i].mode;
+    }
     struct fs_node *dev = seed_directory("dev", false);
     if (!new_node(dev, "tty", FS_CONSOLE, 0666, false)
         || !new_node(dev, "null", FS_NULL, 0666, false)) panic("cannot allocate device entries");
@@ -767,9 +793,7 @@ static enum fs_error data_path(struct fs_node *n, char *out)
     struct fs_node *anchor = n;
     while (anchor->parent && anchor->parent != root_node)
         anchor = anchor->parent;
-    if (!anchor->persistent || anchor->parent != root_node ||
-        (!text_equal(anchor->name, "work") && !text_equal(anchor->name, "home") &&
-         !text_equal(anchor->name, "tmp")))
+    if (!anchor->persistent || anchor->parent != root_node || !anchor_bit(anchor->name))
         return FS_INVALID;
     copy_bytes(out, path, text_length(path) + 1);
     return FS_OK;
@@ -894,10 +918,7 @@ static int mount_entry(void *opaque, const char *name, const struct littlefs_met
         if (c->ids[i] == m->id)
             return -84;
     if (!c->parent) {
-        unsigned bit = text_equal(name, "work")   ? 1
-                       : text_equal(name, "home") ? 2
-                       : text_equal(name, "tmp")  ? 4
-                                                  : 0;
+        unsigned bit = anchor_bit(name);
         if (!bit || (c->anchors & bit) || m->kind != FS_DIRECTORY)
             return -84;
         c->anchors |= bit;
@@ -939,9 +960,8 @@ enum fs_error fs_mount_data(void)
 {
     if (data_mounted)
         return FS_BUSY;
-    const char *names[] = {"work", "home", "tmp"};
-    for (unsigned i = 0; i < 3; i++) {
-        struct fs_node *anchor = child(root_node, names[i]);
+    for (unsigned i = 0; i < DATA_ANCHOR_COUNT; i++) {
+        struct fs_node *anchor = child(root_node, data_anchors[i]);
         if (!anchor || !unused_tree(anchor))
             return FS_BUSY;
     }
@@ -968,7 +988,7 @@ enum fs_error fs_mount_data(void)
     result = littlefs_backend_mount(&boot);
     if (!result)
         result = littlefs_backend_list("", mount_entry, &context);
-    if (!result && context.anchors != 7)
+    if (!result && context.anchors != (1U << DATA_ANCHOR_COUNT) - 1)
         result = -84;
     for (size_t at = 1; !result && at < context.count; at++) {
         if (queue[at]->kind != FS_DIRECTORY)
@@ -978,6 +998,16 @@ enum fs_error fs_mount_data(void)
         enum fs_error e = data_path(queue[at], path);
         result = e == FS_OK ? littlefs_backend_list(path, mount_entry, &context)
                             : (int)fs_error_errno(e);
+    }
+    /* The startup working directory must exist without following user links. */
+    if (!result) {
+        struct fs_node *home = NULL;
+        for (size_t i = 1; i < context.count; i++)
+            if (queue[i]->parent == root_node && text_equal(queue[i]->name, "home"))
+                home = queue[i];
+        struct fs_node *user = home ? child(home, "user") : NULL;
+        if (!user || user->kind != FS_DIRECTORY)
+            result = -84;
     }
     bool collected = false;
     if (!result)

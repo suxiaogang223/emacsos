@@ -4,6 +4,7 @@
  */
 #include "littlefs_backend.h"
 #include "block.h"
+#include "data_layout.h"
 #include "../third_party/littlefs/lfs.h"
 
 extern void *kmalloc(size_t);
@@ -645,6 +646,27 @@ int littlefs_backend_collect(const uint64_t *live, size_t count, bool *changed)
     return e ? e : data_disk_flush();
 }
 #ifdef EMACSOS_HOST_TEST
+static int seed_file(const char *path, const char *contents, uint64_t now)
+{
+    struct littlefs_metadata metadata = {.kind = FS_REGULAR,
+                                         .mode = 0644,
+                                         .accessed_ns = now,
+                                         .modified_ns = now,
+                                         .changed_ns = now};
+    int e = littlefs_backend_create(path, &metadata, NULL);
+    if (e)
+        return e;
+    struct littlefs_handle object;
+    e = file_open(&object, metadata.id, true, false, NULL);
+    if (e)
+        return e;
+    size_t size = length(contents);
+    lfs_ssize_t written = lfs_file_write(&volume, &object.file, contents, size);
+    if (written != (lfs_ssize_t)size)
+        e = written < 0 ? (int)written : -5;
+    int closed = lfs_file_close(&volume, &object.file);
+    return e ? e : closed;
+}
 int littlefs_backend_format(void)
 {
     configure();
@@ -670,16 +692,24 @@ int littlefs_backend_format(void)
                                      .changed_ns = now};
     if (!e)
         e = set_metadata("/tree", &root);
-    const char *anchors[] = {"/tree/work", "/tree/home", "/tree/tmp", "/tree/home/user"};
-    for (unsigned i = 0; i < 4 && !e; i++) {
-        e = lfs_mkdir(&volume, anchors[i]);
-        root.id = i + 2;
-        root.mode = i == 2 ? 01777 : 0755;
+#define SEED_DIRECTORY(path, mode) {"/tree" path, mode},
+    static const struct { const char *path; unsigned mode; } directories[] = {
+        EMACSOS_DATA_DIRECTORIES(SEED_DIRECTORY)
+    };
+#undef SEED_DIRECTORY
+    for (unsigned i = 0; i < sizeof directories / sizeof directories[0] && !e; i++) {
+        e = lfs_mkdir(&volume, directories[i].path);
+        root.id = next_id++;
+        root.mode = directories[i].mode;
         if (!e)
-            e = set_metadata(anchors[i], &root);
+            e = set_metadata(directories[i].path, &root);
     }
     if (!e)
-        e = set64(NEXT_ATTR, 6);
+        e = set64(NEXT_ATTR, next_id);
+    if (!e)
+        e = seed_file("/etc/passwd", EMACSOS_DEFAULT_PASSWD, now);
+    if (!e)
+        e = seed_file("/etc/group", EMACSOS_DEFAULT_GROUP, now);
     if (!e)
         e = set64(BOOT_ATTR, 0);
     if (!e)
