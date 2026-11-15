@@ -5,6 +5,8 @@ import json
 import os
 from pathlib import Path
 import socket
+import struct
+import time
 import subprocess
 import threading
 
@@ -80,6 +82,12 @@ def main():
                     connection.sendall(data)
                 connection.shutdown(socket.SHUT_WR)
             fixture["echo_bytes"] = total
+            connection, _ = listener.accept()
+            with connection:
+                connection.sendall(b"retained-before-reset")
+                time.sleep(0.05)
+                connection.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+            fixture["reset_bytes"] = len(b"retained-before-reset")
         except Exception as error:
             fixture["error"] = repr(error)
 
@@ -111,7 +119,7 @@ def main():
             results.append({"mode": mode, "status": run.returncode, "command": args,
                             "image_sha256": hashlib.sha256(image.read_bytes()).hexdigest()})
         thread.join(timeout=1)
-        if fixture != {"echo_bytes": 65536}:
+        if fixture != {"echo_bytes": 65536, "reset_bytes": 21}:
             raise AssertionError(fixture)
     finally:
         listener.close()

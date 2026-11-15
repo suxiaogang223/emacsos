@@ -61,6 +61,17 @@ void kernel_main(void) {
   require(stream_take_error(s) == NET_OK, "connect succeeded");
   unsigned char data[4096], reply[4096];
   size_t sent = 0, received = 0;
+  unsigned char *large = kmalloc(NET_BUFFER_SIZE * 2);
+  require(large != NULL, "large write buffer");
+  pattern(large, NET_BUFFER_SIZE * 2, 0);
+  require(stream_write(s, large, NET_BUFFER_SIZE * 2, &sent) == NET_OK &&
+              sent == NET_BUFFER_SIZE,
+          "accepted positive write prefix");
+  size_t blocked;
+  require(stream_write(s, large, 1, &blocked) == NET_WOULD_BLOCK &&
+              blocked == 0,
+          "bounded transmit backpressure");
+  kfree(large);
   while (sent < 65536 || received < 65536) {
     deadline(until);
     size_t n;
@@ -114,6 +125,58 @@ void kernel_main(void) {
           "terminal read failure retained");
   close_ok(s);
   console_puts("NETWORK-REFUSED-PASS\r\n");
+  /* Cancel a pending PCB, reuse its slot, and process late traffic repeatedly.
+   */
+  for (unsigned round = 0; round < 32; round++) {
+    require(stream_create(&s) == NET_OK, "cancel create");
+    remote.ip[3] = 99;
+    require(stream_connect(s, &remote) == NET_IN_PROGRESS, "cancel pending");
+    close_ok(s);
+    require(stream_create(&s) == NET_OK, "reuse create");
+    remote.ip[3] = 2;
+    require(stream_connect(s, &remote) == NET_IN_PROGRESS, "reuse pending");
+    until = clock_monotonic_ns() + 12000000000UL;
+    while (!stream_write_ready(s)) {
+      deadline(until);
+      service();
+    }
+    require(stream_take_error(s) == NET_REFUSED, "reused callback identity");
+    close_ok(s);
+  }
+  console_puts("NETWORK-CANCEL-REUSE-PASS\r\n");
+  require(stream_create(&s) == NET_OK, "reset create");
+  remote.port = NETWORK_PROBE_PORT;
+  require(stream_connect(s, &remote) == NET_IN_PROGRESS, "reset pending");
+  until = clock_monotonic_ns() + 12000000000UL;
+  while (!stream_write_ready(s)) {
+    deadline(until);
+    service();
+  }
+  require(stream_take_error(s) == NET_OK, "reset connected");
+  const char retained[] = "retained-before-reset";
+  received = 0;
+  while (received < sizeof retained - 1) {
+    deadline(until);
+    enum net_error e = stream_read(s, reply, sizeof reply, &n);
+    require(e == NET_OK || e == NET_WOULD_BLOCK, "reset queued read");
+    if (e == NET_OK && n) {
+      require(n <= sizeof retained - 1 - received &&
+                  !memcmp(reply, retained + received, n),
+              "bytes before reset");
+      received += n;
+    }
+    service();
+  }
+  while (!stream_read_ready(s)) {
+    deadline(until);
+    service();
+  }
+  require(stream_read(s, reply, 1, &n) == NET_RESET, "remote reset");
+  require(stream_take_error(s) == NET_RESET && stream_take_error(s) == NET_OK,
+          "reset error consumes once");
+  require(stream_write(s, "x", 1, &n) == NET_RESET, "reset write retained");
+  close_ok(s);
+  console_puts("NETWORK-RESET-PASS\r\n");
   /* A silent peer on the local virtual LAN exercises the fixed deadline. */
   require(stream_create(&s) == NET_OK, "timeout create");
   remote.ip[3] = 99;
