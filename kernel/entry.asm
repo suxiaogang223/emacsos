@@ -17,18 +17,22 @@ _start:
     or al, 2
     out 0x92, al
 
-    ; Identity map the fixed 1 GiB QEMU RAM contract with 2 MiB pages.
+    ; Map fixed RAM at low addresses and through a supervisor-only NX alias.
     xor ax, ax
     mov di, 0x1000
-    mov cx, 0x1800
+    mov cx, 0x2800
     rep stosw
     mov dword [0x1000], 0x2003
     mov dword [0x2000], 0x3003
+    mov dword [0x1800], 0x4003
+    mov dword [0x4000], 0x5003
     mov di, 0x3000
     mov eax, 0x83
     mov cx, 512
 .map:
     mov [di], eax
+    mov [di + 0x2000], eax
+    mov dword [di + 0x2004], 0x80000000
     add eax, 0x200000
     add di, 8
     loop .map

@@ -14,7 +14,8 @@ emacsos/
 │   ├── storage_control.c  # Safe COM2 checkpoint barrier
 │   ├── network.c / ne2000.c # Bounded IPv4 TCP streams and ISA device
 │   ├── lwipopts.h / arch/ / lwip-libc/ # Freestanding lwIP port
-│   ├── memory.c / hardware.c # Memory, serial and clocks
+│   ├── memory.c / memory.h # Physical pages, address spaces and page charges
+│   ├── hardware.c         # Serial, interrupts and clocks
 │   └── kernel.ld          # Link layout
 ├── lisp/                  # Trusted application policy and counter demo
 ├── third_party/littlefs/  # Pinned official littlefs submodule
