@@ -4,3 +4,6 @@
 [submodule "littlefs"]
 	path = third_party/littlefs
 	url = https://github.com/littlefs-project/littlefs.git
+[submodule "third_party/lwip"]
+	path = third_party/lwip
+	url = https://github.com/lwip-tcpip/lwip.git
