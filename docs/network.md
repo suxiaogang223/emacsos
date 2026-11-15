@@ -3,9 +3,9 @@
 The network backend implements bounded outbound IPv4 TCP for the fixed QEMU
 machine. Standard GNU Emacs connection objects remain the public interface;
 there is no second networking language or application framework. Native and
-pinned-Wasm Ethernet transport probes, native kernel TCP probes and the native
-Emacs subset below have passed. Actual browser TCP remains a separate gate; use
-the validation commands and exact-source results before claiming it complete.
+pinned-Wasm Ethernet transport probes, native kernel TCP probes and actual
+Emacs TCP/file acceptance have passed. Browser acceptance separately exercises
+the pinned Wasm guest, automatic bridge, completed DATA checkpoint and restart.
 
 ## Transport and ownership
 
@@ -135,6 +135,7 @@ Evaluate this in guest Emacs:
               (open-network-stream "http-fixture" buffer "10.0.2.2" 8000
                                    :type 'plain :coding 'binary))
         (set-process-query-on-exit-flag process nil)
+        (set-process-sentinel process #'ignore)
         (set-process-coding-system process 'binary 'binary)
         (process-send-string
          process "GET /example.el HTTP/1.0\r\nHost: fixture\r\nConnection: close\r\n\r\n")
@@ -181,7 +182,7 @@ numeric HTTP/file loop is separate from the still-deferred DNS part of N2.
 | `make test-network` | Host ABI behavior using a controlled fake stream PAL; no NIC or guest proof. |
 | `make test-probes` | Includes actual native kernel TCP probes: 64 KiB echo, partial writes/backpressure, half-close/EOF, refusal, reset, timeout, cancellation/reuse and absent NIC. |
 | `make test-network-guest` | Actual Emacs numeric TCP, filters/sentinels, timers, HTTP save/load and separate-boot DATA acceptance; requires a clean matching source/image. |
-| Real browser network acceptance | Must independently exercise the guest through the pinned Wasm artifact and actual bridge, including disconnect/cleanup. |
+| `make test-browser-network` | Actual pinned-Wasm guest TCP through the automatic bridge, timer progress, DATA save, completed checkpoint and restart. Requires the already-running web server and optional Playwright tools. |
 
 Native Emacs acceptance has exercised a 64 KiB asynchronous echo, write
 half-close and timers; original refusal/timeout errors; DATA writes while a
@@ -191,7 +192,11 @@ opened in a new guest, with source retained but never automatically loaded.
 `build/image/network/results.json` binds these observations to source, runtime,
 image and checkpoint identities.
 
-Actual browser TCP and retention results must be recorded separately against the
-final committed source and image. Compilation, native success, a link-status
-label or webpage HTTP success alone does not complete that gate. DNS remains
-deferred even when numeric HTTP succeeds.
+Actual browser acceptance has exercised asynchronous fragmented TCP echo,
+timer progress, a saved response, a completed DATA checkpoint and exact file
+contents after restart. Its separate report records the clean source, fetched
+SYSTEM hash and build manifest; all three must match. Host relay tests also
+exercise real SLIRP, TLS WebSocket transport, queue limits, disconnect and helper
+cleanup. TLS here protects the browser-to-server WebSocket; it does not provide
+guest TLS/HTTPS. Compilation, a link-status label or webpage HTTP success alone
+does not establish guest TCP. DNS remains deferred even when numeric HTTP succeeds.

@@ -17,8 +17,8 @@ contracts rather than implied capabilities.
 | Browser presentation | Implemented | Pinned QEMU/Wasm boots the same MVP image; xterm.js supplies the raw serial terminal and retro computer controls. See web.md for browser evidence and limits. |
 | F1 | Implemented subset | Littlefs is the only writable backend for `/etc`, `/home`, `/tmp`, `/var`; native sync/reboot acceptance and separate browser checkpoint/import/export acceptance; see storage.md. |
 | N0 | Transport proved | Actual native and pinned-Wasm Ethernet/ARP, including the explicit browser host bridge. |
-| N1 | Native subset validated; browser gate separate | NE2000 ISA/lwIP numeric IPv4 TCP; actual native Emacs echo, half-close, timers, refusal and timeout pass. Browser TCP requires separate exact-source evidence; see network.md. |
-| N2a / N2b | Native numeric HTTP/file loop validated; DNS deferred | Actual native HTTP download/hash/save/manual load and fresh-boot source retention pass. Browser TCP/retention remains separate; DNS and TLS are unimplemented. |
+| N1 | Implemented subset | NE2000 ISA/lwIP numeric IPv4 TCP; native Emacs echo, half-close, timers, refusal and timeout pass. Separate pinned-Wasm TCP, file save, checkpoint and restart acceptance passes; see network.md. |
+| N2a / N2b | Native numeric HTTP/file loop validated; DNS deferred | Actual native HTTP download/hash/save/manual load and fresh-boot source retention pass. Browser TCP/file retention has separate acceptance; DNS and guest TLS are unimplemented. |
 | K0 | Not implemented | Independent protected execution requires separate design and evidence. |
 
 ## Staged work and dependencies

@@ -253,7 +253,7 @@ and does not gate basic file/network capability work.
 | MVP validated | Runtime artifacts | Pinned build, matching executable/dump/archive, controlled startup, real terminal input and timers. |
 | Implemented: F1 | DATA retention | Fixed 64 MiB littlefs at `/etc`, `/home`, `/tmp`, `/var`, guest sync/ATA flush, frozen browser checkpoints and optional import/export; see storage.md for scope. |
 | Implemented presentation | Browser console | QEMU/Wasm runs the current image; xterm.js exposes COM1, while COM2 supplies DATA checkpoint barriers. Guest network acceptance remains separate from presentation. |
-| N0 proved; native N1 subset validated | Network transport and streams | NE2000 ISA + lwIP NO_SYS IPv4 TCP; native QEMU user networking and automatic browser WebSocket/SLIRP bridge. Actual native Emacs passes; browser TCP/retention gates remain separate in network.md. |
+| N0 proved; N1 subset validated | Network transport and streams | NE2000 ISA + lwIP NO_SYS IPv4 TCP; native QEMU user networking and automatic browser WebSocket/SLIRP bridge. Actual native and pinned-Wasm Emacs TCP/file acceptance pass separately; see network.md. |
 | MVP subset | Trusted application instances | Lifecycle/context, explicit ownership and management implemented; messaging/subscriptions/deadline waits remain future work. |
 | Planned: K0 | Kernel processes | After runtime/ownership contracts: independent execution/address spaces, scheduling, enforced limits and exit cleanup; no implementation yet. |
 | Deferred | Other expansion | Direct libc replacement, runtime latency optimization, broad Unix subprocess compatibility and service frameworks. |

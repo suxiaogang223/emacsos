@@ -56,3 +56,13 @@ records driver source, selected server source, served build manifest and actual
 SYSTEM/template/export hashes. These identities do not attest a remote server's
 source. The exported image is retained in that output directory for native
 interoperability checks.
+
+For actual browser guest networking, run `make test-browser-network` against the
+already-running server with the same driver environment. It requires a clean
+checkout and a clean build manifest matching that exact source. It verifies the
+actual fetched SYSTEM hash, automatic same-origin bridge, numeric IPv4 TCP echo
+with delayed fragments, timer progress, DATA save, completed checkpoint and
+restart with exact retained contents. Its localhost fixture receives real guest
+TCP through the host SLIRP helper. Results default to `build/web-network`; set
+`EMACSOS_WEB_REPORT` to retain a different attempt. This separate acceptance
+does not imply DNS, guest TLS or unrestricted Linux socket compatibility.

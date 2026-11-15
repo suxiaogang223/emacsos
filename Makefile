@@ -10,7 +10,7 @@ CFLAGS := --target=x86_64-unknown-none-elf -std=c11 -O2 -g -Wall -Wextra -Werror
 
 .PHONY: kernel build run runtime \
         test test-files test-lisp test-tooling test-web test-probes test-guest test-storage test-network test-network-guest \
-        lint check web web-assets web-serve test-browser help
+        lint check web web-assets web-serve test-browser test-browser-network help
 .NOTPARALLEL: check
 BUILD_IMAGE := emacsos-kernel:alpine3.22
 KERNEL_C := main hardware memory loader runtime files file_abi block storage_control littlefs_backend network ne2000
@@ -146,10 +146,14 @@ web-serve: web-assets
 test-browser:
 	node tests/web/browser.cjs '$(WEB_URL)'
 
+test-browser-network:
+	node tests/web/network-browser.cjs '$(WEB_URL)'
+
 help:
 	@echo 'make build  - build the complete image using Docker (default)'
 	@echo 'make run    - build and launch the native console'
 	@echo 'make web    - build, verify browser assets and serve the browser console'
-	@echo 'make test   - run host file, Lisp, tooling and web server tests'
+	@echo 'make test   - run host file, network ABI, Lisp, tooling and web server tests'
 	@echo 'make check  - run host tests, conventions, kernel probes and guest acceptance'
 	@echo 'make test-browser - test an already running web server (optional Playwright)'
+	@echo 'make test-browser-network - test guest TCP and retained files in that browser'

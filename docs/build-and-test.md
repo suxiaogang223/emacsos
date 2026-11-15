@@ -90,6 +90,7 @@ Docker and native QEMU in addition to the build prerequisites.
 | `make test-storage` | Sync/copy/reboot all DATA directories, cross-directory rename, stale locks and read-only recovery. |
 | `make test-network-guest` | Actual Emacs numeric TCP, timers, HTTP/file sync and fresh-boot DATA acceptance; separate from DNS and browser acceptance. |
 | `make test-browser` | Optional real-browser checks against an already running web server. |
+| `make test-browser-network` | Actual pinned-Wasm TCP, timers, DATA save/checkpoint and restart through the automatic host bridge. |
 
 Tests live under `tests/kernel`, `tests/lisp`, `tests/tooling`, `tests/guest`
 and `tests/web`. Lisp compilation outputs stay under ignored `build/lisp`.
