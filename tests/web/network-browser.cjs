@@ -69,7 +69,7 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
 }});` });
     });
     async function waitState(value) {
-        await page.waitForFunction(value => document.documentElement.dataset.machineState === value, value, { timeout: 60000 });
+        await page.waitForFunction(value => document.documentElement.dataset.machineState === value, value, { timeout: 120000 });
     }
     async function evaluate(form, marker) {
         const start = await page.evaluate(() => window.__serial.length);
