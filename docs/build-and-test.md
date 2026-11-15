@@ -93,7 +93,7 @@ driver installation and scope. Browser checks are not included in `make check`
 and are not replaced by web server unit tests.
 
 Native guest acceptance requires a clean committed parent checkout and the
-matching initialized submodule. Its fourteen checks drive the real guest through
+matching initialized submodule. Its checks drive the real guest through
 `tests/guest/check.py`; the source fixture is `tests/guest/counter.el`. Its
 transcript and results bind the exact image and source identities. See
 [MVP acceptance](mvp.md) for the runtime and trust boundaries. All writable file acceptance now uses DATA.

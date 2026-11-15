@@ -12,7 +12,7 @@ The parent contains BIOS boot, static ELF loading, page mappings/protection,
 serial input/output, PIT/RTC time, readiness waits, a bounded syscall adapter,
 and read-only runtime plus littlefs working files. GNU Emacs executes with its
 matching portable dump. Parent-owned Lisp provides cooperative application
-management. The fixed DATA disk supplies persistence at `/work`, `/home` and `/tmp`; networking and
+management. The fixed DATA disk supplies persistence at `/etc`, `/home`, `/tmp` and `/var`; networking and
 isolated execution remain unimplemented. See [storage](storage.md) for disk and
 browser-retention boundaries.
 The fixed-machine profile and limits are in [kernel bootstrap](kernel-bootstrap.md)
@@ -178,8 +178,7 @@ the port. Do not combine an old dump with new dumped Lisp or a new executable.
 A supported file read follows Elisp file API → Emacs/libc → supported ABI operation
 → typed PAL file operation → backend. Data/count/error returns along that path;
 backend limits and original failures remain visible. Littlefs is the only
-writable backend. F1 projects one DATA volume at `/work`,
-`/home` and `/tmp`, with file sync and ATA flush in the guest. Missing or rejected
+writable backend. F1 projects one DATA volume at `/etc`, `/home`, `/tmp` and `/var`, with file sync and ATA flush in the guest. Missing or rejected
 DATA leaves those anchors read-only; it never selects a writable RAM fallback.
 Browser retention additionally needs a frozen copy and a
 completed IndexedDB transaction. A write or successful close alone does not
@@ -248,7 +247,7 @@ and does not gate basic file/network capability work.
 | Selected | Bootstrap ordering | Read-only runtime files and memory/time/wait precede interactive Emacs; working files follow. |
 | Implemented subset | Concrete interfaces | Bootstrap operations and readonly namespace and littlefs file backend; see kernel-bootstrap.md and files.md. |
 | MVP validated | Runtime artifacts | Pinned build, matching executable/dump/archive, controlled startup, real terminal input and timers. |
-| Implemented: F1 | DATA retention | Fixed 64 MiB littlefs at `/work`, `/home`, `/tmp`, guest sync/ATA flush, frozen browser checkpoints and optional import/export; see storage.md for scope. |
+| Implemented: F1 | DATA retention | Fixed 64 MiB littlefs at `/etc`, `/home`, `/tmp`, `/var`, guest sync/ATA flush, frozen browser checkpoints and optional import/export; see storage.md for scope. |
 | Implemented presentation | Browser console | QEMU/Wasm runs the current image; xterm.js exposes COM1, while COM2 supplies DATA checkpoint barriers. Guest networking remains separate. |
 | Open: N0 | Network transport | Prove native and Wasm guest-network transport feasibility, including any explicit host bridge, before selecting device/stack. |
 | MVP subset | Trusted application instances | Lifecycle/context, explicit ownership and management implemented; messaging/subscriptions/deadline waits remain future work. |

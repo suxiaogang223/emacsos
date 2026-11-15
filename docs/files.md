@@ -3,12 +3,46 @@
 The kernel links a typed file namespace and a bounded Linux x86-64 descriptor
 adapter. The runtime newc archive supplies immutable files, directories and
 symbolic links. All writable regular files, directories and symlinks live on
-one littlefs DATA volume exposed at `/work`, `/home` (including `/home/user`)
-and `/tmp`. `/usr` and the surrounding namespace are read-only. `/dev/tty` and
+one littlefs DATA volume exposed at `/etc`, `/home`, `/tmp` and `/var`.
+`/usr` and the surrounding namespace are read-only. `/dev/tty` and
 `/dev/null` provide console/null device I/O rather than regular-file storage.
 There is no writable RAM file backend or no-disk fallback. Missing or rejected
-DATA leaves all three directory anchors read-only while the runtime and editable
+DATA leaves all four directory anchors read-only while the runtime and editable
 Emacs buffers remain available. See [DATA storage](storage.md).
+
+## Directory layout
+
+The namespace follows conventional Unix directory responsibilities without
+claiming full FHS or Linux compatibility. Directory placement does not require
+a separate partition or filesystem for each path.
+
+| Path | Purpose | Backing |
+| --- | --- | --- |
+| `/usr` | Installed Emacs, system Lisp and runtime resources. | Immutable SYSTEM archive. |
+| `/etc` | System configuration; `/etc/emacsos` is initialized empty. | DATA; minimal immutable account records remain available in recovery. |
+| `/home/user` | Default home and initial working directory; `projects` is initialized empty. | DATA. |
+| `/var/lib/emacsos` | Persistent system/application state. | DATA; initialized empty. |
+| `/var/log` | Logs when an application writes them. | DATA; initialized empty. |
+| `/var/cache` | Rebuildable cached data. | DATA; initialized empty. |
+| `/tmp` | Application-managed temporary files. | DATA; no automatic boot purge or tmpfs. |
+| `/dev/tty`, `/dev/null` | Console and null device operations. | Kernel devices, not stored DATA files. |
+
+`HOME`, `PWD`, the initial descriptor-adapter working directory and the default
+account home agree on `/home/user`. The uid/gid 0 record is a trusted-runtime
+placeholder, not an implemented account or permission boundary. No shell binary
+is provided. `/work` is no longer part of the guest namespace.
+
+Normal DATA initialization includes `/etc/passwd` and `/etc/group` with the same
+minimal defaults as SYSTEM. On a successful mount, the complete DATA `/etc`
+replaces the immutable recovery directory; this is not an overlay or a file-by-file
+fallback. Configuration edits persist, but storage alone does not add a
+configuration loader or enable automatic execution of user Lisp. Rejected DATA
+never replaces the recovery namespace. `/home/user` must remain a real directory
+for a volume to mount; other initialized application directories are ordinary
+user-managed directories. `/run`, `/proc`, `/sys`, general mounts and multiuser
+security remain future work.
+
+## File operations
 
 The namespace supports lookup, regular files, sparse writes, truncation,
 directories, rename, unlink, symlinks and metadata. File identity survives rename

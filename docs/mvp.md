@@ -30,7 +30,7 @@ for manual interaction; `C-a x` exits QEMU and `C-a a` sends Emacs a literal
 `C-a`.
 
 The script enters normal terminal text and `M-:` forms. It creates
-`/work/counter.el` with `find-file`, inserts source, saves, kills the buffer
+`/home/user/projects/counter.el` with `find-file`, inserts source, saves, kills the buffer
 and loads the saved file. A second edit checks the ordinary symlink lock,
 backup contents and modified-state cleanup. It also checks directory, copy,
 rename, metadata and deletion APIs, and preserves a real read-only filesystem
@@ -56,14 +56,14 @@ Generated artifacts live under ignored `build/`:
 | `image/guest.transcript` | Actual QEMU serial bytes for the latest acceptance attempt. |
 | `image/guest-results.json` | Success/failure, passed assertions, parent/fork, image/build-manifest and transcript hashes. |
 
-All fourteen guest checks must complete. Only `passed: true` in the matching
+All recorded guest checks must complete. Only `passed: true` in the matching
 acceptance record establishes that this script completed for that image. Host ERT, file sanitizer tests and the three
 kernel probes give separate component evidence. Compilation and a startup
 banner do not substitute for functional acceptance.
 
 ## Boundaries
 
-All writable files use the DATA volume at `/work`, `/home` and `/tmp`.
+All writable files use the DATA volume at `/etc`, `/home`, `/tmp` and `/var`.
 Missing or rejected DATA leaves the machine in read-only recovery. The runtime
 image is read-only. Cross-boot and browser retention require their separate
 [storage acceptance](storage.md#validation-boundaries). There is no networking, external subprocess

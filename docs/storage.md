@@ -3,7 +3,7 @@
 The fixed QEMU profile uses two separate IDE disks. SYSTEM (index 0) contains
 the kernel and runtime and retains its snapshot-backed launcher behavior. DATA
 (index 1, primary slave) is a 64 MiB raw, unpartitioned littlefs volume projected
-at `/work`, `/home` and `/tmp`. `/home/user` is initialized on DATA; `/usr`
+at `/etc`, `/home`, `/tmp` and `/var`. `/home/user` is initialized on DATA; `/usr`
 stays read-only. Littlefs is the only writable file backend.
 This adds no networking, protected processes, service manager or automatic
 execution of user files.
@@ -17,7 +17,7 @@ replaced by the launcher. An existing image must be a regular 64 MiB file.
 `--no-data` explicitly starts read-only recovery without a DATA disk.
 
 An absent, invalid, unsupported or unreadable DATA disk enters read-only
-recovery. `/work`, `/home` and `/tmp` remain visible but cannot create, modify or
+recovery. `/etc`, `/home`, `/tmp` and `/var` remain visible but cannot create, modify or
 remove files. Emacs still reads its installed runtime, evaluates Elisp and edits
 buffers; it never silently saves to temporary RAM storage. Remove or replace the
 image before rebooting. A fatal DATA I/O error likewise makes subsequent
@@ -27,9 +27,17 @@ operation, never an automatic recovery action on an existing image.
 
 `/tmp` is an ordinary directory on the same DATA volume. Applications own the
 lifetime and cleanup of temporary files; this version has no automatic boot purge
-or separate tmpfs. A checkpoint includes these files just like `/work` and
-`/home`. Cross-directory rename preserves file identity on the shared volume.
-The existing `HOME=/work` startup convention is unchanged.
+or separate tmpfs. A checkpoint includes files under all four DATA directories.
+Cross-directory rename preserves file identity on the shared volume.
+`HOME`, `PWD` and the initial working directory are `/home/user`; projects can
+live in its initialized `projects` directory. See [directory layout](files.md#directory-layout)
+for configuration, state and log placement. `/work` has been removed.
+
+SYSTEM supplies minimal read-only `/etc/passwd` and `/etc/group` records for
+recovery. The fresh DATA template includes matching defaults; a successful
+mount replaces the entire `/etc` tree only after all candidate entries validate.
+User configuration is stored without being loaded automatically. The default
+uid/gid 0 identity is unchanged and supplies no multiuser isolation.
 
 Standard Elisp file operations use the same typed PAL and bounded ABI adapter
 as the read-only runtime namespace. Parent-owned startup policy enables normal GNU Emacs file
@@ -42,12 +50,16 @@ boundary, not proof of physical durability through every host or power failure.
 
 `third_party/littlefs/` is a submodule pinned to the official littlefs repository.
 `third_party/littlefs.json` records the release, commit and hashes of the compiled
-source files and upstream license. The volume carries the `EOSDATA2` adapter
-version. Its private `/tree` contains the three directory anchors; adapter object IDs, staging entries and version metadata are
+source files and upstream license. The volume carries the `EOSDATA3` adapter
+version. Its private `/tree` contains the four directory anchors; adapter object IDs, staging entries and version metadata are
 outside that tree. A generic littlefs volume without the emacsOS layout is not
-an importable emacsOS DATA disk. Earlier unmerged `EOSDATA1` images are explicitly
+an importable emacsOS DATA disk. Earlier unmerged `EOSDATA1` and `EOSDATA2` images are explicitly
 rejected without modification; there is no implicit format migration. Create a
 new disk when testing this revised format and preserve old images separately.
+The formatter initializes `/etc/emacsos`, `/home/user/projects`, `/var/lib/emacsos`,
+`/var/log` and `/var/cache` alongside the four anchors and account defaults.
+Mount validation requires the four anchors and a real `/home/user` directory
+before recovery writes, garbage collection or namespace publication.
 
 Stable object IDs preserve an open regular file across rename, replacement and
 unlink. Independent opens see the same object contents while retaining separate
@@ -105,7 +117,7 @@ and COM2 control in native QEMU. Neither proves an interactive Emacs save.
 `make test-storage` boots the real runtime repeatedly with a private DATA image.
 `make test-guest` exercises normal editing/application acceptance on a fresh
 DATA disk. The storage check separately saves source, modes, symlinks, home and
-temporary files and a prior-boot lock, freezes all three DATA directories, copies
+temporary files and a prior-boot lock, freezes all four DATA directories, copies
 the disk, resumes writes and reopens the checkpoint in a fresh guest. It also
 boots absent, corrupt and unsupported DATA profiles, proving interactive
 read-only recovery and preservation of rejected bytes. Evidence lives

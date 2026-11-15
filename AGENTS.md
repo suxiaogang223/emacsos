@@ -8,8 +8,7 @@ and tests. See [CONTRIBUTING.md](CONTRIBUTING.md).
 Read [design](docs/design.md), [roadmap](docs/roadmap.md) and
 [source ownership](docs/source-layout.md) before changing architecture. The
 runtime runs one trusted Emacs with cooperative application management on the
-fixed QEMU profile. Littlefs is the only writable file backend, serving `/work`,
-`/home` and `/tmp`; missing or rejected DATA permits only read-only recovery.
+fixed QEMU profile. Littlefs is the only writable file backend, serving `/etc`, `/home`, `/tmp` and `/var`; missing or rejected DATA permits only read-only recovery.
 See docs/mvp.md and docs/storage.md for acceptance. Do not imply networking,
 isolation or general Linux compatibility.
 Compilation, boot execution and guest functional acceptance are different claims.

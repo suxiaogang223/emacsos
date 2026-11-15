@@ -56,8 +56,7 @@ not inherently a durability boundary. The controlled parent startup therefore
 sets `write-region-inhibit-fsync` to nil. Applications that override it also
 change their save guarantee.
 
-F1 uses the same functions over one littlefs DATA disk projected at `/work`,
-`/home` and `/tmp`. Guest
+F1 uses the same functions over one littlefs DATA disk projected at `/etc`, `/home`, `/tmp` and `/var`. Guest
 sync reaches littlefs and ATA flush; browser retention needs an acknowledged
 frozen copy and completed IndexedDB transaction. No writable RAM file backend remains. Missing or rejected DATA supports only
 read-only file operations; buffer editing and evaluation still work.

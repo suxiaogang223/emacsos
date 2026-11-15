@@ -1,5 +1,6 @@
 /* Bounded Linux x86-64 descriptor/path translation over the typed file PAL. */
 #include "files.h"
+#include "data_layout.h"
 
 extern void *kmalloc(size_t);
 extern void kfree(void *);
@@ -57,7 +58,7 @@ static void initialize(void)
 {
     if (initialized) return;
     working_directory = fs_root();
-    (void) fs_lookup(fs_root(), "/work", true, &working_directory);
+    (void) fs_lookup(fs_root(), EMACSOS_HOME, true, &working_directory);
     fs_retain(working_directory);
     struct fs_node *tty;
     if (fs_lookup(fs_root(), "/dev/tty", true, &tty) == FS_OK) {

@@ -13,7 +13,7 @@ _Noreturn void kernel_main(void) {
   (void)data_disk_init();
   enum fs_error mounted = fs_mount_data();
   if (mounted == FS_OK)
-    console_puts("DATA mounted at /work, /home and /tmp: 64 MiB littlefs\r\n");
+    console_puts("DATA mounted at /etc, /home, /tmp and /var: 64 MiB littlefs\r\n");
   else {
     console_puts("DATA unavailable: read-only recovery, errno=");
     console_hex((uint64_t)-fs_error_errno(mounted));

@@ -15,7 +15,7 @@ contracts rather than implied capabilities.
 | F0 | MVP implemented subset | Standard file APIs, normal save/backup/lock/errors and directory operations; bounded unsupported options documented in files.md. |
 | A0 | MVP subset | Host ERT and guest two-instance manager lifecycle; message queues, completion subscriptions and deadline waits remain open. |
 | Browser presentation | Implemented | Pinned QEMU/Wasm boots the same MVP image; xterm.js supplies the raw serial terminal and retro computer controls. See web.md for browser evidence and limits. |
-| F1 | Implemented subset | Littlefs is the only writable backend for `/work`, `/home`, `/tmp`; native sync/reboot acceptance and separate browser checkpoint/import/export acceptance; see storage.md. |
+| F1 | Implemented subset | Littlefs is the only writable backend for `/etc`, `/home`, `/tmp`, `/var`; native sync/reboot acceptance and separate browser checkpoint/import/export acceptance; see storage.md. |
 | N0–N2 / K0 | Not implemented | Transport/networking and independent protected execution require separate decisions and evidence. |
 
 ## Staged work and dependencies
@@ -46,7 +46,7 @@ browser Wasm target before promising equivalent guest capabilities.
 F1 uses a fixed 64 MiB littlefs DATA disk separately from SYSTEM. Native startup
 creates an initialized disk only when missing. Browser startup supplies an empty
 disk automatically, then restores completed checkpoints for the same origin.
-All three writable directories share this volume; missing or rejected DATA
+All four writable directories share this volume; missing or rejected DATA
 enters read-only recovery. There is no writable RAM filesystem or fallback.
 Optional import/export moves complete DATA images. See [storage](storage.md).
 

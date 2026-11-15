@@ -1,4 +1,5 @@
 #include "kernel.h"
+#include "data_layout.h"
 struct elf_header {
   unsigned char ident[16];
   uint16_t type, machine;
@@ -97,8 +98,8 @@ _Noreturn void runtime_enter(const struct runtime_image *im) {
       "--load",
       "/usr/share/emacs/site-lisp/emacsos-storage.el",
       "TERM=xterm",
-      "HOME=/work",
-      "PWD=/work",
+      "HOME=" EMACSOS_HOME,
+      "PWD=" EMACSOS_HOME,
       "PATH=/usr/bin",
       "EMACSDATA=/usr/share/emacs/30.2/etc",
       "EMACSDOC=/usr/share/emacs/30.2/etc",

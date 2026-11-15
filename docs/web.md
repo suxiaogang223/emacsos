@@ -96,7 +96,7 @@ can remain in its last displayed state.
 
 POWER automatically selects the retained disk for this browser origin, or creates
 an initialized empty 64 MiB littlefs disk on first use. The guest mounts it at
-`/work`, `/home` and `/tmp`; only saved and checkpointed files are retained.
+`/etc`, `/home`, `/tmp` and `/var`; only saved and checkpointed files are retained.
 Unsaved buffers remain in memory. Missing or rejected DATA enters read-only
 recovery; there is no writable RAM fallback. No setup or
 manual export is required for ordinary use.
