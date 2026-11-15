@@ -71,7 +71,7 @@
           <div class="drive drive-data" data-drive="data" aria-describedby="data-drive-note">
             <div class="drive-label"><span><b>B</b> DATA</span><span class="drive-tag">64 MiB</span></div>
             <div class="drive-face" aria-hidden="true"><div class="drive-slot"></div><i id="data-led" class="led"></i><span class="eject-block"></span></div>
-            <p class="drive-file">/work · /home · /tmp</p>
+            <p class="drive-file">/etc · /home · /tmp · /var</p>
             <p class="drive-detail" id="data-drive-note">Local DATA attaches automatically. Imported files never run automatically.</p>
             <p id="data-status" class="data-status" role="status" aria-live="polite">Preparing DATA controls…</p>
             <div class="disk-actions"><button id="disk-import" type="button" class="small-key">IMPORT</button><button id="disk-export" type="button" class="small-key" disabled>EXPORT</button><button id="disk-save" type="button" class="small-key" disabled>SAVE NOW</button><button id="disk-new" type="button" class="small-key">NEW DISK</button><button id="disk-resume" type="button" class="small-key" hidden>RESUME</button></div>
@@ -88,8 +88,8 @@
   </main>
 
   <section class="operator-notes" aria-label="Operating notes">
-    <p class="volatile-note"><span class="note-symbol" aria-hidden="true">!</span> DATA checkpoints retain /work, /home and /tmp in this browser. Unsaved buffers and pending changes can be lost when this page closes. EXPORT keeps a portable backup.</p>
-    <details class="quick-reference"><summary>OPERATOR'S QUICK REFERENCE <span aria-hidden="true">+</span></summary><div class="reference-content"><p>Click the screen before typing. On Mac, use <strong>Control</strong> for C- shortcuts and <strong>Option</strong> for M- shortcuts. <kbd>Esc</kbd> followed by <kbd>x</kbd> also opens the command prompt.</p><dl><div><dt><kbd>C-x C-f</kbd></dt><dd>Open or create a file in <code>/work</code></dd></div><div><dt><kbd>C-x C-s</kbd></dt><dd>Save the current file</dd></div><div><dt><kbd>C-x C-e</kbd></dt><dd>Evaluate the expression before the cursor</dd></div><div><dt><kbd>C-g</kbd></dt><dd>Cancel the current command</dd></div></dl><p>To try application management, use the EVALUATE key and enter:</p><pre><code>(progn (require 'emacsos-counter)
+    <p class="volatile-note"><span class="note-symbol" aria-hidden="true">!</span> DATA checkpoints retain /etc, /home, /tmp and /var in this browser. Unsaved buffers and pending changes can be lost when this page closes. EXPORT keeps a portable backup.</p>
+    <details class="quick-reference"><summary>OPERATOR'S QUICK REFERENCE <span aria-hidden="true">+</span></summary><div class="reference-content"><p>Click the screen before typing. On Mac, use <strong>Control</strong> for C- shortcuts and <strong>Option</strong> for M- shortcuts. <kbd>Esc</kbd> followed by <kbd>x</kbd> also opens the command prompt.</p><dl><div><dt><kbd>C-x C-f</kbd></dt><dd>Open or create a file in <code>/home/user</code></dd></div><div><dt><kbd>C-x C-s</kbd></dt><dd>Save the current file</dd></div><div><dt><kbd>C-x C-e</kbd></dt><dd>Evaluate the expression before the cursor</dd></div><div><dt><kbd>C-g</kbd></dt><dd>Cancel the current command</dd></div></dl><p>Your home is <code>/home/user</code>; save projects in <code>~/projects</code>. System configuration belongs in <code>/etc/emacsos</code>, and application state in <code>/var/lib/emacsos</code>. Temporary files in <code>/tmp</code> stay on DATA until applications remove them.</p><p>To try application management, use the EVALUATE key and enter:</p><pre><code>(progn (require 'emacsos-counter)
        (emacsos-counter-start)
        (emacsos-counter-start)
        (emacsos-processes))</code></pre><p>In the application list: <kbd>s</kbd> stops a run, <kbd>r</kbd> restarts it, and <kbd>RET</kbd> shows details. Applications share one cooperative Emacs runtime.</p></div></details>

@@ -19,6 +19,16 @@ const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 const log = message => {report.checks.push(message);console.log('PASS:',message);};
 let current;
 async function instrumentation(page) {
+    // Capture the actual browser disk solely in this test, keeping production
+    // free of a debug API. The freeze checks still use real COM2 guest barriers.
+    await page.route('**/storage.js', async route => {
+        const response = await route.fetch();
+        await route.fulfill({response,body:await response.text()+`
+const originalAttach = BrowserDisk.prototype.attach;
+BrowserDisk.prototype.attach = function(...args) {
+ window.__testDisk = this; return originalAttach.apply(this,args);
+};`});
+    });
     page.on('pageerror', error => report.errors.push(String(error)));
     await page.addInitScript(() => {
         const fetch = window.fetch.bind(window);
@@ -88,7 +98,7 @@ async function waitCheckpoint(page,previous) {
     throw new Error('Automatic DATA checkpoint did not retain new bytes');
 }
 async function verifySource(page) {
-    await evaluate(page,'(progn (when (boundp \'browser-retained-number) (error "Unexpected automatic Lisp execution")) (load-file "/work/browser-retained.el") (unless (and (= (logand (file-modes "/work/browser-retained.el") 511) 416) (equal (file-symlink-p "/work/browser-dir/source.el") "../browser-retained.el")) (error "Transferred metadata differs")) (unless (and (with-temp-buffer (insert-file-contents "/home/user/browser-note.txt") (equal (buffer-string) "persistent home")) (with-temp-buffer (insert-file-contents "/tmp/browser-temp.txt") (equal (buffer-string) "ordinary temporary directory"))) (error "DATA directories did not survive")) (message "DISK-RESTORED-%d" browser-retained-number))','DISK-RESTORED-73');
+    await evaluate(page,'(progn (when (boundp \'browser-retained-number) (error "Unexpected automatic Lisp execution")) (load-file "/home/user/projects/browser-retained.el") (unless (and (= (logand (file-modes "/home/user/projects/browser-retained.el") 511) 416) (equal (file-symlink-p "/home/user/projects/browser-dir/source.el") "../browser-retained.el")) (error "Transferred metadata differs")) (unless (and (with-temp-buffer (insert-file-contents "/home/user/browser-note.txt") (equal (buffer-string) "persistent home")) (with-temp-buffer (insert-file-contents "/tmp/browser-temp.txt") (equal (buffer-string) "ordinary temporary directory")) (with-temp-buffer (insert-file-contents "/etc/emacsos/browser.conf") (equal (buffer-string) "saved configuration")) (with-temp-buffer (insert-file-contents "/var/lib/emacsos/browser-state.txt") (equal (buffer-string) "saved application state"))) (error "DATA directories did not survive")) (message "DISK-RESTORED-%d" browser-retained-number))','DISK-RESTORED-73');
 }
 (async()=>{
     const browser=await chromium.launch({headless:true,
@@ -101,9 +111,26 @@ async function verifySource(page) {
         await boot(page);
         report.templateSha256=await page.evaluate(()=>window.__templateHash);
         const initial=await metadata(page);
-        await evaluate(page,'(progn (find-file "/work/browser-retained.el") (insert "(setq browser-retained-number 73)\\n") (save-buffer) (kill-buffer) (set-file-modes "/work/browser-retained.el" 416) (make-directory "/work/browser-dir") (make-symbolic-link "../browser-retained.el" "/work/browser-dir/source.el") (with-temp-file "/home/user/browser-note.txt" (insert "persistent home")) (with-temp-file "/tmp/browser-temp.txt" (insert "ordinary temporary directory")) (message (concat "DISK-" "CREATED")))','DISK-CREATED');
+        await evaluate(page,'(progn (unless (and (equal (getenv "HOME") "/home/user") (equal default-directory "/home/user/") (file-directory-p "~/projects") (file-directory-p "/var/log") (file-directory-p "/var/cache") (not (file-exists-p "/work"))) (error "Unexpected Unix layout")) (message (concat "DISK-" "HOME")))','DISK-HOME');
+        await evaluate(page,'(progn (find-file "/home/user/projects/browser-retained.el") (insert "(setq browser-retained-number 73)\\n") (save-buffer) (kill-buffer) (set-file-modes "/home/user/projects/browser-retained.el" 416) (make-directory "/home/user/projects/browser-dir") (make-symbolic-link "../browser-retained.el" "/home/user/projects/browser-dir/source.el") (with-temp-file "/home/user/browser-note.txt" (insert "persistent home")) (with-temp-file "/tmp/browser-temp.txt" (insert "ordinary temporary directory")) (with-temp-file "/etc/emacsos/browser.conf" (insert "saved configuration")) (with-temp-file "/var/lib/emacsos/browser-state.txt" (insert "saved application state")) (message (concat "DISK-" "CREATED")))','DISK-CREATED');
         report.automaticCheckpoint=await waitCheckpoint(page,initial);
-        log('Automatic first DATA disk retains ordinary saved source and metadata without a manual mount or checkpoint');
+        log('Automatic first DATA disk supplies HOME/projects and retains source, configuration, state and temporary files');
+        await page.evaluate(async()=>{
+            const disk=window.__testDisk;
+            clearInterval(disk.timer);
+            await disk.serialize(()=>disk.freeze());
+            if(!disk.frozen)throw new Error('Real guest freeze was not acknowledged');
+        });
+        try {
+            await evaluate(page,'(progn (dolist (directory (list "/etc/emacsos/" "/home/user/" "/tmp/" "/var/lib/emacsos/")) (with-temp-buffer (insert "unsaved frozen content") (let (observed) (condition-case condition (write-region (point-min) (point-max) (concat directory "freeze-denied.txt")) (file-error (setq observed condition))) (unless (and observed (buffer-modified-p)) (error "DATA directory escaped freeze"))))) (message (concat "DISK-" "ALL-FROZEN")))','DISK-ALL-FROZEN');
+        } finally {
+            await page.evaluate(async()=>{
+                const disk=window.__testDisk;
+                await disk.serialize(()=>disk.thaw());
+                disk.timer=setInterval(()=>disk.poll(),1000);
+            });
+        }
+        log('A real COM2 freeze rejects writes across /etc, /home, /tmp and /var while preserving modified buffers');
         const contender=await pageFor(sourceContext);
         await contender.click('#boot');await state(contender,'failed');
         assert.match(await contender.locator('#error').innerText(),/already open in another tab/);
@@ -111,7 +138,7 @@ async function verifySource(page) {
         log('A second tab is refused before it can run a competing retained-disk writer');
         await page.close();
         page=await pageFor(sourceContext);await boot(page);await verifySource(page);
-        log('Closing and reopening restores saved source with modes/symlinks and no automatic Lisp execution');
+        log('Closing and reopening restores saved source, configuration, state and temporary files with metadata and no automatic Lisp execution');
         const downloadReady=page.waitForEvent('download');
         await page.click('#disk-export');const download=await downloadReady;
         const exported=path.join(output,'emacsos-data.img');await download.saveAs(exported);
@@ -128,7 +155,7 @@ async function verifySource(page) {
         await page.locator('#disk-file').setInputFiles(exported);
         await page.waitForFunction(()=>document.getElementById('data-status').textContent.startsWith('Import staged.'));
         await boot(page);await verifySource(page);
-        log('A fresh browser context imports the portable image and reads its saved source/metadata');
+        log('A fresh browser context imports the portable image and reads all four DATA directories and saved source metadata');
         await page.click('#disk-save');
         await page.waitForFunction(()=>document.documentElement.dataset.storageState==='saved'&&!document.getElementById('disk-save').disabled);
         const retained=await metadata(page);
@@ -142,7 +169,8 @@ async function verifySource(page) {
         assert.match(await page.locator('#data-status').innerText(),/mount rejected/);
         assert.equal((await metadata(page)).sha256,retained.sha256);
         assert(await page.locator('#disk-export').isDisabled());
-        await evaluate(page,'(progn (dolist (directory (list "/work/" "/home/user/" "/tmp/")) (with-temp-buffer (insert "unsaved recovery content") (let (observed) (condition-case condition (write-region (point-min) (point-max) (concat directory "must-not-be-volatile.txt")) (file-error (setq observed condition))) (unless (and observed (buffer-modified-p) (string-match-p "Read-only file system" (error-message-string observed))) (error "Recovery allowed a writable fallback"))))) (message (concat "DISK-" "READONLY-RECOVERY")))','DISK-READONLY-RECOVERY');
+        await evaluate(page,'(progn (unless (and (equal (getenv "HOME") "/home/user") (file-readable-p "/etc/passwd") (file-readable-p "/etc/group") (with-temp-buffer (insert-file-contents "/etc/passwd") (search-forward "/home/user" nil t))) (error "Recovery defaults unavailable")) (message (concat "DISK-" "RECOVERY-DEFAULTS")))','DISK-RECOVERY-DEFAULTS');
+        await evaluate(page,'(progn (dolist (directory (list "/etc/emacsos/" "/home/user/" "/tmp/" "/var/lib/emacsos/")) (with-temp-buffer (insert "unsaved recovery content") (let (observed) (condition-case condition (write-region (point-min) (point-max) (concat directory "must-not-be-volatile.txt")) (file-error (setq observed condition))) (unless (and observed (buffer-modified-p) (string-match-p "Read-only file system" (error-message-string observed))) (error "Recovery allowed a writable fallback"))))) (message (concat "DISK-" "READONLY-RECOVERY")))','DISK-READONLY-RECOVERY');
         await page.screenshot({path:path.join(output,'rejected-import.png'),fullPage:true});
         await page.close();
         page=await pageFor(importedContext);await boot(page);await verifySource(page);
@@ -153,7 +181,7 @@ async function verifySource(page) {
         page=await sessionContext.newPage();current=page;await instrumentation(page);
         await page.addInitScript(()=>Object.defineProperty(window,'indexedDB',{get(){throw new DOMException('Storage disabled for test','SecurityError');}}));
         await page.goto(url);await boot(page,'session-only');
-        await evaluate(page,'(progn (with-temp-file "/work/session-only.txt" (insert "export still works")) (message (concat "SESSION-" "WROTE")))','SESSION-WROTE');
+        await evaluate(page,'(progn (with-temp-file "/home/user/projects/session-only.txt" (insert "export still works")) (message (concat "SESSION-" "WROTE")))','SESSION-WROTE');
         const sessionDownload=page.waitForEvent('download');await page.click('#disk-export');
         await(await sessionDownload).saveAs(path.join(output,'session-only-data.img'));
         page.once('dialog',dialog=>dialog.accept());await page.click('#reset');

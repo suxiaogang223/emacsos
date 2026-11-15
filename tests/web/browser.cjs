@@ -123,6 +123,8 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         check('Current manifest-matched system boots in QEMU/Wasm');
         await page.waitForFunction(() => document.documentElement.dataset.storageState === 'saved', null, {timeout:60000});
         check('Guest-validated DATA receives an initial local checkpoint');
+        await evaluate('(progn (unless (and (equal (getenv "HOME") "/home/user") (equal (expand-file-name "~") "/home/user") (equal default-directory "/home/user/") (file-directory-p "~/projects") (not (file-exists-p "/work"))) (error "Unexpected home or legacy workspace")) (message (concat "HOME-" "READY")))', 'HOME-READY');
+        check('Default HOME and initial directory use /home/user with a projects directory and no /work alias');
         await page.waitForTimeout(250);
         await page.screenshot({ path: path.join(output, 'running.png'), fullPage: true });
 
@@ -155,13 +157,13 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
 
         await page.keyboard.press('Control+x');
         await page.keyboard.press('Control+f');
-        await page.keyboard.type('/work/browser-proof.el', { delay: 3 });
+        await page.keyboard.type('/home/user/projects/browser-proof.el', { delay: 3 });
         await page.keyboard.press('Enter');
         await page.waitForTimeout(300);
         await page.keyboard.type('(setq browser-proof 42)\n', { delay: 3 });
         await page.keyboard.press('Control+x');
         await page.keyboard.press('Control+s');
-        await evaluate('(progn (kill-buffer) (load-file "/work/browser-proof.el") (message "BROWSER-SAVED-%d" browser-proof))', 'BROWSER-SAVED-42');
+        await evaluate('(progn (kill-buffer) (load-file "/home/user/projects/browser-proof.el") (message "BROWSER-SAVED-%d" browser-proof))', 'BROWSER-SAVED-42');
         check('Ctrl-x Ctrl-f / Ctrl-x Ctrl-s save source that the guest loads');
         await evaluate('(progn (require \'emacsos-counter) (emacsos-counter-start) (emacsos-counter-start) (message "BROWSER-RUNS-%d" (length (emacsos-app-list))))', 'BROWSER-RUNS-2');
         start = await serialLength();
@@ -197,7 +199,7 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         await page.click('#boot');
         await state('running');
         await page.waitForFunction(() => document.documentElement.dataset.storageState === 'saved', null, {timeout:60000});
-        await evaluate('(progn (when (boundp \'browser-proof) (error "Imported Lisp ran automatically")) (load-file "/work/browser-proof.el") (message "BROWSER-RESTORED-%d" browser-proof))', 'BROWSER-RESTORED-42');
+        await evaluate('(progn (when (boundp \'browser-proof) (error "Imported Lisp ran automatically")) (load-file "/home/user/projects/browser-proof.el") (message "BROWSER-RESTORED-%d" browser-proof))', 'BROWSER-RESTORED-42');
         check('Restart restores saved source without automatically executing it');
         page.once('dialog', dialog => dialog.accept());
         await page.click('#disk-discard');
