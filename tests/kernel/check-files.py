@@ -6,9 +6,14 @@ import hashlib
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+import image
+
+image.verify_littlefs()
 
 
 def entry(name, mode, data=b""):

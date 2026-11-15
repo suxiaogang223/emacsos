@@ -32,8 +32,9 @@ boundary, not proof of physical durability through every host or power failure.
 
 ## Volume and file semantics
 
-`third_party/littlefs/SOURCE.json` pins the unmodified littlefs sources and their
-license. The volume also carries an emacsOS adapter version. User paths project
+`third_party/littlefs/` is a submodule pinned to the official littlefs repository.
+`third_party/littlefs.json` records the release, commit and hashes of the compiled
+source files and upstream license. The volume also carries an emacsOS adapter version. User paths project
 only the user tree; adapter object IDs, staging entries and version metadata are
 outside that tree. A generic littlefs volume without the emacsOS layout is not
 an importable emacsOS DATA disk.

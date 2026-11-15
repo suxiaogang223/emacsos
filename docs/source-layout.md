@@ -15,7 +15,7 @@ emacsos/
 │   ├── memory.c / hardware.c # Memory, serial and clocks
 │   └── kernel.ld          # Link layout
 ├── lisp/                  # Trusted application policy and counter demo
-├── third_party/littlefs/  # Pinned upstream filesystem sources and license
+├── third_party/littlefs/  # Pinned official littlefs submodule
 ├── tools/                 # Offline DATA template formatter
 ├── tests/                 # Kernel, Lisp, tooling, guest and browser checks
 ├── web/                   # Retro console, browser bridge and asset identities
@@ -38,7 +38,10 @@ git clone --single-branch --branch main --recurse-submodules https://github.com/
 git submodule update --init --recursive
 ```
 
-The parent gitlink pins the exact fork commit. Do not float it implicitly with
+The parent gitlinks pin the exact Emacs fork and official littlefs commits.
+The littlefs release identity and compiled-source hashes are recorded in
+`third_party/littlefs.json`; its unchanged sources and license stay upstream.
+Our filesystem adapter and freestanding configuration remain in `kernel/`. Do not float it implicitly with
 `git submodule update --remote`. A source checkout is not a runtime build.
 The default `make` target (`make build`) builds the complete system image at
 `build/image/emacsos.img`. `make kernel` builds the kernel-only image and DATA template in Docker;

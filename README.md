@@ -90,7 +90,8 @@ Read the [architecture](docs/design.md), [runtime contract](docs/runtime-port.md
 The runtime uses static musl and a bounded Linux x86-64 ABI adapter over the
 parent kernel and file backend. It does not provide general Linux compatibility.
 
-`emacs/` pins [our GNU Emacs fork](https://github.com/suxiaogang223/emacs), whose
+`third_party/littlefs/` pins the official filesystem dependency; its sources
+remain outside the parent tree. `emacs/` pins [our GNU Emacs fork](https://github.com/suxiaogang223/emacs), whose
 only changes are provenance documentation. System policy stays in the parent.
 Public documentation, comments and community discussion use English; private
 user discussion follows the user's preference. See [CONTRIBUTING.md](CONTRIBUTING.md).

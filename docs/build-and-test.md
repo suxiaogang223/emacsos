@@ -1,7 +1,9 @@
 # Build and test
 
 Run commands from the repository root. Building requires Git, Make, Python 3,
-Docker with BuildKit and Linux/amd64 support and an initialized `emacs/` submodule. Docker
+Docker with BuildKit and Linux/amd64 support and initialized `emacs/` and `third_party/littlefs/` submodules. Run
+`git submodule update --init --recursive` before building or running host file
+tests. Docker
 supplies the kernel and static Emacs compilation toolchains; host LLVM tools
 are not required for the normal build. Native execution additionally needs
 `qemu-system-x86_64`.
@@ -38,7 +40,10 @@ handles incremental compilation in the existing object directory. Every runtime
 build performs a fresh installation into its staging tree and packages that
 installation together with current parent-owned Lisp.
 
-Kernel objects use ordinary Make dependencies, including the kernel toolchain
+Kernel builds and host file tests verify that littlefs is initialized, clean and
+matches the recorded gitlink/source hashes before compilation. The image
+manifest records its exact upstream commit. Kernel objects use ordinary Make
+dependencies, including the kernel toolchain
 image identity. Image assembly checks component identities and writes a build
 manifest. Pinned inputs and recorded outputs do not establish byte-identical
 compiler results across arbitrary hosts.

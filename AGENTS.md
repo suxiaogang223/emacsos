@@ -21,6 +21,8 @@ tasks open PRs and report exact heads, validation and dependencies; only the
 coordinator merges within the user's authorization. Do not modify another task's
 checkout. Explicit user instructions may define a different handoff for a task.
 
+`third_party/littlefs/` pins official upstream sources; keep adapter/configuration
+in the parent and update its gitlink and `third_party/littlefs.json` together.
 `emacs/` is a pinned fork submodule. Publish fork changes first, stage the parent
 gitlink, and check the initialized checkout matches it. Keep future system policy
 outside the runtime fork. Do not restore archived features implicitly or add

@@ -13,7 +13,10 @@ networking, persistence and protected processes; see [acceptance](docs/mvp.md).
 
 ## Source ownership
 
-Initialize `emacs/` with `git submodule update --init --recursive`. Necessary
+Initialize both `emacs/` and `third_party/littlefs/` with
+`git submodule update --init --recursive`. The littlefs submodule pins an official
+upstream commit; its adapter/configuration belongs in the parent kernel.
+Update `third_party/littlefs.json` together with an intentional littlefs pin change. Necessary
 runtime modifications belong to the fork; parent system features and future PAL
 backends belong here. Publish fork commits before updating the parent gitlink.
 Stage the intended pin before contribution checks. CI requires a clean,
