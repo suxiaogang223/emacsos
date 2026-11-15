@@ -34,6 +34,7 @@ async function main() {
     report.fixturePort = port;
     report.webSource = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
     report.webSourceDirty = Boolean(execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim());
+    assert.equal(report.webSourceDirty, false, 'Browser acceptance requires a clean source checkout');
     browser = await chromium.launch({ headless: true,
         ...(process.env.EMACSOS_BROWSER ? { executablePath: process.env.EMACSOS_BROWSER } : {}),
         args: ['--no-sandbox'] });
@@ -77,11 +78,15 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
             { marker, start }, { timeout: 45000 });
     }
     await page.goto(url);
+    report.build = await page.evaluate(async () => (await fetch('./build.json')).json());
+    assert.equal(report.build.dirty, false, 'The image must come from a clean build');
+    assert.equal(report.build.parent, report.webSource, 'The build must match the tested source commit');
     await page.click('#boot');
     await waitState('running');
     await page.waitForFunction(() => document.documentElement.dataset.networkState === 'connected');
     report.imageSha256 = await page.evaluate(() => window.__imageHash);
-    report.build = await page.evaluate(async () => (await fetch('./build.json')).json());
+    assert.equal(report.imageSha256, report.build.components['build/image/emacsos.img'],
+        'The actual fetched SYSTEM bytes must match the build manifest');
     checks.push('Automatic same-origin network link and actual Emacs boot');
     // Timer progress occurs while the fixture intentionally delays the final bytes.
     const setup = `(progn (setq eos-net-payload ${JSON.stringify(payload)} eos-net-reply "" eos-net-ticks 0) (setq eos-net-timer (run-at-time 0 0.05 (lambda () (setq eos-net-ticks (1+ eos-net-ticks))))) (setq eos-net-process (make-network-process :name "browser-network" :host "10.0.2.2" :service ${port} :family 'ipv4 :nowait t :coding 'binary :noquery t :sentinel (lambda (p _e) (when (eq (process-status p) 'open) (process-send-string p (substring eos-net-payload 0 17)) (process-send-string p (substring eos-net-payload 17)))) :filter (lambda (p bytes) (setq eos-net-reply (concat eos-net-reply bytes)) (when (= (length eos-net-reply) (length eos-net-payload)) (cancel-timer eos-net-timer) (if (and (equal eos-net-reply eos-net-payload) (> eos-net-ticks 0)) (progn (with-temp-file "/home/user/projects/browser-network.txt" (insert eos-net-reply)) (message (concat "WEB-NET-ECHO-" "SAVE-PASS"))) (error "Network payload or timer mismatch")) (delete-process p))))) (message "WEB-NET-STARTED"))`;
