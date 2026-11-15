@@ -1,7 +1,8 @@
 # Roadmap
 
-The [first MVP](mvp.md) implements the selected runtime route: interactive GNU
-Emacs, volatile file operations and cooperative application instances. Its
+The [first MVP](mvp.md) established interactive GNU Emacs, file operations and
+cooperative application instances. Littlefs DATA now replaces its temporary RAM
+file backend. Its
 acceptance uses the actual fixed-machine QEMU guest. Broader stages below remain
 contracts rather than implied capabilities.
 
@@ -11,10 +12,10 @@ contracts rather than implied capabilities.
 | --- | --- | --- |
 | B0 / P0 | Implemented and reviewed | BIOS/x86-64 boot plus architecture/source contracts. |
 | P1 / E0 | MVP implemented | Pinned static runtime, real loader/mappings/console/time/wait, matching artifacts; interactive input, evaluation and timer acceptance. |
-| F0 | MVP implemented subset | Volatile files, normal save/backup/lock/errors and directory operations; bounded unsupported options documented in files.md. |
+| F0 | MVP implemented subset | Standard file APIs, normal save/backup/lock/errors and directory operations; bounded unsupported options documented in files.md. |
 | A0 | MVP subset | Host ERT and guest two-instance manager lifecycle; message queues, completion subscriptions and deadline waits remain open. |
 | Browser presentation | Implemented | Pinned QEMU/Wasm boots the same MVP image; xterm.js supplies the raw serial terminal and retro computer controls. See web.md for browser evidence and limits. |
-| F1 | Implemented subset | Fixed littlefs DATA at `/work`, native sync/reboot acceptance and separate browser checkpoint/import/export acceptance; see storage.md. |
+| F1 | Implemented subset | Littlefs is the only writable backend for `/work`, `/home`, `/tmp`; native sync/reboot acceptance and separate browser checkpoint/import/export acceptance; see storage.md. |
 | N0–N2 / K0 | Not implemented | Transport/networking and independent protected execution require separate decisions and evidence. |
 
 ## Staged work and dependencies
@@ -26,7 +27,7 @@ contracts rather than implied capabilities.
 | P1 | Bootstrap runtime support over a small PAL. | After P0 in a separate implementation task: pin Emacs/musl build, derive ABI subset; implement memory, console, time/wait, read-only runtime files and static ELF/startup support. |
 | E0 | Interactive Emacs and Elisp evaluation. | P1; matching executable/dump/Lisp/data manifest, controlled base initialization and actual command-loop interaction. Validate the chosen compatibility route. |
 | A0 | Trusted shared-runtime Elisp application instances. | E0; distinct runs, lifecycle/context, explicit owned/borrowed/shared resources, late-event rejection, bounded messages, explicit finish/cleanup barrier, nonblocking stop/wait and truthful inspection. No forced termination or isolation. |
-| F0 | Standard file APIs over volatile working files. | E0 and typed file/directory backend. Preserve ordinary saves, backups, locks and original errors; document supported options and limits. |
+| F0 | Standard file APIs over a typed working-file backend. | E0 and typed file/directory backend. Preserve ordinary saves, backups, locks and original errors; document supported options and limits. |
 | F1 | Minimal persistent file backend. | F0; choose format, sync/recovery and error contracts, then prove retained data separately. No service/startup manager prerequisite. |
 | N0 | Native and browser guest-network transport feasibility. | After P0 event/ownership contracts, research may run alongside file work. Prove available transport before selecting NIC/stack/bridge; a working browser console does not prove guest networking. |
 | N1 | Guest outbound TCP. | N0 and E0; connection/readiness integration, numeric-address connect, send/receive, EOF, timeout, error and leak-free close on the supported transport. |
@@ -45,6 +46,8 @@ browser Wasm target before promising equivalent guest capabilities.
 F1 uses a fixed 64 MiB littlefs DATA disk separately from SYSTEM. Native startup
 creates an initialized disk only when missing. Browser startup supplies an empty
 disk automatically, then restores completed checkpoints for the same origin.
+All three writable directories share this volume; missing or rejected DATA
+enters read-only recovery. There is no writable RAM filesystem or fallback.
 Optional import/export moves complete DATA images. See [storage](storage.md).
 
 Guest mount validation precedes promotion of an imported image. COM2 freeze,

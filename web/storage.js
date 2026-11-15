@@ -205,7 +205,7 @@ export class BrowserDisk {
         if (!status.mounted || status.errno) {
             this.emit("error", status.mounted ?
                 `DATA reports a storage fault (error ${status.errno}). The previous retained checkpoint is preserved.` :
-                `DATA mount rejected (error ${status.errno}). Original retained/imported bytes are preserved; recovery files are volatile.`);
+                `DATA mount rejected (error ${status.errno}). Original retained/imported bytes are preserved. Recovery is read-only; buffers remain editable.`);
             return;
         }
         try { await this.checkpoint(); }
@@ -315,7 +315,7 @@ export class BrowserDisk {
                             this.emit("error", "Checkpoint saved; " + this.retentionError + " Further snapshots are disabled.");
                         } else {
                             this.emit(this.pending ? "pending" : "saved", this.pending ?
-                                "Checkpoint saved; newer changes are pending or unconfirmed." : "Saved in this browser · /work on DATA");
+                                "Checkpoint saved; newer changes are pending or unconfirmed." : "Saved in this browser · DATA directories");
                             this.retentionError = undefined;
                         }
                     } catch (error) {

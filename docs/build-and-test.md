@@ -82,8 +82,8 @@ Docker and native QEMU in addition to the build prerequisites.
 | `make test-tooling` | Build, image and contribution-tool unit tests. |
 | `make test-web` | Web server routes, isolation headers, TLS and asset verification. |
 | `make test-probes` | Static-musl startup and deliberate RO/NX page faults in native QEMU. |
-| `make test-guest` | Complete native guest editing, volatile files and application lifecycle. |
-| `make test-storage` | Repeat file/application acceptance on littlefs, then sync/copy/reboot and stale-lock recovery. |
+| `make test-guest` | Complete native guest editing, littlefs files and application lifecycle. |
+| `make test-storage` | Sync/copy/reboot all DATA directories, cross-directory rename, stale locks and read-only recovery. |
 | `make test-browser` | Optional real-browser checks against an already running web server. |
 
 Tests live under `tests/kernel`, `tests/lisp`, `tests/tooling`, `tests/guest`
@@ -96,7 +96,7 @@ Native guest acceptance requires a clean committed parent checkout and the
 matching initialized submodule. Its fourteen checks drive the real guest through
 `tests/guest/check.py`; the source fixture is `tests/guest/counter.el`. Its
 transcript and results bind the exact image and source identities. See
-[MVP acceptance](mvp.md) for the volatile-file and trust boundaries.
+[MVP acceptance](mvp.md) for the runtime and trust boundaries. All writable file acceptance now uses DATA.
 
 CI uses one build/test workflow with separate host and guest jobs. The
 contribution workflow separately checks repository/PR conventions, including

@@ -3,7 +3,7 @@
 emacsOS runs GNU Emacs 30.2 on its own x86-64 C kernel. Elisp is the public
 programming interface. The first MVP provides serial-terminal editing and
 evaluation, working files, and trusted cooperative applications managed from
-`*Processes*`. A littlefs DATA disk retains `/work` across boots; the browser
+`*Processes*`. A littlefs DATA disk retains `/work`, `/home` and `/tmp` across boots; the browser
 automatically initializes and checkpoints it. Networking and isolated processes
 remain future work.
 
@@ -34,7 +34,9 @@ shares toolchain images and layers. See
 In Emacs, use `M-:` to evaluate `(+ 20 22)`, `C-x C-f` to create
 `/work/example.el`, and `C-x C-s` to save. Load your code with `M-x load-file`.
 `/work` is saved on the DATA disk, which the native launcher creates on first
-use at `build/data/emacsos-data.img`. `/tmp` and `/home/user` remain volatile.
+use at `build/data/emacsos-data.img`. `/home/user` and `/tmp` use that same
+volume; temporary files are cleaned up by their applications. Missing or invalid
+DATA starts read-only recovery, with no writable RAM fallback.
 The installed runtime under `/usr` is read-only. See [persistent storage](docs/storage.md)
 for synchronization, recovery and disk exchange.
 

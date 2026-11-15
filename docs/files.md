@@ -1,22 +1,24 @@
-# File backends
+# File namespace and storage
 
 The kernel links a typed file namespace and a bounded Linux x86-64 descriptor
 adapter. The runtime newc archive supplies immutable files, directories and
-symbolic links. `/tmp` and `/home/user` are writable RAM directories; `/work`
-uses the mounted littlefs DATA disk when present and valid, or RAM when no disk
-is attached. `/dev/tty` and `/dev/null` are bounded console/null device entries.
-See [persistent DATA](storage.md) for the format, mount failures and retention
-boundaries. RAM-directory changes are lost when QEMU exits.
+symbolic links. All writable regular files, directories and symlinks live on
+one littlefs DATA volume exposed at `/work`, `/home` (including `/home/user`)
+and `/tmp`. `/usr` and the surrounding namespace are read-only. `/dev/tty` and
+`/dev/null` provide console/null device I/O rather than regular-file storage.
+There is no writable RAM file backend or no-disk fallback. Missing or rejected
+DATA leaves all three directory anchors read-only while the runtime and editable
+Emacs buffers remain available. See [DATA storage](storage.md).
 
 The namespace supports lookup, regular files, sparse writes, truncation,
 directories, rename, unlink, symlinks and metadata. File identity survives rename
 and unlink while an open description retains it. Duplicated descriptors share
 their offset and status; independent opens have independent offsets. Close
 consumes a descriptor, and final unlinked-object release returns its allocation.
-RAM file storage is limited to 24 MiB total. Both backends limit each regular
-file to 8 MiB and share 8192 live namespace nodes and 192 descriptors including
-standard I/O. DATA contents are streamed through bounded caches and do not
-consume the RAM-file quota. Symlink
+Each regular file is limited to 8 MiB; the namespace has at most 8192 live nodes
+and 192 descriptors including standard I/O. File contents stream through bounded
+littlefs caches. In-memory indexes, readonly archive backing and private mapping
+copies are not a second writable filesystem. Symlink
 resolution is bounded to 16 traversals. Paths/components are bounded to
 1023/255 bytes. Capacity errors remain visible; writes are not transactional.
 
@@ -32,8 +34,7 @@ EBUSY. O_CREAT with O_DIRECTORY, and mutating/access flags with O_PATH, are
 rejected before namespace changes. This is a documented runtime subset, not
 general Linux filesystem compatibility or a multiuser permissions system.
 
-On RAM directories, successful fsync/fdatasync reaches only volatile memory.
-For persistent `/work`, it synchronizes the littlefs object and flushes ATA;
+Successful fsync/fdatasync on DATA synchronizes littlefs and flushes ATA;
 browser retention additionally requires a completed checkpoint transaction. Normal GNU Emacs
 save, backup, symlink-lock and error behavior must stay enabled in guest
 acceptance. No archived Emacs save changes were restored. The backend does not

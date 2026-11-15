@@ -88,7 +88,7 @@ async function waitCheckpoint(page,previous) {
     throw new Error('Automatic DATA checkpoint did not retain new bytes');
 }
 async function verifySource(page) {
-    await evaluate(page,'(progn (when (boundp \'browser-retained-number) (error "Unexpected automatic Lisp execution")) (load-file "/work/browser-retained.el") (unless (and (= (logand (file-modes "/work/browser-retained.el") 511) 416) (equal (file-symlink-p "/work/browser-dir/source.el") "../browser-retained.el")) (error "Transferred metadata differs")) (message "DISK-RESTORED-%d" browser-retained-number))','DISK-RESTORED-73');
+    await evaluate(page,'(progn (when (boundp \'browser-retained-number) (error "Unexpected automatic Lisp execution")) (load-file "/work/browser-retained.el") (unless (and (= (logand (file-modes "/work/browser-retained.el") 511) 416) (equal (file-symlink-p "/work/browser-dir/source.el") "../browser-retained.el")) (error "Transferred metadata differs")) (unless (and (with-temp-buffer (insert-file-contents "/home/user/browser-note.txt") (equal (buffer-string) "persistent home")) (with-temp-buffer (insert-file-contents "/tmp/browser-temp.txt") (equal (buffer-string) "ordinary temporary directory"))) (error "DATA directories did not survive")) (message "DISK-RESTORED-%d" browser-retained-number))','DISK-RESTORED-73');
 }
 (async()=>{
     const browser=await chromium.launch({headless:true,
@@ -101,7 +101,7 @@ async function verifySource(page) {
         await boot(page);
         report.templateSha256=await page.evaluate(()=>window.__templateHash);
         const initial=await metadata(page);
-        await evaluate(page,'(progn (find-file "/work/browser-retained.el") (insert "(setq browser-retained-number 73)\\n") (save-buffer) (kill-buffer) (set-file-modes "/work/browser-retained.el" 416) (make-directory "/work/browser-dir") (make-symbolic-link "../browser-retained.el" "/work/browser-dir/source.el") (message (concat "DISK-" "CREATED")))','DISK-CREATED');
+        await evaluate(page,'(progn (find-file "/work/browser-retained.el") (insert "(setq browser-retained-number 73)\\n") (save-buffer) (kill-buffer) (set-file-modes "/work/browser-retained.el" 416) (make-directory "/work/browser-dir") (make-symbolic-link "../browser-retained.el" "/work/browser-dir/source.el") (with-temp-file "/home/user/browser-note.txt" (insert "persistent home")) (with-temp-file "/tmp/browser-temp.txt" (insert "ordinary temporary directory")) (message (concat "DISK-" "CREATED")))','DISK-CREATED');
         report.automaticCheckpoint=await waitCheckpoint(page,initial);
         log('Automatic first DATA disk retains ordinary saved source and metadata without a manual mount or checkpoint');
         const contender=await pageFor(sourceContext);
@@ -142,6 +142,7 @@ async function verifySource(page) {
         assert.match(await page.locator('#data-status').innerText(),/mount rejected/);
         assert.equal((await metadata(page)).sha256,retained.sha256);
         assert(await page.locator('#disk-export').isDisabled());
+        await evaluate(page,'(progn (dolist (directory (list "/work/" "/home/user/" "/tmp/")) (with-temp-buffer (insert "unsaved recovery content") (let (observed) (condition-case condition (write-region (point-min) (point-max) (concat directory "must-not-be-volatile.txt")) (file-error (setq observed condition))) (unless (and observed (buffer-modified-p) (string-match-p "Read-only file system" (error-message-string observed))) (error "Recovery allowed a writable fallback"))))) (message (concat "DISK-" "READONLY-RECOVERY")))','DISK-READONLY-RECOVERY');
         await page.screenshot({path:path.join(output,'rejected-import.png'),fullPage:true});
         await page.close();
         page=await pageFor(importedContext);await boot(page);await verifySource(page);

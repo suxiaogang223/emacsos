@@ -45,6 +45,6 @@ int main(int argc, char **argv)
     if (!failed) failed = data_disk_flush() != 0;
     if (fclose(disk)) failed = 1;
     if (failed) { unlink(argv[1]); fputs("DATA formatting failed\n", stderr); return 1; }
-    puts("Initialized 64 MiB littlefs DATA template");
+    puts("Initialized 64 MiB " EMACSOS_DATA_FORMAT " littlefs DATA template");
     return 0;
 }

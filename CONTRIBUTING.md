@@ -7,9 +7,11 @@ Unicode tables, names, test data and unchanged third-party sources.
 
 Read the [design](docs/design.md), [roadmap](docs/roadmap.md) and
 [source ownership](docs/source-layout.md) before architectural changes. The
-MVP runs a trusted Emacs with volatile files and cooperative applications on
-the fixed QEMU profile. Describe that bounded behavior separately from planned
-networking, persistence and protected processes; see [acceptance](docs/mvp.md).
+runtime runs a trusted Emacs with cooperative applications on the fixed QEMU
+profile. All writable files use littlefs DATA at `/work`, `/home` and `/tmp`;
+missing or rejected DATA enters read-only recovery. Describe that bounded
+behavior separately from networking and protected processes; see
+[core acceptance](docs/mvp.md) and [storage](docs/storage.md).
 
 ## Source ownership
 

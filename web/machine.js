@@ -222,7 +222,7 @@ function send(data) {
 
 element("boot").addEventListener("click", start);
 element("reset").addEventListener("click", async () => {
-    if (initializationStarted && !window.confirm("Save DATA and restart? Unsaved buffers and volatile files will be lost.")) return;
+    if (initializationStarted && !window.confirm("Save DATA and restart? Unsaved buffer contents will be lost.")) return;
     try {
         if (initializationStarted) await disk.checkpoint({ restart: true });
         approvedReload = true;

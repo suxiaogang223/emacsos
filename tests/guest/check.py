@@ -83,6 +83,10 @@ def validated_manifest():
 
 def main(data=None, output=OUT, label="guest"):
     manifest = validated_manifest()
+    if data is None:
+        data = output / f"{label}-data.img"
+        data.unlink(missing_ok=True)
+        qemu.prepare_data(data, OUT / "data-empty.img")
     checks = []
     guest = Guest(data=data, output=output, label=label)
     result = {"parent": manifest["parent"], "fork": manifest["fork"],
@@ -187,9 +191,7 @@ def storage_main():
     snapshot.unlink(missing_ok=True)
     qemu.prepare_data(disk, OUT / "data-empty.img")
     system_hash = identity.digest(OUT / "emacsos.img")
-    # Exercise the same fourteen file/application checks on the persistent PAL.
-    main(data=disk, output=output, label="features")
-    checks = ["all fourteen existing guest checks on littlefs"]
+    checks = []
     record = {"parent": manifest["parent"], "fork": manifest["fork"],
               "system_sha256": system_hash, "passed": False, "checks": checks}
     channel = Control(output)
@@ -199,17 +201,20 @@ def storage_main():
         status = channel.call(guest, "STATUS")
         if not status["mounted"] or status["frozen"]:
             raise RuntimeError(f"DATA not mounted normally: {status}")
-        guest.evaluate('(progn (unless (null write-region-inhibit-fsync) (error "Save sync disabled")) (unless (file-exists-p "/work/counter.el") (error "Prior launch file missing")) (message (concat "STORE-" "REOPENED")))', "STORE-REOPENED")
-        checks.append("fresh guest reopens prior saved source and enables save sync")
+        guest.evaluate('(progn (unless (null write-region-inhibit-fsync) (error "Save sync disabled")) (unless (and (file-directory-p "/work") (file-directory-p "/home/user") (file-directory-p "/tmp")) (error "Missing DATA directories")) (message (concat "STORE-" "MOUNTED")))', "STORE-MOUNTED")
+        checks.append("fresh guest mounts DATA directories and enables normal save sync")
         source = '(defun retained-computation () (+ 19 23))\n(provide \'retained)\n'
         guest.evaluate('(progn (find-file "/work/retained.el") (erase-buffer) (insert %s) (save-buffer) (set-file-modes buffer-file-name 416) (kill-buffer) (make-symbolic-link "retained.el" "/work/source-link.el") (with-temp-file "/work/.#user-data" (insert "ordinary user filename")) (with-temp-file "/work/stale.el" (insert "previous content")) (make-symbolic-link (format "%%s@%%s.%%d" (user-login-name) (system-name) (emacs-pid)) "/work/.#stale.el") (message (concat "STORE-" "SAVED")))' % json.dumps(source), "STORE-SAVED")
         checks.append("save source, metadata, links and a real prior-boot lock")
         guest.evaluate('(progn (find-file "/work/retained.el") (setq-local file-precious-flag t) (goto-char (point-max)) (insert ";; Atomic replacement through normal Emacs saving." (string 10)) (save-buffer) (when (buffer-modified-p) (error "Precious save remained modified")) (kill-buffer) (message (concat "STORE-" "PRECIOUS")))', "STORE-PRECIOUS")
         checks.append("normal precious-file save uses atomic replacement and preserves metadata")
+        guest.evaluate('(progn (with-temp-file "/home/user/retained-note.txt" (insert "home is on DATA")) (with-temp-file "/work/cross-directory.txt" (insert "one filesystem")) (setq moved-inode (file-attribute-inode-number (file-attributes "/work/cross-directory.txt"))) (rename-file "/work/cross-directory.txt" "/home/user/cross-directory.txt") (unless (= moved-inode (file-attribute-inode-number (file-attributes "/home/user/cross-directory.txt"))) (error "Home rename changed identity")) (rename-file "/home/user/cross-directory.txt" "/tmp/cross-directory.txt") (unless (= moved-inode (file-attribute-inode-number (file-attributes "/tmp/cross-directory.txt"))) (error "Temporary-directory rename changed identity")) (message (concat "STORE-" "ONE-VOLUME")))', "STORE-ONE-VOLUME")
+        checks.append("home and temporary files use the same DATA volume with stable cross-directory rename identity")
         frozen = channel.call(guest, "FREEZE")
         if frozen["state"] != "FROZEN" or not frozen["frozen"]:
             raise RuntimeError(f"No frozen checkpoint: {frozen}")
         guest.evaluate('(progn (with-temp-buffer (insert "unsaved") (let (observed) (condition-case condition (write-region (point-min) (point-max) "/work/frozen.txt") (file-error (setq observed condition))) (unless (and observed (buffer-modified-p)) (error "Frozen writes accepted")))) (message (concat "STORE-" "FROZEN")))', "STORE-FROZEN")
+        guest.evaluate('(progn (dolist (directory (list "/work/" "/home/user/" "/tmp/")) (with-temp-buffer (insert "frozen data") (let (observed) (condition-case condition (write-region (point-min) (point-max) (concat directory "freeze-denied.txt")) (file-error (setq observed condition))) (unless (and observed (buffer-modified-p)) (error "DATA directory escaped freeze"))))) (message (concat "STORE-" "ALL-FROZEN")))', "STORE-ALL-FROZEN")
         shutil.copyfile(disk, snapshot)
         checkpoint_hash = identity.digest(snapshot)
         checks.append("acknowledged freeze rejects writes and yields a consistent disk copy")
@@ -235,6 +240,8 @@ def storage_main():
         guest.wait(b"*scratch*")
         guest.evaluate('(progn (load-file "/work/retained.el") (unless (and (= 42 (retained-computation)) (= 416 (file-modes "/work/retained.el")) (equal (file-symlink-p "/work/source-link.el") "retained.el") (not (file-exists-p "/work/after-copy.txt")) (with-temp-buffer (insert-file-contents "/work/.#user-data") (equal (buffer-string) "ordinary user filename"))) (error "Retained data differs")) (message (concat "STORE-" "RESTORED")))', "STORE-RESTORED")
         checks.append("independent reboot restores checkpoint source, modes and symlinks")
+        guest.evaluate('(progn (unless (and (with-temp-buffer (insert-file-contents "/home/user/retained-note.txt") (equal (buffer-string) "home is on DATA")) (with-temp-buffer (insert-file-contents "/tmp/cross-directory.txt") (equal (buffer-string) "one filesystem")) (not (file-exists-p "/work/cross-directory.txt")) (not (file-exists-p "/home/user/cross-directory.txt"))) (error "DATA home or temporary files changed")) (message (concat "STORE-" "DIRECTORIES-RESTORED")))', "STORE-DIRECTORIES-RESTORED")
+        checks.append("home and ordinary temporary-directory contents survive independent reboot")
         guest.evaluate('(progn (setq prior-lock (file-symlink-p "/work/.#stale.el")) (find-file "/work/stale.el") (goto-char (point-max)) (insert "edited") (unless (and (file-symlink-p "/work/.#stale.el") (not (equal prior-lock (file-symlink-p "/work/.#stale.el")))) (error "Previous boot lock was reused")) (save-buffer) (kill-buffer) (message (concat "STORE-" "LOCK-RECOVERED")))', "STORE-LOCK-RECOVERED")
         checks.append("normal Emacs locking replaces stale prior-boot owner safely")
         guest.evaluate('(kill-emacs 0)', "Runtime exited status=0x0000000000000000")
@@ -254,11 +261,53 @@ def storage_main():
     print(f"Storage guest checks passed: {len(checks)}", flush=True)
 
 
+def recovery_main():
+    """Absent or rejected DATA must never silently enable writable RAM files."""
+    manifest = validated_manifest()
+    output = OUT / "recovery"
+    output.mkdir(exist_ok=True)
+    profiles = []
+    record = {"parent": manifest["parent"], "fork": manifest["fork"],
+              "image_sha256": manifest["components"]["build/image/emacsos.img"],
+              "passed": False, "profiles": profiles}
+    try:
+        for name, size in (("absent", None), ("corrupt", qemu.DATA_SIZE),
+                           ("unsupported-size", qemu.DATA_SIZE // 2)):
+            data = None
+            if size is not None:
+                data = output / f"{name}.img"
+                with data.open("wb") as stream:
+                    stream.truncate(size)
+            before = identity.digest(data) if data else None
+            guest = Guest(data=data, output=output, label=name)
+            try:
+                guest.wait(b"DATA unavailable: read-only recovery")
+                guest.wait(b"*scratch*")
+                guest.evaluate('(progn (switch-to-buffer "*Recovery editing*") (insert "recoverable buffer") (unless (and (= (+ 20 22) 42) (file-readable-p "/usr/share/emacs/site-lisp/emacsos-app.el")) (error "Recovery environment unavailable")) (dolist (directory (list "/work/" "/home/user/" "/tmp/")) (with-temp-buffer (insert "unsaved recovery data") (let (observed) (condition-case condition (write-region (point-min) (point-max) (concat directory "must-not-be-volatile.txt")) (file-error (setq observed condition))) (unless (and observed (string-match-p "Read-only file system" (error-message-string observed)) (buffer-modified-p)) (error "Writable fallback or incorrect recovery error"))))) (message (concat "RECOVERY-" "PASS")))', "RECOVERY-PASS")
+                guest.evaluate('(kill-emacs 0)', "Runtime exited status=0x0000000000000000")
+                if guest.process.wait(timeout=10) != 33:
+                    raise RuntimeError(f"{name} recovery exit failed")
+            finally:
+                guest.close()
+            if data and identity.digest(data) != before:
+                raise RuntimeError(f"{name} recovery modified rejected DATA")
+            profiles.append({"name": name, "passed": True, "data_sha256": before,
+                             "transcript_sha256": identity.digest(output / f"{name}.transcript")})
+            print(f"PASS {name}: interactive read-only recovery without writable fallback", flush=True)
+        record["passed"] = True
+    except Exception as error:
+        record["error"] = str(error)
+        raise
+    finally:
+        (output / "results.json").write_text(json.dumps(record, indent=2) + "\n")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--storage", action="store_true", help="Check DATA across separate guest launches")
     args = parser.parse_args()
     if args.storage:
         storage_main()
+        recovery_main()
     else:
         main()

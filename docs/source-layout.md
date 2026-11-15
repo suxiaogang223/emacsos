@@ -9,7 +9,7 @@ emacsos/
 │   ├── main.c             # Kernel initialization and runtime entry
 │   ├── loader.c           # Static ELF and startup ABI
 │   ├── runtime.c          # Bounded syscall adapter and waits
-│   ├── files.c / file_abi.c # Typed RAM/DATA files and ABI translation
+│   ├── files.c / file_abi.c # Readonly namespace/DATA files and ABI translation
 │   ├── block.c / littlefs_backend.c # DATA device and persistent objects
 │   ├── storage_control.c  # Safe COM2 checkpoint barrier
 │   ├── memory.c / hardware.c # Memory, serial and clocks

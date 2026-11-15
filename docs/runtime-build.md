@@ -56,8 +56,8 @@ Runtime paths are `/usr/bin/emacs`,
 `/usr/libexec/emacs/30.2/x86_64-pc-linux-musl/emacs.pdmp`,
 `/usr/share/emacs/30.2/lisp`, `/usr/share/emacs/30.2/etc` and
 `/usr/share/terminfo`. Minimal `/etc/passwd` and `/etc/group` describe uid/gid 0;
-no account/security system is implied. The guest supplies writable `/work` and
-`/tmp` separately. The runtime archive is not guest persistent storage.
+no account/security system is implied. The guest supplies `/work`, `/home` and `/tmp` through the DATA volume.
+They are read-only in recovery if DATA is absent or rejected. The runtime archive is not guest persistent storage.
 
 Packaging excludes manuals, desktop integration, external Unix helper programs
 and Lisp source files with matching bytecode. It retains upstream runtime data,

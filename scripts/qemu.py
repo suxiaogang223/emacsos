@@ -53,7 +53,8 @@ if __name__ == "__main__":
                         default=os.environ.get("EMACSOS_IMAGE", "build/image/emacsos.img"))
     parser.add_argument("--data", type=Path,
                         default=os.environ.get("EMACSOS_DATA", "build/data/emacsos-data.img"))
-    parser.add_argument("--no-data", action="store_true", help="Boot with volatile working files")
+    parser.add_argument("--no-data", action="store_true",
+                        help="Start read-only recovery without a DATA disk")
     args, extra = parser.parse_known_args()
     try:
         data = None if args.no_data else prepare_data(args.data)

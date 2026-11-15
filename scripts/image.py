@@ -138,8 +138,9 @@ def build():
         "littlefs": littlefs["commit"],
         "dirty": bool(git("status", "--porcelain")) or manifest["parent_dirty"],
         "machine": {"qemu": "pc", "ram": "1G", "console": "COM1", "network": "none"},
-        "data_disk": {"format": "emacsos-littlefs-v1", "bytes": template.stat().st_size,
-                      "mount": "/work", "template_sha256": digest(template)},
+        "data_disk": {"format": "emacsos-littlefs-v2", "bytes": template.stat().st_size,
+                      "mounts": ["/work", "/home", "/tmp"],
+                      "template_sha256": digest(template)},
         "components": {name: digest(ROOT / name) for name in components},
         "containers": {
             "emacsos-runtime:alpine3.22": manifest["container_id"],
