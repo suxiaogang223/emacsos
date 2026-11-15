@@ -123,7 +123,7 @@ static void check_contents(const char *path, const char *expected)
 }
 static void write_file(const char *path, const char *text)
 {
-    int fd = open_file(path, 64 | 2);
+    int fd = open_file(path, 64 | 512 | 2);
     assert(fd >= 3);
     assert(call(1, fd, P(text), strlen(text), 0, 0) == (long)strlen(text));
     assert(call(74, fd, 0, 0, 0, 0) == 0);
