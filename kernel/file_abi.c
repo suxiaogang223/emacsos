@@ -1,11 +1,13 @@
-/* Bounded Linux x86-64 descriptor/path translation over the typed file PAL. */
+/* Bounded Linux x86-64 file/stream translation over typed backend operations. */
 #include "files.h"
 #include "data_layout.h"
+#include "network.h"
 
 extern void *kmalloc(size_t);
 extern void kfree(void *);
 extern uint64_t clock_realtime_ns(void);
 extern bool console_ready(void);
+extern void wait_interrupt(void);
 
 #define FD_LIMIT 192
 #define AT_CWD (-100)
@@ -18,8 +20,16 @@ extern bool console_ready(void);
 #define O_NOFOLLOW 131072U
 #define O_CLOEXEC 524288U
 #define O_PATH 2097152U
+#define O_NONBLOCK 2048U
+#define STREAM_KIND 5
 
-struct description { struct fs_node *node; uint64_t offset; unsigned flags, refs; };
+enum description_kind { DESCRIPTION_FILE, DESCRIPTION_STREAM };
+struct description {
+    enum description_kind kind;
+    union { struct fs_node *node; struct net_stream *stream; };
+    uint64_t offset;
+    unsigned flags, refs;
+};
 struct descriptor { struct description *open; unsigned flags; };
 static struct descriptor descriptors[FD_LIMIT];
 static struct fs_node *working_directory;
@@ -34,8 +44,33 @@ static long error(enum fs_error e)
 {
     return fs_error_errno(e);
 }
+static long network_error(enum net_error e)
+{
+    switch (e) {
+    case NET_OK: return 0;
+    case NET_INVALID: return -22;
+    case NET_NO_MEMORY: return -12;
+    case NET_NO_DEVICE: return -100;
+    case NET_NOT_SUPPORTED: return -95;
+    case NET_IN_PROGRESS: return -115;
+    case NET_WOULD_BLOCK: return -11;
+    case NET_REFUSED: return -111;
+    case NET_TIMEOUT: return -110;
+    case NET_RESET: return -104;
+    case NET_NOT_CONNECTED: return -107;
+    case NET_BROKEN_PIPE: return -32;
+    case NET_ALREADY: return -114;
+    case NET_IS_CONNECTED: return -106;
+    case NET_ADDRESS_IN_USE: return -98;
+    case NET_UNREACHABLE: return -113;
+    case NET_IO: return -5;
+    }
+    return -5;
+}
 
 static bool valid(int fd) { return fd >= 0 && fd < FD_LIMIT && descriptors[fd].open; }
+static bool is_stream(int fd)
+{ return valid(fd) && descriptors[fd].open->kind == DESCRIPTION_STREAM; }
 static struct fs_info information(struct fs_node *n)
 { struct fs_info info; fs_info(n, &info); return info; }
 
@@ -68,12 +103,19 @@ static void initialize(void)
 }
 
 int file_fd_kind(int fd)
-{ initialize(); return valid(fd) ? (int) information(descriptors[fd].open->node).kind : -1; }
+{
+    initialize();
+    return is_stream(fd) ? STREAM_KIND
+        : valid(fd) ? (int) information(descriptors[fd].open->node).kind : -1;
+}
 
 long file_ready(int fd, bool writing)
 {
     int kind = file_fd_kind(fd);
     if (kind < 0) return -9;
+    if (kind == STREAM_KIND) return writing
+        ? stream_write_ready(descriptors[fd].open->stream)
+        : stream_read_ready(descriptors[fd].open->stream);
     return kind == FS_CONSOLE ? writing || console_ready() : 1;
 }
 
@@ -83,9 +125,11 @@ static long close_fd(int fd)
     struct description *open = descriptors[fd].open;
     descriptors[fd].open = 0; descriptors[fd].flags = 0;
     if (!--open->refs) {
-        enum fs_error e = fs_release_checked(open->node);
+        long result = open->kind == DESCRIPTION_STREAM
+            ? network_error(stream_close(open->stream))
+            : error(fs_release_checked(open->node));
         kfree(open);
-        return error(e);
+        return result;
     }
     return 0;
 }
@@ -109,6 +153,7 @@ static long base_for(int fd, const char *path, struct fs_node **base)
     if (!path) return -14;
     if (*path == '/' || fd == AT_CWD) { *base = working_directory; return 0; }
     if (!valid(fd)) return -9;
+    if (is_stream(fd)) return -20;
     *base = descriptors[fd].open->node;
     return information(*base).kind == FS_DIRECTORY ? 0 : -20;
 }
@@ -158,6 +203,19 @@ static long transfer(int fd, void *buffer, size_t count, bool write, bool positi
     if (!valid(fd)) return -9;
     if (count && !buffer) return -14;
     struct description *open = descriptors[fd].open;
+    if (open->kind == DESCRIPTION_STREAM) {
+        if (positioned) return -29;
+        if (count > INT64_MAX) return -22;
+        size_t done = 0;
+        enum net_error e;
+        do {
+            e = write ? stream_write(open->stream, buffer, count, &done)
+                      : stream_read(open->stream, buffer, count, &done);
+            if (e != NET_WOULD_BLOCK || done || (open->flags & O_NONBLOCK)) break;
+            wait_interrupt();
+        } while (true);
+        return done || e == NET_OK ? (long) done : network_error(e);
+    }
     if (open->flags & O_PATH) return -9;
     unsigned access = open->flags & O_ACCESS;
     if ((write && !access) || (!write && access == 1)) return -9;
@@ -179,6 +237,7 @@ long file_map_read(int fd, uint64_t offset, void *buffer, size_t count)
     initialize();
     if (!valid(fd)) return -9;
     struct description *open = descriptors[fd].open;
+    if (open->kind == DESCRIPTION_STREAM) return -19;
     if ((open->flags & O_PATH) || (open->flags & O_ACCESS) == 1) return -9;
     struct fs_info info = information(open->node);
     if (info.kind != FS_REGULAR) return -19;
@@ -193,6 +252,7 @@ static long seek_file(int fd, int64_t offset, unsigned whence)
 {
     if (!valid(fd)) return -9;
     struct description *open = descriptors[fd].open;
+    if (open->kind == DESCRIPTION_STREAM) return -29;
     struct fs_info info = information(open->node);
     if (open->flags & O_PATH) return -9;
     if (info.kind == FS_CONSOLE || info.kind == FS_NULL) return -29;
@@ -232,14 +292,24 @@ static long stat_node(struct fs_node *node, void *destination)
     return 0;
 }
 
+static long stat_fd(int fd, void *destination)
+{
+    if (!valid(fd)) return -9;
+    if (!is_stream(fd)) return stat_node(descriptors[fd].open->node, destination);
+    if (!destination) return -14;
+    struct linux_stat out = { .mode = 0140000U | 0600U, .nlink = 1,
+                              .blksize = NET_BUFFER_SIZE };
+    copy(destination, &out, sizeof out);
+    return 0;
+}
+
 static long stat_path(int dirfd, const char *path, void *out, unsigned flags)
 {
     if (flags & ~(256U | 4096U)) return -22;
     struct fs_node *node;
     if (path && !*path && (flags & 4096U)) {
         if (dirfd == AT_CWD) node = working_directory;
-        else if (valid(dirfd)) node = descriptors[dirfd].open->node;
-        else return -9;
+        else return stat_fd(dirfd, out);
     } else { long e = lookup(dirfd, path, !(flags & 256U), &node); if (e) return e; }
     return stat_node(node, out);
 }
@@ -249,6 +319,7 @@ static long directory_entries(int fd, unsigned char *out, size_t size)
     if (!valid(fd)) return -9;
     if (!out) return -14;
     struct description *open = descriptors[fd].open;
+    if (open->kind == DESCRIPTION_STREAM) return -20;
     if (open->flags & O_PATH) return -9;
     if (information(open->node).kind != FS_DIRECTORY) return -20;
     size_t used = 0;
@@ -292,6 +363,7 @@ static long fcntl_file(int fd, unsigned command, unsigned long argument)
     case 3: return descriptors[fd].open->flags;
     case 4:
         if (argument & ~(unsigned long) (O_ACCESS | O_APPEND | 2048U | 32768U | O_DIRECTORY | O_NOFOLLOW | O_PATH)) return -22;
+        if (is_stream(fd) && (argument & (O_DIRECTORY | O_NOFOLLOW | O_PATH))) return -22;
         descriptors[fd].open->flags = (descriptors[fd].open->flags & ~(O_APPEND | 2048U))
             | ((unsigned) argument & (O_APPEND | 2048U)); return 0;
     default: return -22;
@@ -328,6 +400,89 @@ static long rename_path(int oldfd, const char *old, int newfd, const char *new, 
     return error(fs_rename(oldbase, old, newbase, new, flags & 1));
 }
 
+static long open_socket(int family, unsigned type, unsigned protocol)
+{
+    if (family != 2) return -97;
+    if (type & ~(15U | O_NONBLOCK | O_CLOEXEC)) return -22;
+    if ((type & 15U) != 1) return -94;
+    if (protocol && protocol != 6) return -93;
+    int fd = 0;
+    while (fd < FD_LIMIT && valid(fd)) ++fd;
+    if (fd == FD_LIMIT) return -24;
+    struct description *open = kmalloc(sizeof *open);
+    if (!open) return -12;
+    struct net_stream *stream;
+    enum net_error e = stream_create(&stream);
+    if (e != NET_OK) { kfree(open); return network_error(e); }
+    *open = (struct description) { .kind = DESCRIPTION_STREAM, .stream = stream,
+        .flags = 2U | (type & O_NONBLOCK), .refs = 1 };
+    descriptors[fd].open = open;
+    descriptors[fd].flags = !!(type & O_CLOEXEC);
+    return fd;
+}
+
+static long socket_check(int fd)
+{ return !valid(fd) ? -9 : !is_stream(fd) ? -88 : 0; }
+
+struct linux_ipv4 { uint16_t family; uint8_t port[2], ip[4], padding[8]; };
+_Static_assert(sizeof(struct linux_ipv4) == 16, "x86-64 IPv4 socket address");
+
+static long connect_socket(int fd, const void *address, size_t length)
+{
+    long checked = socket_check(fd);
+    if (checked) return checked;
+    if (length < sizeof(struct linux_ipv4) || length > 128) return -22;
+    if (!address) return -14;
+    struct linux_ipv4 input;
+    copy(&input, address, sizeof input);
+    if (input.family != 2) return -97;
+    struct net_address remote = { .port = (uint16_t) ((input.port[0] << 8) | input.port[1]) };
+    copy(remote.ip, input.ip, sizeof remote.ip);
+    struct description *open = descriptors[fd].open;
+    enum net_error e = stream_connect(open->stream, &remote);
+    if (e != NET_IN_PROGRESS || (open->flags & O_NONBLOCK)) return network_error(e);
+    while (!stream_write_ready(open->stream)) wait_interrupt();
+    return network_error(stream_take_error(open->stream));
+}
+
+static long local_socket(int fd, void *address, void *length)
+{
+    long checked = socket_check(fd);
+    if (checked) return checked;
+    if (!length) return -14;
+    uint32_t capacity;
+    copy(&capacity, length, sizeof capacity);
+    if (capacity > INT32_MAX) return -22;
+    if (capacity && !address) return -14;
+    struct net_address local;
+    enum net_error e = stream_local(descriptors[fd].open->stream, &local);
+    if (e != NET_OK) return network_error(e);
+    struct linux_ipv4 out = { .family = 2,
+        .port = {(uint8_t) (local.port >> 8), (uint8_t) local.port} };
+    copy(out.ip, local.ip, sizeof out.ip);
+    if (capacity) copy(address, &out, capacity < sizeof out ? capacity : sizeof out);
+    uint32_t actual = sizeof out;
+    copy(length, &actual, sizeof actual);
+    return 0;
+}
+
+static long socket_error(int fd, unsigned level, unsigned option, void *value, void *length)
+{
+    long checked = socket_check(fd);
+    if (checked) return checked;
+    if (level != 1 || option != 4) return -92;
+    if (!length) return -14;
+    uint32_t capacity;
+    copy(&capacity, length, sizeof capacity);
+    if (capacity > INT32_MAX) return -22;
+    if (capacity && !value) return -14;
+    int32_t code = (int32_t) -network_error(stream_take_error(descriptors[fd].open->stream));
+    uint32_t actual = capacity < sizeof code ? capacity : sizeof code;
+    if (actual) copy(value, &code, actual);
+    copy(length, &actual, sizeof actual);
+    return 0;
+}
+
 bool abi_files(unsigned long number, const unsigned long a[6], long *out)
 {
     initialize();
@@ -345,7 +500,7 @@ bool abi_files(unsigned long number, const unsigned long a[6], long *out)
     case 2: result = open_file(AT_CWD, path, a[1], a[2]); break;
     case 3: result = close_fd(fd); break;
     case 4: result = stat_path(AT_CWD, path, (void *) a[1], 0); break;
-    case 5: result = valid(fd) ? stat_node(descriptors[fd].open->node, (void *) a[1]) : -9; break;
+    case 5: result = stat_fd(fd, (void *) a[1]); break;
     case 6: result = stat_path(AT_CWD, path, (void *) a[1], 256); break;
     case 8: result = seek_file(fd, (int64_t) a[1], a[2]); break;
     case 16: if (file_fd_kind(fd) == FS_CONSOLE) return false; result = valid(fd) ? -25 : -9; break;
@@ -358,6 +513,13 @@ bool abi_files(unsigned long number, const unsigned long a[6], long *out)
         struct vector { void *base; size_t size; };
         const unsigned char *vectors = (void *) a[1];
         if (a[2] > 1024 || (!vectors && a[2])) { result = -22; break; }
+        size_t total = 0;
+        for (size_t i = 0; i < a[2]; ++i) {
+            struct vector vector;
+            copy(&vector, vectors + i * sizeof vector, sizeof vector);
+            if (vector.size > INT64_MAX - total) { result = -22; goto done; }
+            total += vector.size;
+        }
         result = 0;
         for (size_t i = 0; i < a[2]; ++i) {
             struct vector vector;
@@ -371,10 +533,24 @@ bool abi_files(unsigned long number, const unsigned long a[6], long *out)
     case 21: result = access_path(AT_CWD, path, a[1], 0); break;
     case 32: result = duplicate(fd, 0, false, false); break;
     case 33: result = duplicate(fd, (int) a[1], true, false); break;
+    case 41: result = open_socket(fd, a[1], a[2]); break;
+    case 42: result = connect_socket(fd, (void *) a[1], a[2]); break;
+    case 48:
+        result = socket_check(fd);
+        if (!result) result = a[1] > 2 ? -22
+            : network_error(stream_shutdown(descriptors[fd].open->stream, a[1] != 1, a[1] != 0));
+        break;
+    case 51: result = local_socket(fd, (void *) a[1], (void *) a[2]); break;
+    case 49: case 50: case 52: case 54: case 288: case 43:
+        result = socket_check(fd);
+        if (!result) result = number == 54 ? -92 : -95;
+        break;
+    case 55: result = socket_error(fd, a[1], a[2], (void *) a[3], (void *) a[4]); break;
     case 72: result = fcntl_file(fd, a[1], a[2]); break;
     case 74: case 75:
         result = !valid(fd) || (descriptors[fd].open->flags & O_PATH)
                      ? -9
+                     : is_stream(fd) ? -22
                      : error(fs_sync_node(descriptors[fd].open->node));
         break;
     case 76:
@@ -384,6 +560,7 @@ bool abi_files(unsigned long number, const unsigned long a[6], long *out)
     case 77:
         if (!valid(fd) || !(descriptors[fd].open->flags & O_ACCESS)
             || (descriptors[fd].open->flags & O_PATH)) result = -9;
+        else if (is_stream(fd)) result = -22;
         else result = error(fs_resize(descriptors[fd].open->node, a[1]));
         break;
     case 79:
@@ -392,7 +569,8 @@ bool abi_files(unsigned long number, const unsigned long a[6], long *out)
             result = e == FS_OK ? (long) length((const char *) a[0]) + 1
                 : e == FS_NAME_TOO_LONG ? -34 : error(e); } break;
     case 80: case 81:
-        result = number == 80 ? lookup(AT_CWD, path, true, &node) : valid(fd) ? 0 : -9;
+        result = number == 80 ? lookup(AT_CWD, path, true, &node)
+            : !valid(fd) ? -9 : is_stream(fd) ? -20 : 0;
         if (number == 81 && !result) node = descriptors[fd].open->node;
         if (!result && information(node).kind != FS_DIRECTORY) result = -20;
         if (!result) { fs_retain(node); fs_release(working_directory); working_directory = node; } break;
@@ -405,7 +583,8 @@ bool abi_files(unsigned long number, const unsigned long a[6], long *out)
     case 88: result = make_path(AT_CWD, (const char *) a[1], FS_SYMLINK, path, 0777); break;
     case 89: result = read_link(AT_CWD, path, (char *) a[1], a[2]); break;
     case 90: case 91:
-        result = number == 90 ? lookup(AT_CWD, path, true, &node) : valid(fd) ? 0 : -9;
+        result = number == 90 ? lookup(AT_CWD, path, true, &node)
+            : !valid(fd) ? -9 : is_stream(fd) ? -95 : 0;
         if (number == 91 && !result) node = descriptors[fd].open->node;
         if (!result) result = error(fs_chmod(node, a[1]));
         break;
@@ -429,7 +608,7 @@ bool abi_files(unsigned long number, const unsigned long a[6], long *out)
         unsigned flags = a[3];
         if (flags & ~256U) { result = -22; break; }
         result = a[1] ? lookup(fd, (const char *) a[1], !(flags & 256U), &node)
-            : valid(fd) ? 0 : -9;
+            : !valid(fd) ? -9 : is_stream(fd) ? -95 : 0;
         if (!a[1] && !result) node = descriptors[fd].open->node;
         if (result) break;
         struct fs_info info = information(node);
@@ -455,6 +634,7 @@ bool abi_files(unsigned long number, const unsigned long a[6], long *out)
     case 439: result = access_path(fd, (const char *) a[1], a[2], a[3]); break;
     default: return false;
     }
+done:
     *out = result;
     return true;
 }
