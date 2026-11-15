@@ -1,6 +1,7 @@
 #include "kernel.h"
 #include "storage_control.h"
 #include "network.h"
+#include "process.h"
 static inline void out8(uint16_t p, uint8_t v) {
   __asm__ volatile("outb %0,%1" ::"a"(v), "Nd"(p));
 }
@@ -133,6 +134,18 @@ void hardware_init(void) {
   out8(0x40, divisor >> 8);
   __asm__ volatile("sti");
 }
+void hardware_process_gate(uintptr_t a) {
+  idt[128] = (struct idt_gate){a, 8, 0, 0xee, a >> 16, a >> 32, 0};
+}
+uintptr_t hardware_process_stack(uintptr_t top) {
+  uintptr_t previous = tss.rsp[0];
+  tss.rsp[0] = top;
+  return previous;
+}
+__attribute__((weak)) bool process_interrupt(struct process_frame *f) {
+  (void)f;
+  return false;
+}
 void interrupt_dispatch(uint64_t *f) {
   unsigned vector = f[15];
   if (vector == 32)
@@ -140,6 +153,8 @@ void interrupt_dispatch(uint64_t *f) {
   else if (vector == 36)
     drain_serial();
   else if (vector < 32) {
+    if ((f[18] & 3) == 3 && process_interrupt((void *)f))
+      return;
     console_puts("\r\nFAULT vector=");
     console_hex(vector);
     console_puts(" error=");
@@ -152,10 +167,14 @@ void interrupt_dispatch(uint64_t *f) {
     console_hex(cr2);
     panic("CPU exception");
   }
-  if (vector >= 40)
+  if (vector >= 40 && vector < 48)
     out8(0xa0, 0x20);
-  if (vector >= 32)
+  if (vector >= 32 && vector < 48)
     out8(0x20, 0x20);
+  if ((f[18] & 3) == 3 || vector == 128) {
+    if (!process_interrupt((void *)f))
+      panic("unexpected worker interrupt");
+  }
 }
 static unsigned rtc_value(unsigned reg) {
   out8(0x70, reg);

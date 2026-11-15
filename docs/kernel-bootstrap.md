@@ -60,8 +60,10 @@ and lwIP NO_SYS timers run at syscall/wait boundaries, never in IRQ callbacks;
 COM1 remains terminal-only and COM2 remains the DATA checkpoint channel. RTC date
 initialization supplies a UTC epoch plus elapsed monotonic time, with one-second
 initial precision. This fixed QEMU profile expects the usual 24-hour RTC mode.
-IDT exception diagnostics report vector, error, RIP and CR2, then halt. Exceptions
-are not isolated or recovered.
+Kernel-mode IDT exception diagnostics report vector, error, RIP and CR2, then
+halt. The [P1 worker path](process-workers.md) separately returns ring-3 faults
+to its trusted manager and reclaims worker resources. Main Emacs remains ring 0
+and its faults are not isolated or recovered.
 
 SYSCALL enters a dedicated kernel stack and translates the bounded x86-64 Linux
 call subset. The initial port supports FS-base setup for libc TLS, memory,

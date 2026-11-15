@@ -64,6 +64,7 @@ documented platform configuration.
 | `build/image/data-empty.img` | Initialized 64 MiB littlefs DATA template; never a user disk. |
 | `build/data/emacsos-data.img` | Default native user disk, created only when missing. |
 | `build/image/storage/` | Separate-boot persistent guest transcripts, disk copies and results. |
+| `build/process-probe/` | Native ring-3 worker ELFs, boot disk, context/fault/cleanup evidence. |
 | `build/memory-probe/` | Native CR3, frame ownership, quota/rollback and RO/NX probe evidence. |
 | `build/network-probe/` | Native kernel network images, packet capture, transcripts and exact-source results. |
 | `build/image/network/` | Actual Emacs network and HTTP/DATA reboot acceptance attempts and evidence. |
@@ -86,12 +87,14 @@ Docker and native QEMU in addition to the build prerequisites.
 | `make test-tooling` | Build, image and contribution-tool unit tests. |
 | `make test-web` | Web server routes, isolation headers, TLS and asset verification. |
 | `make test-network` | Real ABI objects with a fake stream PAL; socket errors/flags, readiness and ownership, without proving guest TCP. |
+| `make test-process` | Real native ring-3 workers, syscall/user-copy/context/fault boundaries, PID lifetime and reclamation. |
 | `make test-memory` | Real native CR3 mappings, page charges/limits, rollback, exhaustion/reclamation and RO/NX faults. |
-| `make test-probes` | Memory probes, static-musl startup, deliberate RO/NX faults, storage device probes and actual native kernel TCP/absent-NIC probes. |
+| `make test-probes` | Process and memory probes, static-musl startup, deliberate RO/NX faults, storage device probes and actual native kernel TCP/absent-NIC probes. |
 | `make test-guest` | Complete native guest allocation/GC, editing, littlefs files and application lifecycle. |
 | `make test-storage` | Sync/copy/reboot all DATA directories, cross-directory rename, stale locks and read-only recovery. |
 | `make test-network-guest` | Actual Emacs numeric TCP, timers, HTTP/file sync and fresh-boot DATA acceptance; separate from DNS and browser acceptance. |
 | `make test-browser` | Optional real-browser checks against an already running web server. |
+| `make test-browser-process` | The native process probe disk in real pinned QEMU/Wasm; distinct from the production Emacs image. |
 | `make test-browser-network` | Actual pinned-Wasm TCP, timers, DATA save/checkpoint and restart through the automatic host bridge. |
 
 Tests live under `tests/kernel`, `tests/lisp`, `tests/tooling`, `tests/guest`

@@ -66,3 +66,9 @@ restart with exact retained contents. Its localhost fixture receives real guest
 TCP through the host SLIRP helper. Results default to `build/web-network`; set
 `EMACSOS_WEB_REPORT` to retain a different attempt. This separate acceptance
 does not imply DNS, guest TLS or unrestricted Linux socket compatibility.
+
+`make test-browser-process` substitutes the native process probe disk inside a
+fresh test browser and checks actual ring-3 worker execution in pinned Wasm.
+It requires a clean checkout and matching successful `make test-process` output.
+Results default to `build/web-process`; `EMACSOS_WEB_REPORT` overrides that path.
+This is kernel worker acceptance, not Emacs process-launch or preemption evidence.

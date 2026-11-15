@@ -3,7 +3,10 @@
 This is the broader execution/management contract. The [application MVP](application-mvp.md)
 implements trusted instances; [guest acceptance](mvp.md) exercises its initial
 subset. Bounded messaging, completion subscriptions, deadline waits and
-protected kernel processes remain unimplemented.
+preemptively scheduled kernel processes remain unimplemented. The separate
+[P1 worker foundation](process-workers.md) implements bounded ring-3 ELF
+execution and explicit run/yield through a trusted kernel interface; it does
+not extend the current Emacs application manager.
 [The architecture](design.md) retains standard Elisp APIs and the small PAL;
 this model adds ownership and execution concepts without a new application
 framework or a second file/network API.
@@ -14,7 +17,7 @@ framework or a second file/network API.
 | --- | --- |
 | Application | Code and an entry contract for a user activity; not necessarily a buffer, service or separate executable. |
 | Application instance | One invocation with a stable run identity, lifecycle, context and owned resources. Restart creates a new identity. |
-| Kernel process | A future kernel-owned execution/address-space unit with scheduling, resource identity, enforced limits and exit reclamation. |
+| Kernel process | Kernel-owned execution/address-space unit with resource identity, enforced limits and exit reclamation. P1 workers use explicit run/yield; preemptive scheduling remains future work. |
 | Service | A policy for long-lived application work, potentially with restart/startup rules; a service manager is deferred. |
 | Buffer | Editable data or a view/controller for one or more instances/resources; closing a buffer does not inherently exit an instance. |
 | GNU Emacs process object | An upstream object that can describe a network connection or subprocess; its name/type alone does not establish a kernel process. |

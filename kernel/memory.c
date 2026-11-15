@@ -445,3 +445,59 @@ long memory_protect(uintptr_t a, size_t n, unsigned prot) {
   return memory_space_protect(current_space, a, n, prot);
 }
 long memory_brk(uintptr_t a) { return memory_space_brk(current_space, a); }
+
+/* Serialized page tables cannot change between preflight and alias copying. */
+bool memory_space_user_access(struct address_space *space, uintptr_t a, size_t n,
+                              unsigned prot) {
+  if (!space || space->bootstrap || !prot || (prot & ~7U) ||
+      a < VM_LOW || a >= POOL_END || n > POOL_END - a)
+    return false;
+  if (!n)
+    return true;
+  uint64_t required_upper = PTE_PRESENT | PTE_USER | ((prot & 2) ? PTE_WRITE : 0);
+  if ((space->root[0] & required_upper) != required_upper ||
+      (space->pdpt[0] & required_upper) != required_upper ||
+      ((prot & 4) && ((space->root[0] | space->pdpt[0]) & PTE_NX)))
+    return false;
+  uintptr_t end = a + n;
+  for (uintptr_t p = a & ~(PAGE_SIZE - 1); p < end; p += PAGE_SIZE) {
+    uint64_t directory = space->pd[p >> 21];
+    uint64_t *slot = entry(space, p);
+    uint64_t required = PTE_PRESENT | PTE_USER | PTE_OWNED;
+    if ((directory & (PTE_PRESENT | PTE_USER)) != (PTE_PRESENT | PTE_USER) ||
+        !slot || (*slot & required) != required ||
+        ((prot & 2) && (!(*slot & PTE_WRITE) || !(directory & PTE_WRITE))) ||
+        ((prot & 4) && ((*slot | directory) & PTE_NX)))
+      return false;
+  }
+  return true;
+}
+static long copy_user(struct address_space *space, uintptr_t user, void *buffer,
+                      size_t n, bool writing) {
+  if (!memory_space_user_access(space, user, n, writing ? 2 : 1))
+    return -14;
+  unsigned char *bytes = buffer;
+  while (n) {
+    size_t count = PAGE_SIZE - user % PAGE_SIZE;
+    if (count > n)
+      count = n;
+    uint64_t *slot = entry(space, user);
+    void *alias = (char *)physical_pointer(*slot & PTE_ADDRESS) + user % PAGE_SIZE;
+    if (writing)
+      memcpy(alias, bytes, count);
+    else
+      memcpy(bytes, alias, count);
+    bytes += count;
+    user += count;
+    n -= count;
+  }
+  return 0;
+}
+long memory_space_copy_from(struct address_space *space, void *buffer,
+                             uintptr_t user, size_t n) {
+  return copy_user(space, user, buffer, n, false);
+}
+long memory_space_copy_to(struct address_space *space, uintptr_t user,
+                           const void *buffer, size_t n) {
+  return copy_user(space, user, (void *)buffer, n, true);
+}

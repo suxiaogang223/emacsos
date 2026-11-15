@@ -1,5 +1,6 @@
 #ifndef EMACSOS_MEMORY_H
 #define EMACSOS_MEMORY_H
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -28,6 +29,11 @@ long memory_space_map(struct address_space *, uintptr_t, size_t, unsigned, unsig
 long memory_space_protect(struct address_space *, uintptr_t, size_t, unsigned);
 long memory_space_unmap(struct address_space *, uintptr_t, size_t);
 long memory_space_brk(struct address_space *, uintptr_t);
+
+/* User access requires private owned mappings and full-range preflight. */
+bool memory_space_user_access(struct address_space *, uintptr_t, size_t, unsigned);
+long memory_space_copy_from(struct address_space *, void *, uintptr_t, size_t);
+long memory_space_copy_to(struct address_space *, uintptr_t, const void *, size_t);
 
 #ifdef EMACSOS_MEMORY_TEST
 /* Fail after this many successful frame acquisitions; negative disables it. */

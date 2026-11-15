@@ -15,6 +15,11 @@ isr%1:
  ISR i
 %assign i i+1
 %endrep
+global process_interrupt_entry, interrupt_common
+process_interrupt_entry:
+ push qword 0
+ push qword 128
+ jmp interrupt_common
 interrupt_common:
  cld
  push rax

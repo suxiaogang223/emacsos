@@ -55,6 +55,7 @@ _start:
 align 8
 gdt:
 runtime_gdt: dq 0, 0x00af9a000000ffff, 0x00cf92000000ffff, 0, 0
+             dq 0x00affa000000ffff, 0x00cff2000000ffff
 gdtr:
     dw $ - gdt - 1
     dd gdt

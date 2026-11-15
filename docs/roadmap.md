@@ -20,7 +20,8 @@ contracts rather than implied capabilities.
 | N1 | Implemented subset | NE2000 ISA/lwIP numeric IPv4 TCP; native Emacs echo, half-close, timers, refusal and timeout pass. Separate pinned-Wasm TCP, file save, checkpoint and restart acceptance passes; see network.md. |
 | N2a / N2b | Native numeric HTTP/file loop validated; DNS deferred | Actual native HTTP download/hash/save/manual load and fresh-boot source retention pass. Browser TCP/file retention has separate acceptance; DNS and guest TLS are unimplemented. |
 | M1 | Implemented foundation | Kernel-only physical pages/address spaces, table-inclusive page limits and reclamation; trusted Emacs remains ring 0. See memory.md for scope and validation. |
-| K0 | Planned after M1 | Protected workers require ring-3 execution, complete contexts, resource ownership, user-copy validation, scheduling and fault containment. |
+| K0a / P1 workers | Implemented bounded foundation | Static ring-3 ELF workers, checked syscall/copy boundary, explicit run/yield, PID lifetime, TLS/FPU state and safe fault/exit cleanup. No preemption or Emacs launch API; see process-workers.md. |
+| K0b / K0c | Planned | Preemptive/blocking execution and Emacs process-management APIs/UI remain unimplemented. |
 
 ## Staged work and dependencies
 
@@ -41,8 +42,8 @@ contracts rather than implied capabilities.
 | K0 | Protected kernel processes and independent execution. | P1/E0 plus A0 ownership/context contracts; real address spaces, scheduling, implemented resource limits and fault/exit cleanup. Terminating a hung worker leaves kernel/main Emacs progressing. Basic files/network do not depend on K0. |
 
 Memory/process work now takes priority over DNS and further network expansion.
-The sequence is M1, bounded user workers, preemption/fault cleanup, then Emacs
-process management; see [memory stages](memory.md).
+M1 and bounded explicit-run workers are implemented; next are preemption,
+blocking/wakeup and running-worker termination, then Emacs process management; see [memory stages](memory.md).
 Further implementation needs a deliberate reviewable scope.
 A0 can start with buffers/timers after E0; file/network resources are adopted
 only when available. F0/F1 and N0/N1 do not depend on A0 or K0.

@@ -2,7 +2,8 @@
 
 M1 separates physical frames from runtime virtual addresses and adds kernel-only
 address-space objects. The production runtime still runs one trusted ring-0
-Emacs. Creating or activating an address space does not create a process,
+Emacs. The [P1 worker foundation](process-workers.md) builds on these operations
+with explicit kernel-managed ring-3 execution. Creating or activating an address space does not create a process,
 provide scheduling or establish isolation. The application manager continues to
 manage cooperative instances in the shared Emacs runtime.
 
@@ -88,10 +89,12 @@ separate runtime failure-path acceptance.
 | K0b | Preemption, blocking/wakeup, worker fault containment, termination/wait and cleanup from a safe kernel context. A busy or faulty worker must leave the kernel and main Emacs progressing. |
 | K0c | Emacs start/list/inspect/terminate/wait interface and manager views with separate application IDs and kernel PIDs. Independent Emacs workers need their own GC and OOM acceptance. |
 
-K0a–K0c are planned, not implemented. The current global syscall stacks,
-descriptors, timers and exception handling must change before protected worker
-execution. Switching the page-table root alone does not validate user pointers,
-contain faults or save execution state. Swap, COW, SMP and general Unix fork/exec
+K0a now has a bounded [P1 implementation](process-workers.md): explicit run/yield,
+private worker stacks/state and checked syscalls. Basic user-fault return/cleanup
+is included; K0b preemption/blocking and K0c Emacs management remain planned.
+The main runtime retains its global compatibility descriptors/timers; workers
+have no access to those resources. Switching the page-table root alone does not
+validate user pointers, contain faults or save execution state. Swap, COW, SMP and general Unix fork/exec
 remain deferred. DNS and further network expansion are deferred while this work
 proceeds.
 
@@ -109,4 +112,5 @@ toolchain, image hashes, commands and transcripts.
 `make check` includes these probes, static-musl acceptance, actual Emacs
 allocation/GC and application checks, DATA reboot/recovery and native networking.
 Browser acceptance is separate. Kernel probes do not establish ring-3 isolation,
-process scheduling, Emacs OOM recovery or independent Lisp workers.
+process scheduling, Emacs OOM recovery or independent Lisp workers; the separate
+P1 probe supplies the bounded worker evidence.

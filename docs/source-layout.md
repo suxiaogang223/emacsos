@@ -15,6 +15,7 @@ emacsos/
 │   ├── network.c / ne2000.c # Bounded IPv4 TCP streams and ISA device
 │   ├── lwipopts.h / arch/ / lwip-libc/ # Freestanding lwIP port
 │   ├── memory.c / memory.h # Physical pages, address spaces and page charges
+│   ├── process.c / process_entry.asm # Bounded ring-3 workers and execution state
 │   ├── hardware.c         # Serial, interrupts and clocks
 │   └── kernel.ld          # Link layout
 ├── lisp/                  # Trusted application policy and counter demo

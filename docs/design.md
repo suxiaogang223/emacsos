@@ -17,7 +17,9 @@ and `/var`. A bounded numeric IPv4 TCP backend now uses NE2000 ISA and lwIP;
 [networking](network.md) separates implemented behavior from acceptance gates.
 Kernel-only independent address spaces now provide physical page ownership,
 quotas and reclamation; [memory](memory.md) defines their limits and the next
-process stages. DNS, TLS and isolated execution remain unimplemented. See [storage](storage.md) for disk and
+process stages. [P1 workers](process-workers.md) now provide bounded ring-3 ELF
+execution with checked entry/copies and explicit run/yield. Preemptive scheduling,
+Emacs process-launch bindings, DNS and TLS remain unimplemented. See [storage](storage.md) for disk and
 browser-retention boundaries.
 The fixed-machine profile and limits are in [kernel bootstrap](kernel-bootstrap.md)
 and [files](files.md); the fork itself remains unchanged except provenance.
@@ -257,7 +259,7 @@ and does not gate basic file/network capability work.
 | Implemented presentation | Browser console | QEMU/Wasm runs the current image; xterm.js exposes COM1, while COM2 supplies DATA checkpoint barriers. Guest network acceptance remains separate from presentation. |
 | N0 proved; N1 subset validated | Network transport and streams | NE2000 ISA + lwIP NO_SYS IPv4 TCP; native QEMU user networking and automatic browser WebSocket/SLIRP bridge. Actual native and pinned-Wasm Emacs TCP/file acceptance pass separately; see network.md. |
 | MVP subset | Trusted application instances | Lifecycle/context, explicit ownership and management implemented; messaging/subscriptions/deadline waits remain future work. |
-| Planned: K0 | Kernel processes | After runtime/ownership contracts: independent execution/address spaces, scheduling, enforced limits and exit cleanup; no implementation yet. |
+| Partial: K0a | Kernel workers | Bounded static ring-3 workers have explicit run/yield, checked syscalls, private state and cleanup; K0b scheduling and K0c Emacs bindings remain planned. |
 | Deferred | Other expansion | Direct libc replacement, runtime latency optimization, broad Unix subprocess compatibility and service frameworks. |
 
 [The roadmap](roadmap.md) turns these gates into staged work. The MVP validates

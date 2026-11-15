@@ -9,12 +9,12 @@ CFLAGS := --target=x86_64-unknown-none-elf -std=c11 -O2 -g -Wall -Wextra -Werror
           -DLFS_CONFIG=littlefs_config.h -ffreestanding -fno-stack-protector -fno-pic -fno-pie -mno-red-zone -mgeneral-regs-only
 
 .PHONY: kernel build run runtime \
-        test test-files test-lisp test-tooling test-web test-probes test-memory test-guest test-storage test-network test-network-guest \
-        lint check web web-assets web-serve test-browser test-browser-network help
+        test test-files test-lisp test-tooling test-web test-probes test-memory test-process test-guest test-storage test-network test-network-guest \
+        lint check web web-assets web-serve test-browser test-browser-network test-browser-process help
 .NOTPARALLEL: check
 BUILD_IMAGE := emacsos-kernel:alpine3.22
-KERNEL_C := main hardware memory loader runtime files file_abi block storage_control littlefs_backend network ne2000
-KERNEL_ASM := entry interrupts syscall
+KERNEL_C := main hardware memory process loader runtime files file_abi block storage_control littlefs_backend network ne2000
+KERNEL_ASM := entry interrupts syscall process_entry
 KERNEL_HEADERS := $(wildcard kernel/*.h kernel/arch/*.h kernel/lwip-libc/*.h) \
                   $(wildcard third_party/littlefs/*.h) $(shell find third_party/lwip/src/include -name "*.h" 2>/dev/null)
 LWIP_SOURCES := $(addprefix core/,$(addsuffix .c,init def inet_chksum ip mem memp netif pbuf stats sys tcp tcp_in tcp_out timeouts)) \
@@ -114,10 +114,14 @@ test-web:
 lint:
 	python3 scripts/check-contribution.py --require-clean-submodule
 
+test-process: kernel
+	python3 tests/kernel/check-process.py
+
 test-memory: kernel
 	python3 tests/kernel/check-memory.py
 
 test-probes: kernel
+	python3 tests/kernel/check-process.py
 	python3 tests/kernel/check-memory.py
 	python3 tests/kernel/check-probe.py
 	python3 tests/kernel/check-storage-device.py
@@ -149,6 +153,9 @@ web-serve: web-assets
 
 test-browser:
 	node tests/web/browser.cjs '$(WEB_URL)'
+
+test-browser-process:
+	node tests/web/process-browser.cjs '$(WEB_URL)'
 
 test-browser-network:
 	node tests/web/network-browser.cjs '$(WEB_URL)'
