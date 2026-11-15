@@ -23,7 +23,7 @@ local development against this trusted guest and server.
 
 The script checks isolation headers, five viewport widths, staged DATA import
 controls, download failure/retry, actual Wasm boot, Mac Option-x, direct command
-keys, Ctrl-a, expression evaluation, source-file save/load, the application
+keys, Ctrl-a, expression evaluation, repeated allocation/GC with live roots, source-file save/load, the application
 manager, restart cancellation, fullscreen, guest exit, save-before-restart, restored source without automatic execution
 and an unsuitable browser context. It captures serial writes by instrumenting
 the served xterm constructor inside the test browser; production has no debug
