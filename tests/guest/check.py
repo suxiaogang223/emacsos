@@ -111,6 +111,7 @@ def main(data=None, output=OUT, label="guest"):
         check("normal terminal text input", '(progn (unless (equal (buffer-string) "typed in emacsOS") (error "Input differs")) (message (concat "GUEST-" "INPUT-PASS")))', "GUEST-INPUT-PASS")
         check("interactive Elisp evaluation", '(message "GUEST-EVAL-%s" (+ 20 22))', "GUEST-EVAL-42")
         check("command-loop timer", '(progn (run-at-time 0.1 nil (lambda () (message (concat "GUEST-" "TIMER-PASS")))) (message "Timer armed"))', "GUEST-TIMER-PASS")
+        check("Lisp roots survive repeated allocation and collection", '(progn (eval (read %s)) (message (concat "GUEST-" "GC-PASS")))' % json.dumps((ROOT / "tests/guest/memory.el").read_text()), "GUEST-GC-PASS")
         # File editing, ordinary saves, errors and source loading.
         source = (ROOT / "tests/guest/counter.el").read_text()
         check("author and save an Elisp application", '(progn (find-file "/home/user/projects/counter.el") (insert %s) (save-buffer) (setq guest-first-source (buffer-string)) (when (buffer-modified-p) (error "Save left modified state")) (kill-buffer) (message (concat "GUEST-" "SAVED")))' % json.dumps(source), "GUEST-SAVED")

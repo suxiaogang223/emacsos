@@ -155,6 +155,10 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         await waitSerial('42', start);
         check('Ctrl-x Ctrl-e evaluates the expression before point');
 
+        const memoryCheck = fs.readFileSync(path.join(__dirname, '../guest/memory.el'), 'utf8');
+        await evaluate(`(progn (eval (read ${JSON.stringify(memoryCheck)})) (message (concat "WEB-" "GC-PASS")))`, 'WEB-GC-PASS');
+        check('Live Lisp roots survive repeated allocation and GC in QEMU/Wasm');
+
         await page.keyboard.press('Control+x');
         await page.keyboard.press('Control+f');
         await page.keyboard.type('/home/user/projects/browser-proof.el', { delay: 3 });

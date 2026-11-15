@@ -15,7 +15,9 @@ matching portable dump. Parent-owned Lisp provides cooperative application
 management. The fixed DATA disk supplies persistence at `/etc`, `/home`, `/tmp`
 and `/var`. A bounded numeric IPv4 TCP backend now uses NE2000 ISA and lwIP;
 [networking](network.md) separates implemented behavior from acceptance gates.
-DNS, TLS and isolated execution remain unimplemented. See [storage](storage.md) for disk and
+Kernel-only independent address spaces now provide physical page ownership,
+quotas and reclamation; [memory](memory.md) defines their limits and the next
+process stages. DNS, TLS and isolated execution remain unimplemented. See [storage](storage.md) for disk and
 browser-retention boundaries.
 The fixed-machine profile and limits are in [kernel bootstrap](kernel-bootstrap.md)
 and [files](files.md); the fork itself remains unchanged except provenance.

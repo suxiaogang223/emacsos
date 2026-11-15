@@ -9,7 +9,7 @@ CFLAGS := --target=x86_64-unknown-none-elf -std=c11 -O2 -g -Wall -Wextra -Werror
           -DLFS_CONFIG=littlefs_config.h -ffreestanding -fno-stack-protector -fno-pic -fno-pie -mno-red-zone -mgeneral-regs-only
 
 .PHONY: kernel build run runtime \
-        test test-files test-lisp test-tooling test-web test-probes test-guest test-storage test-network test-network-guest \
+        test test-files test-lisp test-tooling test-web test-probes test-memory test-guest test-storage test-network test-network-guest \
         lint check web web-assets web-serve test-browser test-browser-network help
 .NOTPARALLEL: check
 BUILD_IMAGE := emacsos-kernel:alpine3.22
@@ -114,7 +114,11 @@ test-web:
 lint:
 	python3 scripts/check-contribution.py --require-clean-submodule
 
+test-memory: kernel
+	python3 tests/kernel/check-memory.py
+
 test-probes: kernel
+	python3 tests/kernel/check-memory.py
 	python3 tests/kernel/check-probe.py
 	python3 tests/kernel/check-storage-device.py
 	python3 tests/kernel/check-network.py

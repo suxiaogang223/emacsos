@@ -13,16 +13,18 @@ COM1 at 115200 baud. Networking adds a fixed NE2000 ISA device at I/O `0x300`
 with NIC interrupts masked, static IPv4 `10.0.2.15/24` and gateway `10.0.2.2`.
 See [networking](network.md) for transport and limits. This port does not discover
 arbitrary hardware or RAM.
-The entry maps the first 1 GiB; the runtime loader reserves these ranges:
+The entry maps the first 1 GiB and a supervisor-only NX high direct alias.
+Runtime virtual ranges and physical reservations are:
 
-| Physical / identity virtual range | Owner |
+| Range | Owner |
 | --- | --- |
 | Below 4 MiB | BIOS tables, kernel, page tables and fixed kernel stacks |
 | 4–64 MiB | Validated static ET_EXEC load segments |
 | 64–68 MiB | Downward-growing runtime stack |
-| 80–124 MiB | musl brk arena, including its initial inaccessible guard |
-| 128–448 MiB | Reusable anonymous/private-file mappings |
-| 448–512 MiB | Reclaiming kernel heap and split page tables |
+| Virtual 80–124 MiB | musl brk arena, including its initial inaccessible guard |
+| Physical 128–448 MiB | Shared pool for private data and owned page tables |
+| Virtual 128–448 MiB | Reusable anonymous/private-file mappings |
+| 448–512 MiB | Reclaiming kernel heap |
 | 512–1024 MiB | Immutable runtime ELF and archive staging |
 
 An allocation failure is reported. Anonymous and file-private mappings are
@@ -30,7 +32,10 @@ zero-filled; `munmap` permits reuse. Page permissions use actual present,
 write and NX bits, with supervisor write protection enabled. This enforces
 ordinary protections in the shared mapping; privileged code can still change
 page tables, so it establishes no security boundary. The heap uses first-fit
-splitting and coalescing. Page tables remain allocated for the boot lifetime.
+splitting and coalescing. Brk and mmap acquire distinct physical backing from
+the shared page pool. Owned empty leaf tables can be reclaimed; inactive private
+address spaces can be destroyed with all owned pages. See [memory](memory.md)
+for allocation charges, the high direct map, GC boundaries and process stages.
 
 The ELF loader bounds the header/program table, rejects a dynamic interpreter,
 validates each load extent and segment overlap, requires its entry in an
