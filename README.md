@@ -2,9 +2,10 @@
 
 emacsOS runs GNU Emacs 30.2 on its own x86-64 C kernel. Elisp is the public
 programming interface. The first MVP provides serial-terminal editing and
-evaluation, volatile working files, and trusted cooperative applications managed
-from `*Processes*`. Networking, persistent storage and isolated processes are
-future work.
+evaluation, working files, and trusted cooperative applications managed from
+`*Processes*`. A littlefs DATA disk retains `/etc`, `/home`, `/tmp` and `/var` across boots; the browser
+automatically initializes and checkpoints it. Networking and isolated processes
+remain future work.
 
 ## Build and run
 
@@ -31,9 +32,17 @@ shares toolchain images and layers. See
 [build and test](docs/build-and-test.md) for dependencies and focused commands.
 
 In Emacs, use `M-:` to evaluate `(+ 20 22)`, `C-x C-f` to create
-`/work/example.el`, and `C-x C-s` to save. Load your code with `M-x load-file`.
-Files under `/work`, `/tmp` and `/home/user` are writable **only until shutdown**.
-The installed runtime under `/usr` is read-only.
+`/home/user/projects/example.el`, and `C-x C-s` to save. Load your code with `M-x load-file`.
+The default home and working directory is `/home/user`; `~/projects` is ready
+for source files. DATA also stores system configuration under `/etc`, state and
+logs under `/var`, and temporary files under `/tmp`. The native launcher creates
+the disk on first use at `build/data/emacsos-data.img`.
+Temporary files are cleaned up by their applications. Missing or invalid
+DATA starts read-only recovery, with no writable RAM fallback.
+The installed runtime under `/usr` is read-only. See [persistent storage](docs/storage.md)
+for synchronization, recovery and disk exchange, and [directory layout](docs/files.md#directory-layout)
+for file placement. Earlier experimental DATA formats are rejected without
+conversion; use a fresh disk and keep existing images separately.
 
 For the bundled application example, evaluate:
 
@@ -62,10 +71,11 @@ localhost and cross-origin isolation are required. For access from another
 computer, use the [SSH forwarding instructions](docs/web.md#access-from-another-computer).
 Plain HTTP on a remote address cannot run this runtime.
 
-The retro computer page reserves a DATA expansion bay for a future disk-image
-backend. Mounting is not implemented. Saving files remains volatile; closing or
-restarting the page discards them. See [browser controls and hosting](docs/web.md)
-for lifecycle, asset provenance and validation details.
+The retro computer page initializes an empty DATA disk automatically and retains
+checkpoints in the browser for the same origin. Optional disk-image import and
+export support moving your files. Guest saves and completed browser checkpoints
+are distinct boundaries; retention failures remain visible. See
+[browser controls and hosting](docs/web.md) for controls, limits and asset provenance.
 The optional [browser checks](docs/web-browser-checks.md) exercise keyboard,
 file and machine-control behavior against a fresh guest.
 
@@ -76,6 +86,8 @@ image, authors/saves/loads an Elisp application, checks normal backups, locks an
 errors, then exercises two instances through the manager. Build and acceptance
 manifests record source and artifact hashes. See [MVP acceptance](docs/mvp.md)
 for evidence and scope, and [runtime build](docs/runtime-build.md) for build details.
+Persistent-file acceptance additionally uses separate guest launches and a frozen
+DATA copy; see [storage acceptance](docs/storage.md#validation-boundaries).
 Host checks and kernel probes remain separate from guest functional acceptance.
 
 Read the [architecture](docs/design.md), [runtime contract](docs/runtime-port.md),
@@ -84,7 +96,8 @@ Read the [architecture](docs/design.md), [runtime contract](docs/runtime-port.md
 The runtime uses static musl and a bounded Linux x86-64 ABI adapter over the
 parent kernel and file backend. It does not provide general Linux compatibility.
 
-`emacs/` pins [our GNU Emacs fork](https://github.com/suxiaogang223/emacs), whose
+`third_party/littlefs/` pins the official filesystem dependency; its sources
+remain outside the parent tree. `emacs/` pins [our GNU Emacs fork](https://github.com/suxiaogang223/emacs), whose
 only changes are provenance documentation. System policy stays in the parent.
 Public documentation, comments and community discussion use English; private
 user discussion follows the user's preference. See [CONTRIBUTING.md](CONTRIBUTING.md).

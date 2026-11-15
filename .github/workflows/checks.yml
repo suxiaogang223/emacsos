@@ -22,6 +22,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          submodules: recursive
       - name: Install host test tools
         run: |
           sudo apt-get update
@@ -46,9 +47,11 @@ jobs:
         run: make test-probes
       - name: Build and accept the actual guest
         run: make test-guest
+      - name: Accept persistent files across guest launches
+        run: make test-storage
       - name: Print source and image acceptance identity
         if: always()
         run: |
-          for record in build/kernel/probe-manifest.json build/image/manifest.json build/image/guest-results.json; do
+          for record in build/kernel/probe-manifest.json build/image/manifest.json build/image/guest-results.json build/image/storage/results.json; do
             if test -f "$record"; then cat "$record"; fi
           done

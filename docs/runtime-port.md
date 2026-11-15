@@ -93,16 +93,18 @@ namespace. Its memory/map lifetime must outlive any borrowed runtime access.
 Select which files are loaded by the kernel and which Emacs opens through the
 adapter; do not require F0 writable files just to bootstrap Emacs.
 
-F0 supplies explicitly volatile working files with ordinary Emacs file
-behavior. Directory enumeration, file position, creation flags, metadata,
+F0 established ordinary Emacs file behavior; its initial RAM backend has been
+replaced by littlefs. Directory enumeration, file position, creation flags, metadata,
 locking fallback requirements and rename semantics need concrete contracts.
 [filelock.c](https://github.com/suxiaogang223/emacs/blob/73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5/src/filelock.c) falls back to regular-file locks only for
 specific errors; indiscriminate EROFS or fake success changes normal behavior.
 [fileio.c](https://github.com/suxiaogang223/emacs/blob/73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5/src/fileio.c) propagates write/fsync/final-close failures, but
 `write-region-inhibit-fsync` normally defaults to true: ordinary save is not a
 durability boundary. No old save fixes or validated save contract is inherited
-by the clean fork. F1 alone introduces persistent media and defines sync/recovery. This architecture
-selects neither filesystem format nor durable close semantics.
+by the clean fork. F1 uses parent-owned startup policy to enable file sync,
+and adds one littlefs writable backend at `/etc`, `/home`, `/tmp` and `/var` without changing Emacs sources.
+See [storage](storage.md) for sync, recovery and browser-retention boundaries;
+close alone is not a durable-save contract.
 
 ## Event and failure boundary
 

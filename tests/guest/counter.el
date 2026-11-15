@@ -21,6 +21,6 @@
     (emacsos-app-set-wait-reason id "Counter timer")))
 
 (defun guest-start ()
-  (emacsos-app-start "Guest counter" #'guest-entry nil "/work/counter.el"))
+  (emacsos-app-start "Guest counter" #'guest-entry nil "/home/user/projects/counter.el"))
 
 (provide 'guest-counter)

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Assemble, verify and identify the complete fixed-machine boot image."""
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -19,6 +20,27 @@ def digest(path):
 
 def git(*args):
     return subprocess.check_output(["git", "-C", str(ROOT), *args], text=True).strip()
+
+
+def verify_littlefs():
+    """Require the pinned, pristine upstream checkout before compiling it."""
+    path = ROOT / "third_party/littlefs"
+    metadata = json.loads((ROOT / "third_party/littlefs.json").read_text())
+    hint = "run git submodule update --init --recursive"
+    if not (path / ".git").exists():
+        raise SystemExit(f"littlefs submodule is not initialized; {hint}")
+    entry = git("ls-files", "--stage", "--", "third_party/littlefs").split()
+    if (len(entry) != 4 or entry[0] != "160000" or entry[2] != "0"
+            or entry[1] != metadata["commit"]):
+        raise SystemExit("Stage the littlefs gitlink matching third_party/littlefs.json")
+    if git("-C", str(path), "rev-parse", "HEAD") != entry[1]:
+        raise SystemExit(f"littlefs checkout differs from the parent pin; {hint}")
+    if git("-C", str(path), "status", "--porcelain", "--untracked-files=all"):
+        raise SystemExit("littlefs submodule must be clean, including untracked files")
+    for name, expected in metadata["files_sha256"].items():
+        if digest(path / name) != expected:
+            raise SystemExit(f"littlefs upstream source differs: {name}")
+    return metadata
 
 
 def pack_image(boot_path, elf_path, archive_path, output):
@@ -68,6 +90,7 @@ def verify_image(image_path, boot_path, elf_path, archive_path):
 
 
 def build():
+    littlefs = verify_littlefs()
     out = ROOT / "build/image"
     runtime = ROOT / "build/runtime"
     manifest = json.loads((runtime / "manifest.json").read_text())
@@ -103,13 +126,21 @@ def build():
         raise SystemExit("Initialize the matching Emacs submodule")
     components = ["build/kernel/kernel.elf", "build/kernel/emacsos.img",
                   "build/runtime/emacs", "build/runtime/runtime.cpio",
-                  "build/runtime/manifest.json", "build/image/emacsos.img"]
+                  "build/runtime/manifest.json", "build/image/emacsos.img",
+                  "build/image/data-empty.img", "third_party/littlefs.json"]
+    template = ROOT / "build/image/data-empty.img"
+    if template.stat().st_size != 64 * 1024 * 1024:
+        raise SystemExit("DATA template must be a 64 MiB initialized image")
     record = {
         "format": 1, "scope": "Build identity only; guest acceptance is separate",
         "parent": git("rev-parse", "HEAD"), "tree": git("rev-parse", "HEAD^{tree}"),
         "fork": git("rev-parse", "HEAD:emacs"),
+        "littlefs": littlefs["commit"],
         "dirty": bool(git("status", "--porcelain")) or manifest["parent_dirty"],
         "machine": {"qemu": "pc", "ram": "1G", "console": "COM1", "network": "none"},
+        "data_disk": {"format": "emacsos-littlefs-v3", "bytes": template.stat().st_size,
+                      "mounts": ["/etc", "/home", "/tmp", "/var"],
+                      "template_sha256": digest(template)},
         "components": {name: digest(ROOT / name) for name in components},
         "containers": {
             "emacsos-runtime:alpine3.22": manifest["container_id"],
@@ -125,4 +156,10 @@ def build():
 
 
 if __name__ == "__main__":
-    build()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check-dependencies", action="store_true",
+                        help="Validate the pinned littlefs checkout without building an image")
+    if parser.parse_args().check_dependencies:
+        verify_littlefs()
+    else:
+        build()

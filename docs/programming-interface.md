@@ -3,7 +3,7 @@
 Elisp is the intended public language. Reuse standard evaluation, library
 loading, buffers, file functions and network connection objects. Buffers and
 Eshell are tool clients of those APIs. The [MVP](mvp.md) runs interactive guest
-Elisp and volatile file APIs; networking and external subprocesses remain
+Elisp and file APIs; F1 supplies littlefs DATA for all writable directories. Networking and external subprocesses remain
 unimplemented. [The architecture](design.md) defines the implementation boundaries;
 [runtime support](runtime-port.md) explains the first static Emacs/musl port.
 
@@ -40,8 +40,8 @@ file/network APIs do not depend on that implementation or an app framework.
 
 ## File APIs
 
-F0 supports explicitly volatile working files after read-only runtime loading
-and interactive Emacs. Audit `insert-file-contents`, `write-region`,
+The F0 file API remains the common public surface over littlefs after read-only
+runtime loading and interactive Emacs. It includes `insert-file-contents`, `write-region`,
 `find-file-noselect`, `save-buffer`, `directory-files`, `make-directory`,
 `file-attributes`, `copy-file`, `rename-file` and `delete-file`. State supported
 flags, metadata, directory/namespace behavior and limits.
@@ -52,12 +52,16 @@ must stay visible; a successful streaming write does not promise rollback on a
 later failure. The unchanged runtime fork uses the parent file backend; the MVP
 validates ordinary saves, backups and locks in the actual guest. Ordinary
 `write-region` can omit fsync, so saving is
-not inherently a durability boundary.
+not inherently a durability boundary. The controlled parent startup therefore
+sets `write-region-inhibit-fsync` to nil. Applications that override it also
+change their save guarantee.
 
-F1 separately decides persistent format, synchronization, recovery and honest
-partial-write behavior. Only later actual retained-file checks can establish
-persistence. No service manager or configuration-snapshot protocol is required
-for the basic file interface.
+F1 uses the same functions over one littlefs DATA disk projected at `/etc`, `/home`, `/tmp` and `/var`. Guest
+sync reaches littlefs and ATA flush; browser retention needs an acknowledged
+frozen copy and completed IndexedDB transaction. No writable RAM file backend remains. Missing or rejected DATA supports only
+read-only file operations; buffer editing and evaluation still work.
+See [storage](storage.md) for format, recovery and separate acceptance. No service
+manager or configuration-snapshot protocol is required for the basic file interface.
 
 ## Network APIs
 

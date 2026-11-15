@@ -1,3 +1,6 @@
 [submodule "emacs"]
 	path = emacs
 	url = https://github.com/suxiaogang223/emacs.git
+[submodule "littlefs"]
+	path = third_party/littlefs
+	url = https://github.com/littlefs-project/littlefs.git

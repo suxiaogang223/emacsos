@@ -21,10 +21,10 @@ EMACSOS_PLAYWRIGHT="$PWD/build/web-browser-tools/node_modules/playwright" \
 uses Chromium without its sandbox, for
 local development against this trusted guest and server.
 
-The script checks isolation headers, five viewport widths, inactive disk-bay
-semantics, download failure/retry, actual Wasm boot, Mac Option-x, direct command
+The script checks isolation headers, five viewport widths, staged DATA import
+controls, download failure/retry, actual Wasm boot, Mac Option-x, direct command
 keys, Ctrl-a, expression evaluation, source-file save/load, the application
-manager, restart cancellation, fullscreen, guest exit, confirmed page restart
+manager, restart cancellation, fullscreen, guest exit, save-before-restart, restored source without automatic execution
 and an unsuitable browser context. It captures serial writes by instrumenting
 the served xterm constructor inside the test browser; production has no debug
 API. The guest output and state changes remain real.
@@ -37,5 +37,22 @@ provenance limits remain as described in [browser hosting](web.md).
 
 These checks establish browser presentation behavior for the tested Chromium
 environment. They do not establish a real Mac keyboard/browser combination,
-every supported browser, guest networking, disk mounting, persistence or fault
-isolation. Native guest acceptance retains its own identity and scope.
+every supported browser, guest networking or fault isolation. Native guest acceptance retains its own identity and scope.
+
+
+For browser storage error paths, run `node tests/web/storage.cjs URL` with the
+same driver environment. It uses real IndexedDB and Web Locks with a modeled
+COM2 peer to check transaction aborts, independent byte ownership, serialized
+barriers, stale sessions, invalid imports and session-only behavior. These checks
+are separate from actual guest storage acceptance and do not substitute for it.
+
+`node tests/web/disk-browser.cjs URL` runs separate real Wasm guests for automatic
+retention across page close/reopen, single-writer contention, export/import in a
+fresh browser context, rejected imports, and session-only operation when
+IndexedDB is unavailable. `EMACSOS_DISK_REPORT` selects its output directory
+(default `build/web-disk`); `EMACSOS_WEB_ROOT` identifies the local checkout served
+at the URL when it differs from the driver checkout. The report separately
+records driver source, selected server source, served build manifest and actual
+SYSTEM/template/export hashes. These identities do not attest a remote server's
+source. The exported image is retained in that output directory for native
+interoperability checks.

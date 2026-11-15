@@ -7,13 +7,18 @@ Unicode tables, names, test data and unchanged third-party sources.
 
 Read the [design](docs/design.md), [roadmap](docs/roadmap.md) and
 [source ownership](docs/source-layout.md) before architectural changes. The
-MVP runs a trusted Emacs with volatile files and cooperative applications on
-the fixed QEMU profile. Describe that bounded behavior separately from planned
-networking, persistence and protected processes; see [acceptance](docs/mvp.md).
+runtime runs a trusted Emacs with cooperative applications on the fixed QEMU
+profile. All writable files use littlefs DATA at `/etc`, `/home`, `/tmp` and `/var`;
+missing or rejected DATA enters read-only recovery. Describe that bounded
+behavior separately from networking and protected processes; see
+[core acceptance](docs/mvp.md) and [storage](docs/storage.md).
 
 ## Source ownership
 
-Initialize `emacs/` with `git submodule update --init --recursive`. Necessary
+Initialize both `emacs/` and `third_party/littlefs/` with
+`git submodule update --init --recursive`. The littlefs submodule pins an official
+upstream commit; its adapter/configuration belongs in the parent kernel.
+Update `third_party/littlefs.json` together with an intentional littlefs pin change. Necessary
 runtime modifications belong to the fork; parent system features and future PAL
 backends belong here. Publish fork commits before updating the parent gitlink.
 Stage the intended pin before contribution checks. CI requires a clean,

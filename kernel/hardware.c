@@ -1,15 +1,11 @@
 #include "kernel.h"
+#include "storage_control.h"
 static inline void out8(uint16_t p, uint8_t v) {
   __asm__ volatile("outb %0,%1" ::"a"(v), "Nd"(p));
 }
 static inline uint8_t in8(uint16_t p) {
   uint8_t v;
   __asm__ volatile("inb %1,%0" : "=a"(v) : "Nd"(p));
-  return v;
-}
-static inline uint16_t in16(uint16_t p) {
-  uint16_t v;
-  __asm__ volatile("inw %1,%0" : "=a"(v) : "Nd"(p));
   return v;
 }
 static volatile uint64_t ticks;
@@ -70,7 +66,10 @@ long console_read(void *p, size_t n) {
   return got ? (long)got : (n ? -11 : 0);
 }
 uint64_t clock_monotonic_ns(void) { return ticks * 1000000UL; }
-void wait_interrupt(void) { __asm__ volatile("sti; hlt" ::: "memory"); }
+void wait_interrupt(void) {
+  storage_control_service();
+  __asm__ volatile("sti; hlt" ::: "memory");
+}
 _Noreturn void panic(const char *s) {
   __asm__ volatile("cli");
   console_puts("\r\nPANIC: ");
@@ -155,34 +154,6 @@ void interrupt_dispatch(uint64_t *f) {
     out8(0xa0, 0x20);
   if (vector >= 32)
     out8(0x20, 0x20);
-}
-void disk_read(uint64_t lba, void *dst, size_t sectors) {
-  uint16_t *out = dst;
-  while (sectors--) {
-    if (lba > 0x0fffffff)
-      panic("disk LBA overflow");
-    while (in8(0x1f7) & 0x80)
-      __asm__ volatile("pause");
-    out8(0x1f6, 0xe0 | ((lba >> 24) & 15));
-    out8(0x1f2, 1);
-    out8(0x1f3, lba);
-    out8(0x1f4, lba >> 8);
-    out8(0x1f5, lba >> 16);
-    out8(0x1f7, 0x20);
-    uint64_t deadline = clock_monotonic_ns() + 5000000000UL;
-    for (;;) {
-      uint8_t s = in8(0x1f7);
-      if (s & 0x21)
-        panic("ATA read error");
-      if (!(s & 0x80) && (s & 8))
-        break;
-      if (clock_monotonic_ns() > deadline)
-        panic("ATA read timeout");
-    }
-    for (unsigned i = 0; i < 256; i++)
-      *out++ = in16(0x1f0);
-    lba++;
-  }
 }
 static unsigned rtc_value(unsigned reg) {
   out8(0x70, reg);

@@ -1,4 +1,7 @@
 #include "files.h"
+#include "littlefs_backend.h"
+#include "block.h"
+#include "data_layout.h"
 
 extern void *kmalloc(size_t);
 extern void kfree(void *);
@@ -8,17 +11,61 @@ extern _Noreturn void panic(const char *);
 struct fs_node {
     struct fs_node *parent, *children, *next;
     const unsigned char *data;
-    size_t size, capacity;
+    size_t size;
     uint64_t inode, accessed_ns, modified_ns, changed_ns;
     unsigned mode, references;
     enum fs_kind kind;
-    bool writable, linked, allocated;
+    bool writable, linked, persistent, metadata_dirty;
+    uint64_t object_id;
+    struct littlefs_handle *handle;
+    struct fs_node *data_next;
+    enum fs_error pending_error;
     char name[FS_NAME_MAX + 1];
 };
 
 static struct fs_node *root_node;
-static size_t node_count, ram_bytes;
+static size_t node_count;
 static uint64_t next_inode;
+static struct fs_node *data_nodes, *deferred;
+static bool data_mounted, data_frozen, data_failed;
+static uint64_t data_generation, data_boot;
+static enum fs_error data_error;
+
+#define ANCHOR_NAME(name) name,
+static const char *const data_anchors[] = {EMACSOS_DATA_ANCHORS(ANCHOR_NAME)};
+#undef ANCHOR_NAME
+#define DATA_ANCHOR_COUNT (sizeof data_anchors / sizeof data_anchors[0])
+
+static bool text_equal(const char *, const char *);
+static unsigned anchor_bit(const char *name)
+{
+    for (unsigned i = 0; i < DATA_ANCHOR_COUNT; i++)
+        if (text_equal(name, data_anchors[i]))
+            return 1U << i;
+    return 0;
+}
+
+static enum fs_error persistent_result(int);
+static enum fs_error finish_transient(struct fs_node *, enum fs_error);
+static enum fs_error close_handle(struct fs_node *, enum fs_error);
+static enum fs_error destroy_if_unused(struct fs_node *);
+static struct littlefs_metadata metadata(struct fs_node *);
+static enum fs_error data_path(struct fs_node *, char *);
+static enum fs_error ensure_handle(struct fs_node *);
+static enum fs_error write_allowed(struct fs_node *n)
+{
+    return !n->persistent ? FS_READ_ONLY
+           : data_frozen  ? FS_BUSY
+           : data_failed  ? FS_READ_ONLY
+                          : FS_OK;
+}
+static void data_changed(struct fs_node *n)
+{
+    if (n->persistent) {
+        ++data_generation;
+        n->metadata_dirty = true;
+    }
+}
 
 static size_t text_length(const char *s) { size_t n = 0; while (s[n]) ++n; return n; }
 static bool text_equal(const char *a, const char *b)
@@ -32,7 +79,10 @@ static bool copy_text(char *d, size_t capacity, const char *s)
 static bool trailing_slash(const char *s)
 { size_t n = text_length(s); return n && s[n - 1] == '/'; }
 static void changed(struct fs_node *n)
-{ n->modified_ns = n->changed_ns = clock_realtime_ns(); }
+{
+    n->modified_ns = n->changed_ns = clock_realtime_ns();
+    data_changed(n);
+}
 
 static struct fs_node *child(struct fs_node *directory, const char *name)
 {
@@ -62,19 +112,56 @@ static struct fs_node *new_node(struct fs_node *parent, const char *name,
     return n;
 }
 
-static void destroy_if_unused(struct fs_node *n)
+static enum fs_error destroy_if_unused(struct fs_node *n)
 {
-    if (n->linked || n->references) return;
-    if (n->allocated) { ram_bytes -= n->capacity; kfree((void *) n->data); }
+    if (n->linked || n->references)
+        return FS_OK;
+    if (n->persistent && data_frozen) {
+        n->next = deferred;
+        deferred = n;
+        return FS_OK;
+    }
+    enum fs_error result = FS_OK;
+    if (n->persistent) {
+        if (n->handle) {
+            result = persistent_result(littlefs_backend_close(n->handle));
+            n->handle = 0;
+        }
+        if (n->kind != FS_DIRECTORY && !data_failed) {
+            ++data_generation;
+            enum fs_error e = persistent_result(littlefs_backend_delete_object(n->object_id));
+            if (result == FS_OK)
+                result = e;
+        }
+        struct fs_node **p = &data_nodes;
+        while (*p && *p != n)
+            p = &(*p)->data_next;
+        if (*p)
+            *p = n->data_next;
+    }
     --node_count;
     kfree(n);
+    return result;
 }
 
 void fs_retain(struct fs_node *n) { ++n->references; }
+enum fs_error fs_release_checked(struct fs_node *n)
+{
+    if (!n || !n->references)
+        return FS_OK;
+    enum fs_error result = FS_OK;
+    if (--n->references == 0 && n->persistent && n->handle) {
+        result = fs_sync_node(n);
+        result = close_handle(n, result);
+    }
+    enum fs_error removed = destroy_if_unused(n);
+    return result == FS_OK ? removed : result;
+}
 void fs_release(struct fs_node *n)
-{ if (!n || !n->references) return; --n->references; destroy_if_unused(n); }
+{
+    (void)fs_release_checked(n);
+}
 struct fs_node *fs_root(void) { return root_node; }
-size_t fs_ram_used(void) { return ram_bytes; }
 
 static enum fs_error walk(struct fs_node *base, const char *path, bool follow,
                            unsigned links, struct fs_node **out)
@@ -102,7 +189,10 @@ static enum fs_error walk(struct fs_node *base, const char *path, bool follow,
             char expanded[FS_PATH_MAX];
             size_t suffix = text_length(path);
             if (found->size + suffix >= sizeof expanded) return FS_NAME_TOO_LONG;
-            copy_bytes(expanded, found->data, found->size);
+            size_t read_count;
+            enum fs_error e = fs_readlink(found, expanded, found->size, &read_count);
+            if (e != FS_OK)
+                return e;
             copy_bytes(expanded + found->size, path, suffix + 1);
             return walk(n, expanded, follow, links + 1, out);
         }
@@ -158,26 +248,38 @@ enum fs_error fs_create(struct fs_node *base, const char *path, enum fs_kind kin
         if (exclusive) return FS_EXISTS;
         *out = n; return FS_OK;
     }
-    if (!parent->writable) return FS_READ_ONLY;
+    if (!parent->writable || !parent->persistent)
+        return FS_READ_ONLY;
+    if ((error = write_allowed(parent)) != FS_OK)
+        return error;
     if (kind != FS_REGULAR && kind != FS_DIRECTORY && kind != FS_SYMLINK) return FS_INVALID;
     size_t target_size = target ? text_length(target) : 0;
     if (kind == FS_SYMLINK && (!target_size || target_size >= FS_PATH_MAX)) return FS_NAME_TOO_LONG;
-    if (kind == FS_SYMLINK && target_size > FS_RAM_LIMIT - ram_bytes) return FS_NO_SPACE;
     n = new_node(parent, name, kind, mode, true);
     if (!n) return FS_NO_MEMORY;
-    if (kind == FS_SYMLINK) {
-        unsigned char *data = kmalloc(target_size);
-        if (!data) {
-            parent->children = n->next; n->linked = false; destroy_if_unused(n);
-            return FS_NO_MEMORY;
-        }
-        copy_bytes(data, target, target_size);
-        n->data = data; n->size = n->capacity = target_size; n->allocated = true;
-        ram_bytes += target_size;
+    n->persistent = true;
+    n->size = kind == FS_SYMLINK ? target_size : 0;
+    char full[FS_PATH_MAX];
+    error = data_path(n, full);
+    struct littlefs_metadata m = metadata(n);
+    ++data_generation;
+    if (error == FS_OK)
+        error = persistent_result(littlefs_backend_create(full, &m, target));
+    if (error != FS_OK) {
+        n->persistent = false;
+        parent->children = n->next;
+        n->linked = false;
+        (void)destroy_if_unused(n);
+        return error;
     }
+    n->object_id = m.id;
+    n->inode = (1ULL << 63) | m.id;
+    n->data_next = data_nodes;
+    data_nodes = n;
+
     changed(parent);
     *out = n;
-    return FS_OK;
+    return fs_sync_node(parent);
 }
 
 static enum fs_error create_regular(struct fs_node *base, const char *path,
@@ -190,7 +292,12 @@ static enum fs_error create_regular(struct fs_node *base, const char *path,
     if (n && n->kind == FS_SYMLINK) {
         if (links == 16) return FS_LOOP;
         if (!n->size || n->size >= FS_PATH_MAX) return FS_NAME_TOO_LONG;
-        char target[FS_PATH_MAX]; copy_bytes(target, n->data, n->size); target[n->size] = 0;
+        char target[FS_PATH_MAX];
+        size_t count;
+        e = fs_readlink(n, target, n->size, &count);
+        if (e != FS_OK)
+            return e;
+        target[n->size] = 0;
         return create_regular(parent, target, mode, links + 1, out);
     }
     return fs_create(base, path, FS_REGULAR, 0, mode, false, out);
@@ -218,12 +325,28 @@ enum fs_error fs_remove(struct fs_node *base, const char *path, bool directory)
     struct fs_node *n = child(parent, name);
     if (!n) return FS_NOT_FOUND;
     if (trailing_slash(path) && n->kind != FS_DIRECTORY) return FS_NOT_DIRECTORY;
+    if (n->persistent && n->parent == root_node)
+        return FS_BUSY;
     if (!parent->writable || !n->writable) return FS_READ_ONLY;
+    if ((error = write_allowed(n)) != FS_OK)
+        return error;
     if (directory != (n->kind == FS_DIRECTORY)) return directory ? FS_NOT_DIRECTORY : FS_IS_DIRECTORY;
     if (n->kind == FS_DIRECTORY && n->children) return FS_NOT_EMPTY;
     if (n->kind == FS_DIRECTORY && n->references) return FS_BUSY;
-    detach(n); destroy_if_unused(n);
-    return FS_OK;
+    if (n->persistent) {
+        char full[FS_PATH_MAX];
+        error = data_path(n, full);
+        ++data_generation;
+        if (error == FS_OK)
+            error = persistent_result(littlefs_backend_remove(full, n->kind));
+        if (error != FS_OK)
+            return error;
+    }
+    detach(n);
+    error = destroy_if_unused(n);
+    if (error == FS_OK && parent->persistent)
+        error = fs_sync_node(parent);
+    return error;
 }
 
 enum fs_error fs_rename(struct fs_node *old_base, const char *old_path,
@@ -240,7 +363,14 @@ enum fs_error fs_rename(struct fs_node *old_base, const char *old_path,
     if (trailing_slash(old_path) && source->kind != FS_DIRECTORY) return FS_NOT_DIRECTORY;
     if (trailing_slash(new_path) && source->kind != FS_DIRECTORY)
         return FS_NOT_DIRECTORY;
+    if ((source->persistent && source->parent == root_node) ||
+        (dest && dest->persistent && dest->parent == root_node))
+        return FS_BUSY;
+    if (source->persistent != new_parent->persistent)
+        return FS_CROSS_DEVICE;
     if (!old_parent->writable || !new_parent->writable || !source->writable) return FS_READ_ONLY;
+    if ((e = write_allowed(source)) != FS_OK)
+        return e;
     if (dest && no_replace) return FS_EXISTS;
     if (source == dest) return FS_OK;
     for (struct fs_node *p = new_parent; p; p = p->parent)
@@ -251,15 +381,50 @@ enum fs_error fs_rename(struct fs_node *old_base, const char *old_path,
             return source->kind == FS_DIRECTORY ? FS_NOT_DIRECTORY : FS_IS_DIRECTORY;
         if (dest->kind == FS_DIRECTORY && dest->children) return FS_NOT_EMPTY;
         if (dest->kind == FS_DIRECTORY && dest->references) return FS_BUSY;
-        detach(dest); destroy_if_unused(dest);
+    }
+    if (source->persistent) {
+        char a[FS_PATH_MAX], b[FS_PATH_MAX], parent_path[FS_PATH_MAX];
+        e = data_path(source, a);
+        if (e != FS_OK)
+            return e;
+        e = data_path(new_parent, parent_path);
+        if (e != FS_OK)
+            return e;
+        size_t length = text_length(parent_path), leaf = text_length(new_name);
+        if (length + 1 + leaf >= sizeof b)
+            return FS_NAME_TOO_LONG;
+        copy_bytes(b, parent_path, length);
+        b[length] = '/';
+        copy_bytes(b + length + 1, new_name, leaf + 1);
+        ++data_generation;
+        e = persistent_result(littlefs_backend_rename(a, b));
+        if (e != FS_OK)
+            return e;
+    }
+    if (dest) {
+        detach(dest);
     }
     detach(source);
     source->parent = new_parent;
     copy_text(source->name, sizeof source->name, new_name);
     source->next = new_parent->children; new_parent->children = source;
     source->linked = true;
-    source->changed_ns = clock_realtime_ns(); changed(new_parent);
-    return FS_OK;
+    source->changed_ns = clock_realtime_ns();
+    data_changed(source);
+    changed(new_parent);
+    enum fs_error result = dest ? destroy_if_unused(dest) : FS_OK;
+    if (source->persistent) {
+        e = fs_sync_node(source);
+        if (result == FS_OK)
+            result = e;
+        e = fs_sync_node(old_parent);
+        if (result == FS_OK)
+            result = e;
+        e = fs_sync_node(new_parent);
+        if (result == FS_OK)
+            result = e;
+    }
+    return result;
 }
 
 void fs_info(const struct fs_node *n, struct fs_info *info)
@@ -298,42 +463,45 @@ enum fs_error fs_read(struct fs_node *n, uint64_t offset, void *buffer,
     if (n->kind != FS_REGULAR) return FS_INVALID;
     if (offset >= n->size) return FS_OK;
     if (count > n->size - (size_t) offset) count = n->size - (size_t) offset;
+    if (n->persistent) {
+        enum fs_error e = ensure_handle(n);
+        if (e != FS_OK)
+            return e;
+        int read = littlefs_backend_read(n->handle, offset, buffer, count);
+        if (read < 0)
+            return finish_transient(n, persistent_result(read));
+        *read_count = (size_t)read;
+        if (read && !data_frozen) {
+            n->accessed_ns = clock_realtime_ns();
+            data_changed(n);
+        }
+        return finish_transient(n, FS_OK);
+    }
     copy_bytes(buffer, n->data + offset, count); *read_count = count;
     if (count) n->accessed_ns = clock_realtime_ns();
-    return FS_OK;
-}
-
-static enum fs_error reserve(struct fs_node *n, size_t needed)
-{
-    if (needed <= n->capacity) return FS_OK;
-    if (needed > FS_FILE_LIMIT) return FS_TOO_BIG;
-    size_t capacity = n->capacity ? n->capacity : 256;
-    while (capacity < needed) capacity *= 2;
-    if (capacity > FS_FILE_LIMIT) capacity = FS_FILE_LIMIT;
-    if (capacity - n->capacity > FS_RAM_LIMIT - ram_bytes) return FS_NO_SPACE;
-    unsigned char *data = kmalloc(capacity);
-    if (!data) return FS_NO_MEMORY;
-    copy_bytes(data, n->data, n->size);
-    if (n->allocated) kfree((void *) n->data);
-    ram_bytes += capacity - n->capacity;
-    n->data = data; n->capacity = capacity; n->allocated = true;
     return FS_OK;
 }
 
 enum fs_error fs_resize(struct fs_node *n, uint64_t size)
 {
     if (n->kind != FS_REGULAR) return n->kind == FS_DIRECTORY ? FS_IS_DIRECTORY : FS_INVALID;
-    if (!n->writable) return FS_READ_ONLY;
+    if (!n->writable || !n->persistent)
+        return FS_READ_ONLY;
     if (size > FS_FILE_LIMIT) return FS_TOO_BIG;
-    enum fs_error e = reserve(n, (size_t) size);
-    if (e != FS_OK) return e;
-    if (size > n->size) zero_bytes((unsigned char *) n->data + n->size, size - n->size);
-    if (!size && n->allocated) {
-        ram_bytes -= n->capacity; kfree((void *) n->data);
-        n->data = 0; n->capacity = 0; n->allocated = false;
-    }
-    n->size = size; changed(n);
-    return FS_OK;
+    enum fs_error allowed = write_allowed(n);
+    if (allowed != FS_OK)
+        return allowed;
+    enum fs_error e = ensure_handle(n);
+    if (e != FS_OK)
+        return e;
+    ++data_generation;
+    e = persistent_result(littlefs_backend_resize(n->handle, size));
+    if (e == FS_OK) {
+        n->size = (size_t)size;
+        changed(n);
+    } else
+        n->pending_error = e;
+    return finish_transient(n, e);
 }
 
 enum fs_error fs_write(struct fs_node *n, uint64_t offset, const void *data,
@@ -341,22 +509,44 @@ enum fs_error fs_write(struct fs_node *n, uint64_t offset, const void *data,
 {
     *written = 0;
     if (n->kind != FS_REGULAR) return n->kind == FS_DIRECTORY ? FS_IS_DIRECTORY : FS_INVALID;
-    if (!n->writable) return FS_READ_ONLY;
+    if (!n->writable || !n->persistent)
+        return FS_READ_ONLY;
     if (offset > FS_FILE_LIMIT || count > FS_FILE_LIMIT - offset) return FS_TOO_BIG;
     if (!count) return FS_OK;
-    enum fs_error e = reserve(n, (size_t) offset + count);
-    if (e != FS_OK) return e;
-    if (offset > n->size) zero_bytes((unsigned char *) n->data + n->size, offset - n->size);
-    copy_bytes((unsigned char *) n->data + offset, data, count);
-    if (offset + count > n->size) n->size = offset + count;
-    changed(n); *written = count;
-    return FS_OK;
+    enum fs_error allowed = write_allowed(n);
+    if (allowed != FS_OK)
+        return allowed;
+    enum fs_error e = ensure_handle(n);
+    if (e != FS_OK)
+        return e;
+    ++data_generation;
+    int nwrite = littlefs_backend_write(n->handle, offset, data, count);
+    if (nwrite < 0) {
+        e = persistent_result(nwrite);
+        n->pending_error = e;
+    } else {
+        *written = (size_t)nwrite;
+        if (offset + (uint64_t)nwrite > n->size)
+            n->size = (size_t)(offset + nwrite);
+        changed(n);
+    }
+    return finish_transient(n, e);
 }
 
 enum fs_error fs_readlink(struct fs_node *n, char *out, size_t size, size_t *count)
 {
     if (n->kind != FS_SYMLINK) return FS_INVALID;
     if (size > n->size) size = n->size;
+    if (n->persistent) {
+        enum fs_error e = ensure_handle(n);
+        if (e != FS_OK)
+            return e;
+        int nread = littlefs_backend_read(n->handle, 0, out, size);
+        if (nread < 0)
+            return finish_transient(n, persistent_result(nread));
+        *count = (size_t)nread;
+        return finish_transient(n, FS_OK);
+    }
     copy_bytes(out, n->data, size); *count = size;
     return FS_OK;
 }
@@ -380,14 +570,27 @@ enum fs_error fs_directory(struct fs_node *n, uint64_t index, char *name,
 
 enum fs_error fs_chmod(struct fs_node *n, unsigned mode)
 {
-    if (!n->writable) return FS_READ_ONLY;
-    n->mode = mode & 07777; n->changed_ns = clock_realtime_ns(); return FS_OK;
+    if (!n->writable || !n->persistent)
+        return FS_READ_ONLY;
+    enum fs_error e = write_allowed(n);
+    if (e != FS_OK)
+        return e;
+    n->mode = mode & 07777;
+    n->changed_ns = clock_realtime_ns();
+    data_changed(n);
+    return finish_transient(n, fs_sync_node(n));
 }
 enum fs_error fs_set_times(struct fs_node *n, uint64_t accessed, uint64_t modified)
 {
-    if (!n->writable) return FS_READ_ONLY;
+    if (!n->writable || !n->persistent)
+        return FS_READ_ONLY;
+    enum fs_error e = write_allowed(n);
+    if (e != FS_OK)
+        return e;
     n->accessed_ns = accessed; n->modified_ns = modified;
-    n->changed_ns = clock_realtime_ns(); return FS_OK;
+    n->changed_ns = clock_realtime_ns();
+    data_changed(n);
+    return finish_transient(n, fs_sync_node(n));
 }
 
 static bool hex_field(const unsigned char *p, uint32_t *value)
@@ -482,17 +685,365 @@ static struct fs_node *seed_directory(const char *name, bool writable)
 
 void fs_init(const void *archive, size_t length)
 {
-    root_node = 0; node_count = ram_bytes = next_inode = 0;
+    root_node = 0;
+    node_count = next_inode = 0;
+    data_nodes = deferred = 0;
+    data_mounted = data_frozen = data_failed = false;
+    data_generation = data_boot = 0;
+    data_error = FS_OK;
     root_node = new_node(0, "", FS_DIRECTORY, 0755, false);
     if (!root_node) panic("cannot allocate root directory");
     if (length) {
         if (!archive) panic("missing runtime archive data");
         seed_archive(archive, length);
     }
-    seed_directory("work", true); seed_directory("tmp", true);
-    struct fs_node *home = seed_directory("home", true);
-    if (!new_node(home, "user", FS_DIRECTORY, 0755, true)) panic("cannot allocate user directory");
+#define RECOVERY_DIRECTORY(path, mode) {path, mode},
+    static const struct { const char *path; unsigned mode; } directories[] = {
+        EMACSOS_DATA_DIRECTORIES(RECOVERY_DIRECTORY)
+    };
+#undef RECOVERY_DIRECTORY
+    for (size_t i = 0; i < sizeof directories / sizeof directories[0]; i++) {
+        char name[FS_NAME_MAX + 1];
+        struct fs_node *parent = seed_parent(directories[i].path, name);
+        struct fs_node *n = child(parent, name);
+        if (!n)
+            n = new_node(parent, name, FS_DIRECTORY, directories[i].mode, false);
+        if (!n || n->kind != FS_DIRECTORY)
+            panic("invalid recovery directory");
+        n->writable = false;
+        n->mode = directories[i].mode;
+    }
     struct fs_node *dev = seed_directory("dev", false);
     if (!new_node(dev, "tty", FS_CONSOLE, 0666, false)
         || !new_node(dev, "null", FS_NULL, 0666, false)) panic("cannot allocate device entries");
+}
+
+long fs_error_errno(enum fs_error e)
+{
+    static const long values[] = {0,   -2,  -20, -21, -17, -30,  -12, -28, -22, -36,
+                                  -40, -39, -16, -27, -5,  -110, -84, -19, -95, -18};
+    return (unsigned)e < sizeof values / sizeof values[0] ? values[e] : -5;
+}
+static enum fs_error persistent_result(int result)
+{
+    if (result >= 0)
+        return FS_OK;
+    enum fs_error e = FS_IO;
+    for (unsigned i = 0; i <= FS_CROSS_DEVICE; i++)
+        if (fs_error_errno((enum fs_error)i) == result) {
+            e = (enum fs_error)i;
+            break;
+        }
+    /* Keep the first fatal device/format fault observable after recovery starts. */
+    if (!data_failed) {
+        data_error = e;
+        if (e == FS_IO || e == FS_TIMEOUT || e == FS_CORRUPT)
+            data_failed = true;
+    }
+    return e;
+}
+static struct littlefs_metadata metadata(struct fs_node *n)
+{
+    return (struct littlefs_metadata){.id = n->object_id,
+                                      .size = n->size,
+                                      .kind = n->kind,
+                                      .mode = n->mode,
+                                      .accessed_ns = n->accessed_ns,
+                                      .modified_ns = n->modified_ns,
+                                      .changed_ns = n->changed_ns};
+}
+static void import_metadata(struct fs_node *n, const struct littlefs_metadata *m)
+{
+    n->persistent = true;
+    n->object_id = m->id;
+    n->inode = (1ULL << 63) | m->id;
+    n->size = (size_t)m->size;
+    n->kind = m->kind;
+    n->mode = m->mode;
+    n->accessed_ns = m->accessed_ns;
+    n->modified_ns = m->modified_ns;
+    n->changed_ns = m->changed_ns;
+}
+static enum fs_error close_handle(struct fs_node *n, enum fs_error result)
+{
+    enum fs_error closed = persistent_result(littlefs_backend_close(n->handle));
+    n->handle = 0;
+    n->pending_error = FS_OK;
+    if (result == FS_OK)
+        result = closed;
+    if (result != FS_OK) {
+        /* littlefs discards errored write caches on close. Restore the committed
+         * view before another description opens this same in-memory inode. */
+        struct littlefs_metadata m;
+        int loaded = littlefs_backend_object_metadata(n->object_id, &m);
+        if (!loaded) {
+            import_metadata(n, &m);
+            n->metadata_dirty = false;
+        } else
+            (void)persistent_result(loaded);
+    }
+    return result;
+}
+static enum fs_error data_path(struct fs_node *n, char *out)
+{
+    char path[FS_PATH_MAX];
+    enum fs_error e = fs_path(n, path, sizeof path);
+    if (e != FS_OK)
+        return e;
+    struct fs_node *anchor = n;
+    while (anchor->parent && anchor->parent != root_node)
+        anchor = anchor->parent;
+    if (!anchor->persistent || anchor->parent != root_node || !anchor_bit(anchor->name))
+        return FS_INVALID;
+    copy_bytes(out, path, text_length(path) + 1);
+    return FS_OK;
+}
+static enum fs_error ensure_handle(struct fs_node *n)
+{
+    if (n->handle)
+        return n->pending_error;
+    n->pending_error = FS_OK;
+    return persistent_result(littlefs_backend_open(n->object_id, &n->handle));
+}
+enum fs_error fs_sync_node(struct fs_node *n)
+{
+    if (!n || !n->persistent)
+        return FS_OK;
+    if (n->pending_error != FS_OK)
+        return n->pending_error;
+    if (data_failed)
+        return data_error;
+    if (!n->metadata_dirty)
+        return persistent_result(littlefs_backend_flush());
+    struct littlefs_metadata m = metadata(n);
+    enum fs_error e;
+    if (n->kind == FS_DIRECTORY) {
+        char path[FS_PATH_MAX];
+        e = data_path(n, path);
+        if (e == FS_OK)
+            e = persistent_result(littlefs_backend_metadata(path, &m));
+    } else {
+        e = ensure_handle(n);
+        if (e == FS_OK)
+            e = persistent_result(littlefs_backend_sync(n->handle, &m));
+    }
+    if (e == FS_OK)
+        e = persistent_result(littlefs_backend_flush());
+    if (e == FS_OK)
+        n->metadata_dirty = false;
+    return e;
+}
+static enum fs_error finish_transient(struct fs_node *n, enum fs_error result)
+{
+    if (n->references || !n->handle)
+        return result;
+    enum fs_error e = fs_sync_node(n);
+    if (result == FS_OK)
+        result = e;
+    return close_handle(n, result);
+}
+enum fs_error fs_sync_all(void)
+{
+    if (!data_mounted)
+        return data_error == FS_NO_DEVICE ? FS_NO_DEVICE : data_error;
+    if (data_failed)
+        return data_error;
+    for (struct fs_node *n = data_nodes; n; n = n->data_next) {
+        enum fs_error e = fs_sync_node(n);
+        e = finish_transient(n, e);
+        if (e != FS_OK)
+            return e;
+    }
+    return persistent_result(littlefs_backend_flush());
+}
+enum fs_error fs_freeze_data(void)
+{
+    if (!data_mounted)
+        return data_error;
+    if (data_frozen)
+        return FS_OK;
+    data_frozen = true;
+    enum fs_error e = fs_sync_all();
+    if (e != FS_OK)
+        data_frozen = false;
+    return e;
+}
+void fs_thaw_data(void)
+{
+    data_frozen = false;
+    while (deferred) {
+        struct fs_node *n = deferred;
+        deferred = n->next;
+        n->next = 0;
+        (void)destroy_if_unused(n);
+    }
+}
+bool fs_data_mounted(void)
+{
+    return data_mounted;
+}
+bool fs_data_frozen(void)
+{
+    return data_frozen;
+}
+uint64_t fs_data_generation(void)
+{
+    return data_generation;
+}
+uint64_t fs_data_boot_id(void)
+{
+    return data_boot;
+}
+enum fs_error fs_data_last_error(void)
+{
+    return data_error;
+}
+enum fs_error fs_data_health_error(void)
+{
+    return data_mounted && data_failed ? data_error : FS_OK;
+}
+
+struct mount_context {
+    struct fs_node **queue, *parent;
+    uint64_t *ids;
+    size_t count;
+    unsigned anchors;
+};
+static int mount_entry(void *opaque, const char *name, const struct littlefs_metadata *m)
+{
+    struct mount_context *c = opaque;
+    if (c->count == FS_NODE_LIMIT)
+        return -28;
+    for (size_t i = 0; i < c->count; i++)
+        if (c->ids[i] == m->id)
+            return -84;
+    if (!c->parent) {
+        unsigned bit = anchor_bit(name);
+        if (!bit || (c->anchors & bit) || m->kind != FS_DIRECTORY)
+            return -84;
+        c->anchors |= bit;
+    }
+    /* Top-level candidates remain detached until the entire volume validates. */
+    struct fs_node *n = new_node(c->parent, name, m->kind, m->mode, true);
+    if (!n)
+        return -12;
+    if (!c->parent)
+        n->parent = root_node;
+    import_metadata(n, m);
+    n->metadata_dirty = false;
+    n->data_next = data_nodes;
+    data_nodes = n;
+    c->queue[c->count] = n;
+    c->ids[c->count++] = m->id;
+    return 0;
+}
+static bool unused_tree(struct fs_node *n)
+{
+    if (n->references)
+        return false;
+    for (struct fs_node *p = n->children; p; p = p->next)
+        if (!unused_tree(p))
+            return false;
+    return true;
+}
+static void discard_readonly_tree(struct fs_node *n)
+{
+    while (n->children) {
+        struct fs_node *p = n->children;
+        n->children = p->next;
+        discard_readonly_tree(p);
+    }
+    n->linked = false;
+    (void)destroy_if_unused(n);
+}
+enum fs_error fs_mount_data(void)
+{
+    if (data_mounted)
+        return FS_BUSY;
+    for (unsigned i = 0; i < DATA_ANCHOR_COUNT; i++) {
+        struct fs_node *anchor = child(root_node, data_anchors[i]);
+        if (!anchor || !unused_tree(anchor))
+            return FS_BUSY;
+    }
+    int result;
+    if (data_disk_sectors() != 131072) {
+        unsigned char sector[512];
+        result = data_disk_read(0, sector, 1);
+        if (!result)
+            result = -95;
+        return persistent_result(result);
+    }
+    struct fs_node **queue = kmalloc(FS_NODE_LIMIT * sizeof *queue);
+    uint64_t *ids = kmalloc(FS_NODE_LIMIT * sizeof *ids);
+    if (!queue || !ids) {
+        kfree(queue);
+        kfree(ids);
+        data_error = FS_NO_MEMORY;
+        return data_error;
+    }
+    struct mount_context context = {.queue = queue, .ids = ids, .count = 1};
+    queue[0] = NULL;
+    ids[0] = 1;
+    uint64_t boot = 0;
+    result = littlefs_backend_mount(&boot);
+    if (!result)
+        result = littlefs_backend_list("", mount_entry, &context);
+    if (!result && context.anchors != (1U << DATA_ANCHOR_COUNT) - 1)
+        result = -84;
+    for (size_t at = 1; !result && at < context.count; at++) {
+        if (queue[at]->kind != FS_DIRECTORY)
+            continue;
+        context.parent = queue[at];
+        char path[FS_PATH_MAX];
+        enum fs_error e = data_path(queue[at], path);
+        result = e == FS_OK ? littlefs_backend_list(path, mount_entry, &context)
+                            : (int)fs_error_errno(e);
+    }
+    /* The startup working directory must exist without following user links. */
+    if (!result) {
+        struct fs_node *home = NULL;
+        for (size_t i = 1; i < context.count; i++)
+            if (queue[i]->parent == root_node && text_equal(queue[i]->name, "home"))
+                home = queue[i];
+        struct fs_node *user = home ? child(home, "user") : NULL;
+        if (!user || user->kind != FS_DIRECTORY)
+            result = -84;
+    }
+    bool collected = false;
+    if (!result)
+        result = littlefs_backend_collect(ids, context.count, &collected);
+    if (!result)
+        result = littlefs_backend_accept(&boot);
+    if (result) {
+        for (size_t i = context.count; i > 1; i--) {
+            struct fs_node *n = queue[i - 1];
+            n->persistent = false;
+            n->linked = false;
+            (void)destroy_if_unused(n);
+        }
+        data_nodes = 0;
+        littlefs_backend_unmount();
+        data_error = persistent_result(result);
+    } else {
+        for (size_t i = 1; i < context.count; i++) {
+            struct fs_node *n = queue[i];
+            if (n->parent != root_node)
+                continue;
+            struct fs_node **p = &root_node->children;
+            while (*p && !text_equal((*p)->name, n->name))
+                p = &(*p)->next;
+            struct fs_node *old = *p;
+            n->next = old->next;
+            *p = n;
+            discard_readonly_tree(old);
+        }
+        data_mounted = true;
+        data_failed = false;
+        data_boot = boot;
+        data_generation = 1;
+        data_error = FS_OK;
+    }
+    kfree(queue);
+    kfree(ids);
+    return data_error;
 }

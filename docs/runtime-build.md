@@ -56,8 +56,12 @@ Runtime paths are `/usr/bin/emacs`,
 `/usr/libexec/emacs/30.2/x86_64-pc-linux-musl/emacs.pdmp`,
 `/usr/share/emacs/30.2/lisp`, `/usr/share/emacs/30.2/etc` and
 `/usr/share/terminfo`. Minimal `/etc/passwd` and `/etc/group` describe uid/gid 0;
-no account/security system is implied. The guest supplies writable `/work` and
-`/tmp` separately. The runtime archive is not guest persistent storage.
+no account/security system is implied. Their home is `/home/user`, matching
+`HOME`, `PWD` and the initial working directory; the shell field is empty because
+no shell binary is provided. These immutable records are recovery defaults.
+Normal DATA supplies matching initial records and persists later `/etc` edits.
+The guest supplies `/etc`, `/home`, `/tmp` and `/var` through the DATA volume.
+They are read-only in recovery if DATA is absent or rejected. The runtime archive is not guest persistent storage.
 
 Packaging excludes manuals, desktop integration, external Unix helper programs
 and Lisp source files with matching bytecode. It retains upstream runtime data,
@@ -85,7 +89,7 @@ retain explicit errors; upstream source inspection and actual guest execution
 bound the adapter's supported paths.
 
 Run `make test-probes` for static-musl startup and memory-protection probes in
-native QEMU, and `make test-guest` for the fourteen integrated Emacs checks.
+native QEMU, and `make test-guest` for the integrated Emacs checks.
 Their logs and results are separate from the runtime build manifest. See
 [guest acceptance](mvp.md) and [build and test](build-and-test.md).
 

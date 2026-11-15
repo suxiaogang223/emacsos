@@ -1,7 +1,9 @@
 # Build and test
 
 Run commands from the repository root. Building requires Git, Make, Python 3,
-Docker with BuildKit and Linux/amd64 support and an initialized `emacs/` submodule. Docker
+Docker with BuildKit and Linux/amd64 support and initialized `emacs/` and `third_party/littlefs/` submodules. Run
+`git submodule update --init --recursive` before building or running host file
+tests. Docker
 supplies the kernel and static Emacs compilation toolchains; host LLVM tools
 are not required for the normal build. Native execution additionally needs
 `qemu-system-x86_64`.
@@ -15,7 +17,7 @@ are not required for the normal build. Native execution additionally needs
 | `make check` | Run host tests, contribution checks, kernel probes and native guest acceptance in order. |
 | `make help` | Show the main entry points. |
 
-`make kernel` builds only the boot/kernel image in Docker. `make runtime` builds
+`make kernel` builds the boot/kernel image and an initialized DATA template in Docker. `make runtime` builds
 and packages static Emacs and its matching portable dump. These components feed
 `make build`. Compilation, host tests, kernel probes and guest functional
 acceptance retain separate results.
@@ -38,7 +40,10 @@ handles incremental compilation in the existing object directory. Every runtime
 build performs a fresh installation into its staging tree and packages that
 installation together with current parent-owned Lisp.
 
-Kernel objects use ordinary Make dependencies, including the kernel toolchain
+Kernel builds and host file tests verify that littlefs is initialized, clean and
+matches the recorded gitlink/source hashes before compilation. The image
+manifest records its exact upstream commit. Kernel objects use ordinary Make
+dependencies, including the kernel toolchain
 image identity. Image assembly checks component identities and writes a build
 manifest. Pinned inputs and recorded outputs do not establish byte-identical
 compiler results across arbitrary hosts.
@@ -55,6 +60,9 @@ documented platform configuration.
 | `build/kernel/` | Kernel objects, ELF, kernel-only image and probe evidence. |
 | `build/runtime/` | Generated Emacs source/objects, fresh runtime installation, executable, archive and manifest. |
 | `build/image/emacsos.img` | Complete kernel, static runtime and runtime-file image. |
+| `build/image/data-empty.img` | Initialized 64 MiB littlefs DATA template; never a user disk. |
+| `build/data/emacsos-data.img` | Default native user disk, created only when missing. |
+| `build/image/storage/` | Separate-boot persistent guest transcripts, disk copies and results. |
 | `build/image/manifest.json` | Source/component hashes, toolchain identities and fixed machine profile. |
 | `build/image/guest.transcript` | Actual serial bytes from the latest native guest acceptance attempt. |
 | `build/image/guest-results.json` | Native guest acceptance outcome and source/image/transcript identities. |
@@ -74,7 +82,8 @@ Docker and native QEMU in addition to the build prerequisites.
 | `make test-tooling` | Build, image and contribution-tool unit tests. |
 | `make test-web` | Web server routes, isolation headers, TLS and asset verification. |
 | `make test-probes` | Static-musl startup and deliberate RO/NX page faults in native QEMU. |
-| `make test-guest` | Complete native guest editing, files and application lifecycle. |
+| `make test-guest` | Complete native guest editing, littlefs files and application lifecycle. |
+| `make test-storage` | Sync/copy/reboot all DATA directories, cross-directory rename, stale locks and read-only recovery. |
 | `make test-browser` | Optional real-browser checks against an already running web server. |
 
 Tests live under `tests/kernel`, `tests/lisp`, `tests/tooling`, `tests/guest`
@@ -84,10 +93,10 @@ driver installation and scope. Browser checks are not included in `make check`
 and are not replaced by web server unit tests.
 
 Native guest acceptance requires a clean committed parent checkout and the
-matching initialized submodule. Its fourteen checks drive the real guest through
+matching initialized submodule. Its checks drive the real guest through
 `tests/guest/check.py`; the source fixture is `tests/guest/counter.el`. Its
 transcript and results bind the exact image and source identities. See
-[MVP acceptance](mvp.md) for the volatile-file and trust boundaries.
+[MVP acceptance](mvp.md) for the runtime and trust boundaries. All writable file acceptance now uses DATA.
 
 CI uses one build/test workflow with separate host and guest jobs. The
 contribution workflow separately checks repository/PR conventions, including

@@ -7,9 +7,10 @@ and tests. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Read [design](docs/design.md), [roadmap](docs/roadmap.md) and
 [source ownership](docs/source-layout.md) before changing architecture. The
-MVP runs one trusted Emacs with volatile files and cooperative application
-management on the fixed QEMU profile. See docs/mvp.md for acceptance. Do not
-imply networking, persistence, isolation or general Linux compatibility.
+runtime runs one trusted Emacs with cooperative application management on the
+fixed QEMU profile. Littlefs is the only writable file backend, serving `/etc`, `/home`, `/tmp` and `/var`; missing or rejected DATA permits only read-only recovery.
+See docs/mvp.md and docs/storage.md for acceptance. Do not imply networking,
+isolation or general Linux compatibility.
 Compilation, boot execution and guest functional acceptance are different claims.
 
 Before preparing/updating a PR, read
@@ -21,6 +22,8 @@ tasks open PRs and report exact heads, validation and dependencies; only the
 coordinator merges within the user's authorization. Do not modify another task's
 checkout. Explicit user instructions may define a different handoff for a task.
 
+`third_party/littlefs/` pins official upstream sources; keep adapter/configuration
+in the parent and update its gitlink and `third_party/littlefs.json` together.
 `emacs/` is a pinned fork submodule. Publish fork changes first, stage the parent
 gitlink, and check the initialized checkout matches it. Keep future system policy
 outside the runtime fork. Do not restore archived features implicitly or add

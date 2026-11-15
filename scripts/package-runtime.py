@@ -96,7 +96,9 @@ def main():
         shutil.copyfile(path, site / name)
     etc = root / "etc"
     etc.mkdir(exist_ok=True)
-    (etc / "passwd").write_text("root:x:0:0:emacsOS:/work:/bin/sh\n")
+    # Match the DATA template; these immutable defaults also serve recovery.
+    # This uid/gid 0 runtime identity does not implement user isolation or a shell.
+    (etc / "passwd").write_text("root:x:0:0:emacsOS:/home/user:\n")
     (etc / "group").write_text("root:x:0:\n")
     dumps = [p for p in root.rglob("*.pdmp") if not p.is_symlink()]
     if len(dumps) != 1:

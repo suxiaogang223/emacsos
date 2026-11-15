@@ -9,10 +9,14 @@ emacsos/
 │   ├── main.c             # Kernel initialization and runtime entry
 │   ├── loader.c           # Static ELF and startup ABI
 │   ├── runtime.c          # Bounded syscall adapter and waits
-│   ├── files.c / file_abi.c # Typed volatile files and ABI translation
+│   ├── files.c / file_abi.c # Readonly namespace/DATA files and ABI translation
+│   ├── block.c / littlefs_backend.c # DATA device and persistent objects
+│   ├── storage_control.c  # Safe COM2 checkpoint barrier
 │   ├── memory.c / hardware.c # Memory, serial and clocks
 │   └── kernel.ld          # Link layout
 ├── lisp/                  # Trusted application policy and counter demo
+├── third_party/littlefs/  # Pinned official littlefs submodule
+├── tools/                 # Offline DATA template formatter
 ├── tests/                 # Kernel, Lisp, tooling, guest and browser checks
 ├── web/                   # Retro console, browser bridge and asset identities
 ├── scripts/               # Build, packaging, native launcher and browser tools
@@ -34,10 +38,13 @@ git clone --single-branch --branch main --recurse-submodules https://github.com/
 git submodule update --init --recursive
 ```
 
-The parent gitlink pins the exact fork commit. Do not float it implicitly with
+The parent gitlinks pin the exact Emacs fork and official littlefs commits.
+The littlefs release identity and compiled-source hashes are recorded in
+`third_party/littlefs.json`; its unchanged sources and license stay upstream.
+Our filesystem adapter and freestanding configuration remain in `kernel/`. Do not float it implicitly with
 `git submodule update --remote`. A source checkout is not a runtime build.
 The default `make` target (`make build`) builds the complete system image at
-`build/image/emacsos.img`. `make kernel` builds the kernel-only image in Docker;
+`build/image/emacsos.img`. `make kernel` builds the kernel-only image and DATA template in Docker;
 `make runtime` builds and packages static Emacs/musl. Docker shares toolchain
 layers across worktrees, while each checkout owns its generated source and
 build outputs. See [build and test](build-and-test.md) for prerequisites,
@@ -53,7 +60,9 @@ belong to the parent. Downloaded vendor assets stay in ignored
 Parent `lisp/` now contains trusted application policy and the counter example;
 `tests/` contains their host ERT suite. See [application MVP](application-mvp.md)
 for the policy subset and [MVP acceptance](mvp.md) for actual guest evidence.
-This parent policy does not modify the runtime fork.
+The parent also enables GNU Emacs file sync through controlled storage policy.
+These policies do not modify the runtime fork. Persistent backend and checkpoint
+code belongs to the parent; see [storage](storage.md).
 
 ## Future changes
 
