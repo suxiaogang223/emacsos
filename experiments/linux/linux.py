@@ -273,16 +273,20 @@ def check(internet_url=None):
             guest.evaluate('(progn (setq linux-fault (make-process :name "fault" :buffer "*fault*" :command \'("/bin/sh" "-c" "kill -SEGV $$") :noquery t)) (message "LINUX-%s" "FAULT-SENT"))', "LINUX-FAULT-SENT")
             assertion(guest, "worker segmentation fault leaves Emacs alive", "(and (eq (process-status linux-fault) 'signal) (= (process-exit-status linux-fault) 11) (> linux-ticks 1))")
             assertion(guest, "GnuTLS available", "(progn (require 'url) (require 'gnutls) (require 'nsm) (advice-add 'nsm-query :before (lambda (&rest arguments) (send-string-to-terminal (format \"\\nTLS policy: %s\\n\" (car (last arguments)))))) (gnutls-available-p))")
-            request = ('(let ((gnutls-trustfiles (list "/home/emacs/work/fixture-ca.pem")) '
-                       '(gnutls-verify-error t) (network-security-level \'high) (nsm-noninteractive t) (url-proxy-services nil)) '
-                       '(require \'url) (let ((response (url-retrieve-synchronously %s t t 20))) '
+            # TLS setup can finish in an asynchronous callback. Configure this
+            # disposable test Emacs globally, then restore the distribution CAs.
+            request = ('(progn (setq linux-system-trustfiles gnutls-trustfiles '
+                       'gnutls-trustfiles (list "/home/emacs/work/fixture-ca.pem") '
+                       'gnutls-verify-error t network-security-level \'high nsm-noninteractive t url-proxy-services nil) '
+                       '(let ((response (url-retrieve-synchronously %s t t 20))) '
                        '(unless response (error "No HTTPS response")) '
                        '(unwind-protect (with-current-buffer response (goto-char (point-min)) '
                        '(and (= url-http-response-status 200) (search-forward %s nil t))) (kill-buffer response))))')
             assertion(guest, "HTTPS with certificate verification and unpredictable response",
                       request % (json.dumps(url), json.dumps(nonce)))
             assertion(guest, "untrusted HTTPS certificate rejected",
-                      '(let ((gnutls-trustfiles nil) (gnutls-verify-error t) (network-security-level \'high) (nsm-noninteractive t)) (condition-case failure (progn (open-network-stream "untrusted" nil "10.0.2.2" %d :type \'tls) nil) (error (string-match-p "Certificate validation failed" (error-message-string failure)))))' % urlsplit(url).port)
+                      '(progn (setq gnutls-trustfiles nil) (condition-case failure (progn (open-network-stream "untrusted" nil "10.0.2.2" %d :type \'tls) nil) (error (string-match-p "Certificate validation failed" (error-message-string failure)))))' % urlsplit(url).port)
+            guest.evaluate('(progn (setq gnutls-trustfiles linux-system-trustfiles) (message "LINUX-%s" "TRUST-RESTORED"))', "LINUX-TRUST-RESTORED")
             if internet_url:
                 assertion(guest, "public DNS and HTTPS",
                           '(let ((gnutls-verify-error t) (network-security-level \'high) (nsm-noninteractive t) (url-proxy-services nil)) (let ((response (url-retrieve-synchronously %s t t 30))) (and response (unwind-protect (with-current-buffer response (= url-http-response-status 200)) (kill-buffer response)))))' % json.dumps(internet_url))
