@@ -1,0 +1,26 @@
+#!/bin/sh
+set -eu
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mkdir -p /dev/pts /run /tmp
+mount -t devpts devpts /dev/pts
+chmod 1777 /tmp
+hostname emacsos-linux
+
+for module in virtio_pci virtio_blk virtio_net ext4; do
+    modprobe "$module"
+done
+mount -t ext4 -o rw /dev/vda /home
+test -d /home/emacs/work
+test "$(stat -c %u /home/emacs)" = 1000
+
+# This address plan belongs specifically to QEMU's user network backend.
+ip link set lo up
+if ip link show eth0 >/dev/null 2>&1; then
+    ip link set eth0 up
+    ip addr add 10.0.2.15/24 dev eth0
+    ip route add default via 10.0.2.2
+    printf 'nameserver 10.0.2.3\n' > /etc/resolv.conf
+fi
+touch /run/emacsos-ready

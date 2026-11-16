@@ -7,13 +7,12 @@ and tests. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Read [design](docs/design.md), [roadmap](docs/roadmap.md) and
 [source ownership](docs/source-layout.md) before changing architecture. The
-runtime runs one trusted Emacs with cooperative application management on the
-fixed QEMU profile. Littlefs is the only writable file backend, serving `/etc`, `/home`, `/tmp` and `/var`; missing or rejected DATA permits only read-only recovery.
-See docs/mvp.md, docs/storage.md and docs/network.md for separate acceptance.
-Networking is bounded numeric IPv4 outbound TCP through NE2000/lwIP, with an
-automatic same-origin host bridge in the browser. Do not imply DNS, TLS,
-isolation or general Linux compatibility.
-Compilation, boot execution and guest functional acceptance are different claims.
+system runs one trusted Emacs on a minimal Linux guest. Native and browser
+profiles have different networking and storage lifetimes; see docs/mvp.md.
+Do not infer browser networking, retention or application isolation from native
+results. Compilation, boot execution and guest functional acceptance are
+different claims. Linux owns kernel/backend mechanisms; parent system policy
+and Web presentation remain the development focus.
 
 Before preparing/updating a PR, read
 [emacsos-pr](.agents/skills/emacsos-pr/SKILL.md). Before reviewing/integrating one,
@@ -24,9 +23,6 @@ tasks open PRs and report exact heads, validation and dependencies; only the
 coordinator merges within the user's authorization. Do not modify another task's
 checkout. Explicit user instructions may define a different handoff for a task.
 
-`third_party/littlefs/` and `third_party/lwip/` pin official upstream sources;
-keep adapters/configuration in the parent and update each gitlink and its
-`third_party/*.json` receipt together.
 `emacs/` is a pinned fork submodule. Publish fork changes first, stage the parent
 gitlink, and check the initialized checkout matches it. Keep future system policy
 outside the runtime fork. Do not restore archived features implicitly or add

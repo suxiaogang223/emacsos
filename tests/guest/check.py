@@ -1,318 +1,263 @@
 #!/usr/bin/env python3
-"""Check console, file and application features in the actual QEMU guest."""
+"""Accept the actual Linux guest through its interactive serial command loop."""
 import argparse
+import contextlib
+import http.server
 import json
 import os
 from pathlib import Path
+import secrets
 import selectors
 import shutil
+import ssl
 import subprocess
-import time
 import sys
+import tempfile
+import threading
+import time
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
-OUT = ROOT / "build/image"
 sys.path.insert(0, str(ROOT / "scripts"))
-import image as identity
-import qemu
+from machine import OUT, command, create_disk, digest, git, run, verify, write_json
 
 
 class Guest:
-    def __init__(self, *, data=None, control=None, output=OUT, label="guest"):
-        self.output, self.label = output, label
-        output.mkdir(parents=True, exist_ok=True)
-        self.process = subprocess.Popen(qemu.command(OUT / "emacsos.img", debug_exit=True,
-                                                      data=data, control=control),
-                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                        stderr=subprocess.STDOUT)
+    def __init__(self, disk, transcript):
+        self.path = transcript
+        self.transcript = bytearray()
+        self.started = time.monotonic()
+        self.process = subprocess.Popen(command(disk), stdin=subprocess.PIPE,
+                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         self.selector = selectors.DefaultSelector()
         self.selector.register(self.process.stdout, selectors.EVENT_READ)
-        self.transcript = bytearray()
 
     def pump(self, timeout=0.1):
         for key, _ in self.selector.select(timeout):
-            chunk = os.read(key.fd, 65536)
-            if chunk:
-                self.transcript.extend(chunk)
+            data = os.read(key.fd, 65536)
+            if data:
+                self.transcript.extend(data)
+                self.path.write_bytes(self.transcript)
             else:
                 self.selector.unregister(key.fileobj)
 
-    def wait(self, marker, start=0, timeout=45):
+    def wait(self, marker, start=0, timeout=60):
         end = time.monotonic() + timeout
         while marker not in self.transcript[start:]:
             self.pump()
-            if self.process.poll() is not None and marker not in self.transcript[start:]:
-                raise RuntimeError(f"Guest exited before {marker!r}")
+            if b"LINUX-CHECK-ERROR" in self.transcript[start:]:
+                raise RuntimeError(f"Interactive Elisp failed; see {self.path}")
+            if self.process.poll() is not None:
+                raise RuntimeError(f"Guest exited before {marker!r}; see {self.path}")
             if time.monotonic() >= end:
-                raise RuntimeError(f"Guest timeout waiting for {marker!r}")
+                raise RuntimeError(f"Guest timeout waiting for {marker!r}; see {self.path}")
 
     def send(self, data):
-        for at in range(0, len(data), 128):
-            self.process.stdin.write(data[at:at + 128])
+        for offset in range(0, len(data), 128):
+            self.process.stdin.write(data[offset:offset + 128])
             self.process.stdin.flush()
             self.pump(0.005)
 
     def evaluate(self, form, marker):
         marker = marker.encode()
-        # A terminal echo must never be sufficient to pass an assertion.
         if marker in form.encode():
-            raise ValueError("Guest result marker occurs literally in typed input")
+            raise ValueError("Result marker occurs in input; terminal echo could pass the check")
         start = len(self.transcript)
-        self.send(b"\x1b:" + form.encode() + b"\r")
+        guarded = ('(condition-case failure %s (error (send-string-to-terminal '
+                   '(format "\\nLINUX-%%s %%S\\n" "CHECK-ERROR" failure))))') % form
+        self.send(b"\x1b:" + guarded.encode() + b"\r")
         self.wait(marker, start)
+
+    def shutdown(self):
+        self.evaluate("(kill-emacs 0)", "EMACSOS-LINUX-EXIT status=0")
+        end = time.monotonic() + 30
+        while self.process.poll() is None and time.monotonic() < end:
+            self.pump()
+        self.pump(0)
+        if self.process.poll() != 0 or b"EMACSOS-LINUX-UNMOUNT-FAILED" in self.transcript:
+            raise RuntimeError("Guest did not cleanly unmount and power off")
 
     def close(self):
         if self.process.poll() is None:
             self.process.terminate()
-            self.process.wait(timeout=10)
+            try:
+                self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait(timeout=5)
+        self.pump(0)
         self.selector.close()
-        (self.output / f"{self.label}.transcript").write_bytes(self.transcript)
+        self.process.stdin.close()
+        self.process.stdout.close()
+        self.path.write_bytes(self.transcript)
 
 
-def validated_manifest():
-    manifest = json.loads((OUT / "manifest.json").read_text())
-    if manifest["dirty"] or identity.git("status", "--porcelain"):
-        raise SystemExit("Guest integration requires a clean committed parent checkout")
-    if manifest["parent"] != identity.git("rev-parse", "HEAD"):
-        raise SystemExit("Rebuild the image at the current source commit")
-    for name, expected in manifest["components"].items():
-        if identity.digest(ROOT / name) != expected:
-            raise SystemExit(f"Changed build component: {name}")
-    return manifest
+@contextlib.contextmanager
+def https_fixture():
+    """Serve an unpredictable response with a test-only CA and IP certificate."""
+    with tempfile.TemporaryDirectory(prefix=".tls-", dir=OUT) as temporary:
+        directory = Path(temporary)
+        certificate, key = directory / "ca.pem", directory / "key.pem"
+        run("openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+            "-keyout", key, "-out", certificate, "-subj", "/CN=emacsOS Linux test CA",
+            "-addext", "basicConstraints=critical,CA:TRUE", stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL)
+        server_key = directory / "server-key.pem"
+        request = directory / "server.csr"
+        server_certificate = directory / "server.pem"
+        extensions = directory / "extensions.cnf"
+        extensions.write_text("subjectAltName=IP:10.0.2.2\nbasicConstraints=critical,CA:FALSE\n"
+                              "keyUsage=critical,digitalSignature,keyEncipherment\n"
+                              "extendedKeyUsage=serverAuth\n")
+        run("openssl", "req", "-new", "-newkey", "rsa:2048", "-nodes", "-keyout", server_key,
+            "-out", request, "-subj", "/CN=emacsOS Linux test server",
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        run("openssl", "x509", "-req", "-in", request, "-CA", certificate, "-CAkey", key,
+            "-CAcreateserial", "-days", "1", "-extfile", extensions, "-out", server_certificate,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        nonce = secrets.token_hex(24)
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def handle(self):
+                # Certificate rejection intentionally closes before HTTP input.
+                try:
+                    super().handle()
+                except (ConnectionError, ssl.SSLError):
+                    pass
+
+            def do_GET(self):
+                payload = nonce.encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+
+            def log_message(self, *args):
+                pass
+
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        server.daemon_threads = True
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(server_certificate, server_key)
+        server.socket = context.wrap_socket(server.socket, server_side=True)
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            yield certificate, f"https://10.0.2.2:{server.server_port}/", nonce
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join(timeout=5)
 
 
-def main(data=None, output=OUT, label="guest"):
-    manifest = validated_manifest()
-    if data is None:
-        data = output / f"{label}-data.img"
-        data.unlink(missing_ok=True)
-        qemu.prepare_data(data, OUT / "data-empty.img")
-    checks = []
-    guest = Guest(data=data, output=output, label=label)
-    result = {"parent": manifest["parent"], "fork": manifest["fork"],
-              "image_sha256": manifest["components"]["build/image/emacsos.img"],
-              "build_manifest_sha256": identity.digest(OUT / "manifest.json"),
-              "scope": "Actual fixed-machine QEMU guest; trusted applications",
-              "data_disk": str(data) if data else None,
-              "passed": False, "checks": checks}
+def check(internet_url=None):
+    manifest = verify()
+    if manifest["dirty"] or git("status", "--porcelain"):
+        raise RuntimeError("Commit the source before recording guest acceptance")
+    if manifest["parent"] != git("rev-parse", "HEAD"):
+        raise RuntimeError("Rebuild at the current source commit before acceptance")
+    checks, guests = [], []
+    result = {"passed": False, "parent": manifest["parent"], "checks": checks,
+              "manifest_sha256": digest(OUT / "manifest.json"),
+              "scope": "Native QEMU Linux guest; browser capabilities need separate acceptance",
+              "internet_url": internet_url, "boot_seconds": [],
+              "network_scope": "Synchronous HTTPS only; asynchronous HTTPS remains unresolved"}
 
-    def check(name, form, marker):
-        guest.evaluate(form, marker)
+    def assertion(guest, name, condition):
+        index = len(checks)
+        form = (f'(progn (unless {condition} (error "Check {index} failed")) '
+                f'(message "LINUX-PASS-%d" {index}))')
+        guest.evaluate(form, f"LINUX-PASS-{index}")
         checks.append(name)
         print(f"PASS {name}", flush=True)
 
+    disk = OUT / "acceptance-data.ext4"
+    # Only this generated test disk is replaced. data.ext4 is never touched.
+    disk.unlink(missing_ok=True)
+    for name in ("first-boot.transcript", "second-boot.transcript", "acceptance.json"):
+        (OUT / name).unlink(missing_ok=True)
     try:
-        # Console input, Elisp evaluation and command-loop scheduling.
-        guest.wait(b"*scratch*")
-        checks.append("interactive GNU Emacs startup")
-        check("standard home, initial directory and Unix layout", '(progn (unless (and (equal (getenv "HOME") "/home/user") (equal (getenv "PWD") "/home/user") (equal (directory-file-name (expand-file-name default-directory)) "/home/user") (equal (directory-file-name (expand-file-name "~/")) "/home/user") (equal (directory-file-name (expand-file-name "~root/")) "/home/user") (= (user-uid) 0) (not (file-exists-p "/work")) (file-directory-p "/home/user/projects") (file-directory-p "/etc/emacsos") (file-directory-p "/var/lib/emacsos") (file-directory-p "/var/log") (file-directory-p "/var/cache") (= (file-modes "/tmp") 1023)) (error "Unix layout or home differs")) (message (concat "GUEST-" "LAYOUT-PASS")))', "GUEST-LAYOUT-PASS")
-        check("prepare editable buffer", '(progn (switch-to-buffer "*Guest typing*") (erase-buffer) (message (concat "GUEST-" "READY")))', "GUEST-READY")
-        guest.send(b"typed in emacsOS")
-        check("normal terminal text input", '(progn (unless (equal (buffer-string) "typed in emacsOS") (error "Input differs")) (message (concat "GUEST-" "INPUT-PASS")))', "GUEST-INPUT-PASS")
-        check("interactive Elisp evaluation", '(message "GUEST-EVAL-%s" (+ 20 22))', "GUEST-EVAL-42")
-        check("command-loop timer", '(progn (run-at-time 0.1 nil (lambda () (message (concat "GUEST-" "TIMER-PASS")))) (message "Timer armed"))', "GUEST-TIMER-PASS")
-        check("Lisp roots survive repeated allocation and collection", '(progn (eval (read %s)) (message (concat "GUEST-" "GC-PASS")))' % json.dumps((ROOT / "tests/guest/memory.el").read_text()), "GUEST-GC-PASS")
-        # File editing, ordinary saves, errors and source loading.
-        source = (ROOT / "tests/guest/counter.el").read_text()
-        check("author and save an Elisp application", '(progn (find-file "/home/user/projects/counter.el") (insert %s) (save-buffer) (setq guest-first-source (buffer-string)) (when (buffer-modified-p) (error "Save left modified state")) (kill-buffer) (message (concat "GUEST-" "SAVED")))' % json.dumps(source), "GUEST-SAVED")
-        check("ordinary symlink lock on editing", '(progn (find-file "/home/user/projects/counter.el") (unless (equal (buffer-string) guest-first-source) (error "Saved source differs")) (goto-char (point-max)) (insert (string 10) ";; Edited inside emacsOS." (string 10)) (unless (file-symlink-p "/home/user/projects/.#counter.el") (error "No editing lock")) (message (concat "GUEST-" "LOCK-PASS")))', "GUEST-LOCK-PASS")
-        check("normal backup and lock cleanup", '(progn (setq guest-second-source (buffer-string)) (save-buffer) (unless (and (not (buffer-modified-p)) (not (file-symlink-p "/home/user/projects/.#counter.el")) (with-temp-buffer (insert-file-contents "/home/user/projects/counter.el~") (equal (buffer-string) guest-first-source))) (error "Backup or lock behavior differs")) (kill-buffer) (load-file "/home/user/projects/counter.el") (unless (with-temp-buffer (insert-file-contents "/home/user/projects/counter.el") (equal (buffer-string) guest-second-source)) (error "Edited source differs")) (message (concat "GUEST-" "RELOAD-PASS")))', "GUEST-RELOAD-PASS")
-        check("standard directory copy rename and delete APIs", '(progn (make-directory "/home/user/projects/check-dir") (copy-file "/home/user/projects/counter.el" "/home/user/projects/check-dir/copy.el") (rename-file "/home/user/projects/check-dir/copy.el" "/home/user/projects/check-dir/renamed.el") (unless (and (file-attributes "/home/user/projects/check-dir/renamed.el") (not (file-exists-p "/home/user/projects/check-dir/copy.el")) (with-temp-buffer (insert-file-contents "/home/user/projects/check-dir/renamed.el") (equal (buffer-string) guest-second-source)) (member "renamed.el" (directory-files "/home/user/projects/check-dir"))) (error "Directory metadata differs")) (delete-file "/home/user/projects/check-dir/renamed.el") (unless (not (file-exists-p "/home/user/projects/check-dir/renamed.el")) (error "Deleted file remains")) (delete-directory "/home/user/projects/check-dir") (when (file-exists-p "/home/user/projects/check-dir") (error "Deleted directory remains")) (message (concat "GUEST-" "FILES-PASS")))', "GUEST-FILES-PASS")
-        check("original readonly save error and modified data", '(progn (with-temp-buffer (insert "unsaved data") (let (observed) (condition-case condition (write-region (point-min) (point-max) "/usr/share/emacs/site-lisp/emacsos-app.el" nil \'silent) (file-error (setq observed condition))) (unless (and observed (string-match-p "Read-only file system" (error-message-string observed)) (buffer-modified-p) (equal (buffer-string) "unsaved data")) (error "Readonly error or buffer state differs")))) (message (concat "GUEST-" "ERROR-PASS")))', "GUEST-ERROR-PASS")
-        # Independent application instances and their manager lifecycle.
-        check("two independently identified applications", '(progn (setq guest-a (guest-start) guest-b (guest-start)) (unless (and (/= guest-a guest-b) (= 2 (length (emacsos-app-list)))) (error "Instances differ")) (emacsos-processes) (unless (eq major-mode \'emacsos-processes-mode) (error "No process manager")) (message (concat "GUEST-" "APPS-PASS")))', "GUEST-APPS-PASS")
-        check("manager source navigation", '(progn (goto-char (or (text-property-any (point-min) (point-max) \'tabulated-list-id guest-a) (error "Missing row"))) (emacsos-processes-source) (unless (equal buffer-file-name "/home/user/projects/counter.el") (error "Wrong source")) (emacsos-processes) (message (concat "GUEST-" "SOURCE-PASS")))', "GUEST-SOURCE-PASS")
-        check("stop and restart through the manager", '(progn (setq guest-a-count (gethash guest-a guest-counts) guest-b-count (gethash guest-b guest-counts)) (with-current-buffer (format "*Guest run %d*" guest-a) (goto-char (point-max)) (insert "user edit")) (goto-char (or (text-property-any (point-min) (point-max) \'tabulated-list-id guest-a) (error "Missing row"))) (emacsos-processes-stop) (unless (eq (plist-get (emacsos-app-inspect guest-a) :state) \'exited) (error "Stop not complete")) (emacsos-processes-restart) (setq guest-new (plist-get (car (last (emacsos-app-list))) :id)) (run-at-time 2.2 nil (lambda () (if (and (/= guest-new guest-a) (> (gethash guest-b guest-counts) guest-b-count) (> (gethash guest-new guest-counts) 1) (= (gethash guest-a guest-counts) guest-a-count) (not (memq (gethash guest-a guest-timers) timer-list)) (with-current-buffer (format "*Guest run %d*" guest-a) (string-match-p "user edit" (buffer-string)))) (message (concat "GUEST-" "LIFECYCLE-PASS")) (error "Lifecycle integration check failed")))) (message "Lifecycle check armed"))', "GUEST-LIFECYCLE-PASS")
-        guest.evaluate('(kill-emacs 0)', "Runtime exited status=0x0000000000000000")
-        if guest.process.wait(timeout=10) != 33:
-            raise RuntimeError("Guest did not exit successfully through the debug device")
-        checks.append("clean runtime exit")
-        result["passed"] = True
+        with https_fixture() as (certificate, url, nonce):
+            create_disk(disk, certificate)
+            guest = Guest(disk, OUT / "first-boot.transcript")
+            guests.append(guest)
+            guest.wait(b"Your workspace is ready.")
+            result["boot_seconds"].append(round(time.monotonic() - guest.started, 3))
+            assertion(guest, "interactive Linux Emacs as uid 1000",
+                      "(and (eq system-type 'gnu/linux) (= (user-uid) 1000) (equal emacs-version \"30.2\"))")
+            guest.evaluate('(progn (switch-to-buffer "*typing*") (erase-buffer) (message "LINUX-%s" "TYPE"))', "LINUX-TYPE")
+            guest.send(b"typed inside Linux Emacs")
+            assertion(guest, "normal terminal text input", '(equal (buffer-string) "typed inside Linux Emacs")')
+            source = f';;; Probe authored inside the guest.\n(setq linux-probe "{nonce}")\n'
+            guest.evaluate('(progn (find-file "/home/emacs/work/probe.el") (insert %s) (save-buffer) (message "LINUX-%%s" "SAVED"))' % json.dumps(source), "LINUX-SAVED")
+            assertion(guest, "ordinary Emacs save and cleared modified state", '(and (not (buffer-modified-p)) (file-exists-p buffer-file-name))')
+            guest.evaluate('(progn (goto-char (point-max)) (insert %s) (message "LINUX-%%s" "EDITED"))' % json.dumps(";; second revision\n"), "LINUX-EDITED")
+            assertion(guest, "editing creates normal file lock", '(file-symlink-p "/home/emacs/work/.#probe.el")')
+            guest.evaluate('(progn (save-buffer) (message "LINUX-%s" "RESAVED"))', "LINUX-RESAVED")
+            assertion(guest, "backup preserves original source and save releases lock",
+                      '(and (not (file-symlink-p "/home/emacs/work/.#probe.el")) (with-temp-buffer (insert-file-contents "/home/emacs/work/probe.el~") (equal (buffer-string) %s)))' % json.dumps(source))
+            assertion(guest, "saved Elisp executes", f'(progn (load-file "/home/emacs/work/probe.el") (equal linux-probe "{nonce}"))')
+            guest.evaluate('(progn (setq linux-ticks 0 linux-worker (make-process :name "worker" :buffer "*worker*" :command \'("/bin/sh" "-c" "while :; do sleep 1; done") :noquery t) linux-timer (run-at-time 0 0.1 (lambda () (setq linux-ticks (1+ linux-ticks))))) (message "LINUX-%s" "WORKER"))', "LINUX-WORKER")
+            assertion(guest, "timer and command loop progress beside a running worker", '(and (> linux-ticks 0) (process-live-p linux-worker))')
+            guest.evaluate('(progn (kill-process linux-worker) (message "LINUX-%s" "KILL-SENT"))', "LINUX-KILL-SENT")
+            assertion(guest, "worker can be forcibly stopped", '(and (not (process-live-p linux-worker)) (eq (process-status linux-worker) \'signal))')
+            guest.evaluate('(progn (setq linux-fault (make-process :name "fault" :buffer "*fault*" :command \'("/bin/sh" "-c" "kill -SEGV $$") :noquery t)) (message "LINUX-%s" "FAULT-SENT"))', "LINUX-FAULT-SENT")
+            assertion(guest, "worker segmentation fault leaves Emacs alive", "(and (eq (process-status linux-fault) 'signal) (= (process-exit-status linux-fault) 11) (> linux-ticks 1))")
+            assertion(guest, "GnuTLS available", "(progn (require 'url) (require 'gnutls) (require 'nsm) (advice-add 'nsm-query :before (lambda (&rest arguments) (send-string-to-terminal (format \"\\nTLS policy: %s\\n\" (car (last arguments)))))) (gnutls-available-p))")
+            # Configure this disposable acceptance session with a test-only CA,
+            # then restore the distribution CA bundle for the public request.
+            request = ('(progn (setq linux-system-trustfiles gnutls-trustfiles '
+                       'gnutls-trustfiles (list "/home/emacs/work/fixture-ca.pem") '
+                       'gnutls-verify-error t network-security-level \'high nsm-noninteractive t url-request-noninteractive t url-proxy-services nil) '
+                       '(let ((response (url-retrieve-synchronously %s t t))) '
+                       '(unless response (error "No HTTPS response")) '
+                       '(unwind-protect (with-current-buffer response (goto-char (point-min)) '
+                       '(and (= url-http-response-status 200) (search-forward %s nil t))) (kill-buffer response))))')
+            assertion(guest, "HTTPS with certificate verification and unpredictable response",
+                      request % (json.dumps(url), json.dumps(nonce)))
+            assertion(guest, "untrusted HTTPS certificate rejected",
+                      '(progn (setq gnutls-trustfiles nil) (let ((kill-buffer-query-functions nil)) (condition-case failure (progn (open-network-stream "untrusted" nil "10.0.2.2" %d :type \'tls) nil) (error (string-match-p "Certificate validation failed" (error-message-string failure))))))' % urlsplit(url).port)
+            guest.evaluate('(progn (setq gnutls-trustfiles linux-system-trustfiles) (message "LINUX-%s" "TRUST-RESTORED"))', "LINUX-TRUST-RESTORED")
+            if internet_url:
+                assertion(guest, "public DNS and HTTPS",
+                          '(let ((gnutls-verify-error t) (network-security-level \'high) (nsm-noninteractive t) (url-proxy-services nil)) (let ((response (url-retrieve-synchronously %s t t))) (and response (unwind-protect (with-current-buffer response (= url-http-response-status 200)) (kill-buffer response)))))' % json.dumps(internet_url))
+            guest.evaluate('(progn (cancel-timer linux-timer) (message "LINUX-%s" "CLEANED"))', "LINUX-CLEANED")
+            guest.shutdown()
+            guest.close()
+            checks.append("first boot clean unmount and poweroff")
+            result["disk_after_shutdown_sha256"] = digest(disk)
+            guest = Guest(disk, OUT / "second-boot.transcript")
+            guests.append(guest)
+            guest.wait(b"Your workspace is ready.")
+            result["boot_seconds"].append(round(time.monotonic() - guest.started, 3))
+            assertion(guest, "source and backup retained across a new QEMU boot",
+                      '(and (with-temp-buffer (insert-file-contents "/home/emacs/work/probe.el") (equal (buffer-string) %s)) (with-temp-buffer (insert-file-contents "/home/emacs/work/probe.el~") (equal (buffer-string) %s)))' % (json.dumps(source + ";; second revision\n"), json.dumps(source)))
+            assertion(guest, "retained Elisp executes after reboot",
+                      f'(progn (load-file "/home/emacs/work/probe.el") (equal linux-probe "{nonce}"))')
+            guest.shutdown()
+            checks.append("second boot clean unmount and poweroff")
+            result["passed"] = True
     except Exception as error:
         result["error"] = str(error)
         raise
     finally:
-        guest.close()
-        result["transcript_sha256"] = identity.digest(output / f"{label}.transcript")
-        (output / f"{label}-results.json").write_text(json.dumps(result, indent=2) + "\n")
-    print("Guest integration checks passed", flush=True)
-
-
-class Control:
-    """Use a separate UART pipe, never terminal output, for storage barriers."""
-    def __init__(self, directory):
-        self.path = directory / "control"
-        self.session = "0000000000000001"
-        self.request = 0
-        self.pending = bytearray()
-        self.paths = [Path(str(self.path) + suffix) for suffix in (".in", ".out")]
-        for path in self.paths:
-            path.unlink(missing_ok=True)
-            os.mkfifo(path)
-        self.input, self.output = [os.open(path, os.O_RDWR | os.O_NONBLOCK) for path in self.paths]
-
-    def call(self, guest, action):
-        self.request += 1
-        request = f"{self.request:016x}"
-        os.write(self.input, f"EOS1 {self.session} {request} {action}\n".encode())
-        end = time.monotonic() + 30
-        while time.monotonic() < end:
-            guest.pump(0.01)
-            try:
-                self.pending.extend(os.read(self.output, 4096))
-            except BlockingIOError:
-                pass
-            while b"\n" in self.pending:
-                line, _, rest = self.pending.partition(b"\n")
-                self.pending = bytearray(rest)
-                fields = line.decode().split()
-                if len(fields) == 8 and fields[:3] == ["EOS1", self.session, request]:
-                    result = {"state": fields[3], "generation": int(fields[4], 16),
-                              "errno": int(fields[5]), "mounted": fields[6] == "1",
-                              "frozen": fields[7] == "1"}
-                    if result["errno"]:
-                        raise RuntimeError(f"Storage {action} failed: {result}")
-                    return result
-            if guest.process.poll() is not None:
-                raise RuntimeError("Guest exited before storage acknowledgement")
-        raise RuntimeError(f"Storage {action} acknowledgement timed out")
-
-    def close(self):
-        for descriptor in (self.input, self.output):
-            os.close(descriptor)
-        for path in self.paths:
-            path.unlink(missing_ok=True)
-
-
-def storage_main():
-    manifest = validated_manifest()
-    output = OUT / "storage"
-    output.mkdir(exist_ok=True)
-    disk, snapshot = output / "data.img", output / "checkpoint.img"
-    disk.unlink(missing_ok=True)
-    snapshot.unlink(missing_ok=True)
-    qemu.prepare_data(disk, OUT / "data-empty.img")
-    system_hash = identity.digest(OUT / "emacsos.img")
-    checks = []
-    record = {"parent": manifest["parent"], "fork": manifest["fork"],
-              "system_sha256": system_hash, "passed": False, "checks": checks}
-    channel = Control(output)
-    guest = Guest(data=disk, control=channel.path, output=output, label="write")
-    try:
-        guest.wait(b"*scratch*")
-        status = channel.call(guest, "STATUS")
-        if not status["mounted"] or status["frozen"]:
-            raise RuntimeError(f"DATA not mounted normally: {status}")
-        guest.evaluate('(progn (unless (null write-region-inhibit-fsync) (error "Save sync disabled")) (unless (and (file-directory-p "/home/user/projects") (file-directory-p "/home/user") (file-directory-p "/tmp") (file-directory-p "/etc/emacsos") (file-directory-p "/var/lib/emacsos")) (error "Missing DATA directories")) (message (concat "STORE-" "MOUNTED")))', "STORE-MOUNTED")
-        checks.append("fresh guest mounts DATA directories and enables normal save sync")
-        source = '(defun retained-computation () (+ 19 23))\n(provide \'retained)\n'
-        guest.evaluate('(progn (find-file "/home/user/projects/retained.el") (erase-buffer) (insert %s) (save-buffer) (set-file-modes buffer-file-name 416) (kill-buffer) (make-symbolic-link "retained.el" "/home/user/projects/source-link.el") (with-temp-file "/home/user/projects/.#user-data" (insert "ordinary user filename")) (with-temp-file "/home/user/projects/stale.el" (insert "previous content")) (make-symbolic-link (format "%%s@%%s.%%d" (user-login-name) (system-name) (emacs-pid)) "/home/user/projects/.#stale.el") (message (concat "STORE-" "SAVED")))' % json.dumps(source), "STORE-SAVED")
-        checks.append("save source, metadata, links and a real prior-boot lock")
-        guest.evaluate('(progn (find-file "/home/user/projects/retained.el") (setq-local file-precious-flag t) (goto-char (point-max)) (insert ";; Atomic replacement through normal Emacs saving." (string 10)) (save-buffer) (when (buffer-modified-p) (error "Precious save remained modified")) (kill-buffer) (message (concat "STORE-" "PRECIOUS")))', "STORE-PRECIOUS")
-        checks.append("normal precious-file save uses atomic replacement and preserves metadata")
-        guest.evaluate('(progn (with-temp-file "/home/user/retained-note.txt" (insert "home is on DATA")) (with-temp-file "/etc/emacsos/retained.el" (insert "persistent configuration")) (with-temp-file "/var/lib/emacsos/retained-state" (insert "persistent state")) (with-temp-file "/var/log/retained.log" (insert "persistent log")) (with-temp-file "/var/cache/retained-cache" (insert "persistent cache")) (with-temp-file "/etc/passwd" (insert "root:x:0:0:Edited:/home/user:" (string 10))) (with-temp-file "/home/user/projects/cross-directory.txt" (insert "one filesystem")) (setq moved-inode (file-attribute-inode-number (file-attributes "/home/user/projects/cross-directory.txt"))) (let ((previous "/home/user/projects/cross-directory.txt")) (dolist (destination (list "/etc/emacsos/cross-directory.txt" "/var/lib/emacsos/cross-directory.txt" "/tmp/cross-directory.txt")) (rename-file previous destination) (unless (= moved-inode (file-attribute-inode-number (file-attributes destination))) (error "Cross-anchor rename changed identity")) (setq previous destination))) (message (concat "STORE-" "ONE-VOLUME")))', "STORE-ONE-VOLUME")
-        checks.append("all four anchors are writable and cross-anchor rename preserves identity")
-        frozen = channel.call(guest, "FREEZE")
-        if frozen["state"] != "FROZEN" or not frozen["frozen"]:
-            raise RuntimeError(f"No frozen checkpoint: {frozen}")
-        guest.evaluate('(progn (with-temp-buffer (insert "unsaved") (let (observed) (condition-case condition (write-region (point-min) (point-max) "/home/user/projects/frozen.txt") (file-error (setq observed condition))) (unless (and observed (buffer-modified-p)) (error "Frozen writes accepted")))) (message (concat "STORE-" "FROZEN")))', "STORE-FROZEN")
-        guest.evaluate('(progn (dolist (directory (list "/home/user/projects/" "/etc/emacsos/" "/var/lib/emacsos/" "/tmp/")) (with-temp-buffer (insert "frozen data") (let (observed) (condition-case condition (write-region (point-min) (point-max) (concat directory "freeze-denied.txt")) (file-error (setq observed condition))) (unless (and observed (buffer-modified-p)) (error "DATA directory escaped freeze"))))) (message (concat "STORE-" "ALL-FROZEN")))', "STORE-ALL-FROZEN")
-        shutil.copyfile(disk, snapshot)
-        checkpoint_hash = identity.digest(snapshot)
-        checks.append("acknowledged freeze rejects writes and yields a consistent disk copy")
-        thawed = channel.call(guest, "THAW")
-        if thawed["frozen"]:
-            raise RuntimeError("DATA did not thaw")
-        guest.evaluate('(progn (with-temp-file "/home/user/projects/after-copy.txt" (insert "later generation")) (message (concat "STORE-" "THAWED")))', "STORE-THAWED")
-        if identity.digest(snapshot) != checkpoint_hash:
-            raise RuntimeError("Checkpoint copy changed after guest resumed")
-        checks.append("thaw resumes writes without changing the copied generation")
-        guest.evaluate('(kill-emacs 0)', "Runtime exited status=0x0000000000000000")
-        if guest.process.wait(timeout=10) != 33:
-            raise RuntimeError("Writer guest exit failed")
-    except Exception as error:
-        record["error"] = str(error)
-        raise
-    finally:
-        guest.close()
-        channel.close()
-        (output / "results.json").write_text(json.dumps(record, indent=2) + "\n")
-    guest = Guest(data=snapshot, output=output, label="restore")
-    try:
-        guest.wait(b"*scratch*")
-        guest.evaluate('(progn (load-file "/home/user/projects/retained.el") (unless (and (= 42 (retained-computation)) (= 416 (file-modes "/home/user/projects/retained.el")) (equal (file-symlink-p "/home/user/projects/source-link.el") "retained.el") (not (file-exists-p "/home/user/projects/after-copy.txt")) (with-temp-buffer (insert-file-contents "/home/user/projects/.#user-data") (equal (buffer-string) "ordinary user filename"))) (error "Retained data differs")) (message (concat "STORE-" "RESTORED")))', "STORE-RESTORED")
-        checks.append("independent reboot restores checkpoint source, modes and symlinks")
-        guest.evaluate('(progn (unless (and (with-temp-buffer (insert-file-contents "/home/user/retained-note.txt") (equal (buffer-string) "home is on DATA")) (with-temp-buffer (insert-file-contents "/tmp/cross-directory.txt") (equal (buffer-string) "one filesystem")) (not (file-exists-p "/home/user/projects/cross-directory.txt")) (not (file-exists-p "/etc/emacsos/cross-directory.txt")) (not (file-exists-p "/var/lib/emacsos/cross-directory.txt"))) (error "DATA home or temporary files changed")) (message (concat "STORE-" "DIRECTORIES-RESTORED")))', "STORE-DIRECTORIES-RESTORED")
-        checks.append("home and ordinary temporary-directory contents survive independent reboot")
-        guest.evaluate('(progn (dolist (item (list (cons "/etc/emacsos/retained.el" "persistent configuration") (cons "/var/lib/emacsos/retained-state" "persistent state") (cons "/var/log/retained.log" "persistent log") (cons "/var/cache/retained-cache" "persistent cache") (cons "/etc/passwd" (concat "root:x:0:0:Edited:/home/user:" (string 10))))) (unless (with-temp-buffer (insert-file-contents (car item)) (equal (buffer-string) (cdr item))) (error "Configuration or state overwritten on boot"))) (message (concat "STORE-" "CONFIGURATION-RESTORED")))', "STORE-CONFIGURATION-RESTORED")
-        checks.append("edited passwd, system configuration, state, logs and cache survive reboot")
-        guest.evaluate('(progn (setq prior-lock (file-symlink-p "/home/user/projects/.#stale.el")) (find-file "/home/user/projects/stale.el") (goto-char (point-max)) (insert "edited") (unless (and (file-symlink-p "/home/user/projects/.#stale.el") (not (equal prior-lock (file-symlink-p "/home/user/projects/.#stale.el")))) (error "Previous boot lock was reused")) (save-buffer) (kill-buffer) (message (concat "STORE-" "LOCK-RECOVERED")))', "STORE-LOCK-RECOVERED")
-        checks.append("normal Emacs locking replaces stale prior-boot owner safely")
-        guest.evaluate('(kill-emacs 0)', "Runtime exited status=0x0000000000000000")
-        if guest.process.wait(timeout=10) != 33:
-            raise RuntimeError("Restored guest exit failed")
-        if identity.digest(OUT / "emacsos.img") != system_hash:
-            raise RuntimeError("Storage operations changed SYSTEM image")
-        record.update(passed=True, checkpoint_sha256=checkpoint_hash,
-                      data_sha256=identity.digest(disk), restored_sha256=identity.digest(snapshot))
-        checks.append("SYSTEM image remains unchanged")
-    except Exception as error:
-        record["error"] = str(error)
-        raise
-    finally:
-        guest.close()
-        (output / "results.json").write_text(json.dumps(record, indent=2) + "\n")
-    print(f"Storage guest checks passed: {len(checks)}", flush=True)
-
-
-def recovery_main():
-    """Absent or rejected DATA must never silently enable writable RAM files."""
-    manifest = validated_manifest()
-    output = OUT / "recovery"
-    output.mkdir(exist_ok=True)
-    profiles = []
-    record = {"parent": manifest["parent"], "fork": manifest["fork"],
-              "image_sha256": manifest["components"]["build/image/emacsos.img"],
-              "passed": False, "profiles": profiles}
-    try:
-        for name, size in (("absent", None), ("corrupt", qemu.DATA_SIZE),
-                           ("unsupported-size", qemu.DATA_SIZE // 2)):
-            data = None
-            if size is not None:
-                data = output / f"{name}.img"
-                with data.open("wb") as stream:
-                    stream.truncate(size)
-            before = identity.digest(data) if data else None
-            guest = Guest(data=data, output=output, label=name)
-            try:
-                guest.wait(b"DATA unavailable: read-only recovery")
-                guest.wait(b"*scratch*")
-                guest.evaluate('(progn (unless (and (equal (getenv "HOME") "/home/user") (equal (getenv "PWD") "/home/user") (equal (directory-file-name (expand-file-name default-directory)) "/home/user") (equal (directory-file-name (expand-file-name "~/")) "/home/user") (equal (directory-file-name (expand-file-name "~root/")) "/home/user") (not (file-exists-p "/work")) (with-temp-buffer (insert-file-contents "/etc/passwd") (equal (buffer-string) (concat "root:x:0:0:emacsOS:/home/user:" (string 10)))) (with-temp-buffer (insert-file-contents "/etc/group") (equal (buffer-string) (concat "root:x:0:" (string 10))))) (error "Recovery defaults or home unavailable")) (message (concat "RECOVERY-" "DEFAULTS")))', "RECOVERY-DEFAULTS")
-                guest.evaluate('(progn (switch-to-buffer "*Recovery editing*") (insert "recoverable buffer") (unless (and (= (+ 20 22) 42) (file-readable-p "/usr/share/emacs/site-lisp/emacsos-app.el")) (error "Recovery environment unavailable")) (dolist (directory (list "/home/user/projects/" "/etc/emacsos/" "/var/lib/emacsos/" "/tmp/")) (with-temp-buffer (insert "unsaved recovery data") (let (observed) (condition-case condition (write-region (point-min) (point-max) (concat directory "must-not-be-volatile.txt")) (file-error (setq observed condition))) (unless (and observed (string-match-p "Read-only file system" (error-message-string observed)) (buffer-modified-p)) (error "Writable fallback or incorrect recovery error"))))) (message (concat "RECOVERY-" "PASS")))', "RECOVERY-PASS")
-                guest.evaluate('(kill-emacs 0)', "Runtime exited status=0x0000000000000000")
-                if guest.process.wait(timeout=10) != 33:
-                    raise RuntimeError(f"{name} recovery exit failed")
-            finally:
+        for guest in guests:
+            if guest.selector.get_map() is not None:
                 guest.close()
-            if data and identity.digest(data) != before:
-                raise RuntimeError(f"{name} recovery modified rejected DATA")
-            profiles.append({"name": name, "passed": True, "data_sha256": before,
-                             "transcript_sha256": identity.digest(output / f"{name}.transcript")})
-            print(f"PASS {name}: interactive read-only recovery without writable fallback", flush=True)
-        record["passed"] = True
-    except Exception as error:
-        record["error"] = str(error)
-        raise
-    finally:
-        (output / "results.json").write_text(json.dumps(record, indent=2) + "\n")
+        result["transcripts"] = {guest.path.name: digest(guest.path) for guest in guests}
+        result["disk_sha256"] = digest(disk) if disk.exists() else None
+        write_json(OUT / "acceptance.json", result)
+    print("Linux guest acceptance passed", flush=True)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--internet-url", default=os.environ.get("LINUX_INTERNET_URL"))
+    args = parser.parse_args()
+    if args.internet_url and urlsplit(args.internet_url).scheme != "https":
+        parser.error("The internet check requires an https:// URL")
+    check(args.internet_url)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--storage", action="store_true", help="Check DATA across separate guest launches")
-    args = parser.parse_args()
-    if args.storage:
-        storage_main()
-        recovery_main()
-    else:
-        main()
+    main()

@@ -22,16 +22,15 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          submodules: recursive
       - name: Install host test tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang emacs-nox openssl
-      - name: Run file, Lisp, tooling and web server checks
+          sudo apt-get install -y --no-install-recommends openssl
+      - name: Run tooling and web server checks
         run: make test
 
   guest:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Check out the pinned runtime source
@@ -42,18 +41,27 @@ jobs:
       - name: Install the emulator
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends qemu-system-x86
-      - name: Run kernel probes
-        run: make test-probes
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 e2fsprogs openssl
       - name: Build and accept the actual guest
         run: make test-guest
-      - name: Accept persistent files across guest launches
-        run: make test-storage
-      - name: Accept guest TCP and retained HTTP source
-        run: make test-network-guest
+      - name: Install browser test driver
+        run: |
+          npm install --prefix build/web-browser-tools --no-save --package-lock=false playwright@1.56.1
+          build/web-browser-tools/node_modules/.bin/playwright install --with-deps chromium
+      - name: Accept the actual browser guest
+        run: |
+          make web-assets
+          python3 scripts/serve-web.py > build/web-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18082/ >/dev/null; then break; fi
+            sleep 1
+          done
+          make test-browser
       - name: Print source and image acceptance identity
         if: always()
         run: |
-          for record in build/kernel/probe-manifest.json build/network-probe/results.json build/image/manifest.json build/image/guest-results.json build/image/storage/results.json build/image/network/results.json; do
+          for record in build/machine/manifest.json build/machine/acceptance.json build/web-browser/report.json; do
             if test -f "$record"; then cat "$record"; fi
           done

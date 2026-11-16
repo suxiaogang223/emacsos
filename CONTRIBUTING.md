@@ -7,23 +7,15 @@ Unicode tables, names, test data and unchanged third-party sources.
 
 Read the [design](docs/design.md), [roadmap](docs/roadmap.md) and
 [source ownership](docs/source-layout.md) before architectural changes. The
-runtime runs a trusted Emacs with cooperative applications on the fixed QEMU
-profile. All writable files use littlefs DATA at `/etc`, `/home`, `/tmp` and `/var`;
-missing or rejected DATA enters read-only recovery. Describe that bounded
-behavior separately from the bounded numeric IPv4 TCP backend and protected
-processes; see [core acceptance](docs/mvp.md), [storage](docs/storage.md) and
-[networking](docs/network.md). Native kernel TCP, real Emacs and real browser
-acceptance are separate claims; do not imply DNS, TLS or isolation.
+system runs a pinned GNU Emacs on Linux. Native retention and networking do
+not establish browser capabilities; see [acceptance](docs/mvp.md). Keep build,
+boot and actual functional evidence distinct.
 
 ## Source ownership
 
-Initialize `emacs/`, `third_party/littlefs/` and `third_party/lwip/` with
-`git submodule update --init --recursive`. The littlefs submodule pins an official
-upstream commit, as does lwIP; adapters/configuration belong in the parent kernel.
-Update the matching `third_party/littlefs.json` or `third_party/lwip.json` receipt
-together with an intentional pin change. Necessary
-runtime modifications belong to the fork; parent system features and future PAL
-backends belong here. Publish fork commits before updating the parent gitlink.
+Initialize `emacs/` with `git submodule update --init --recursive`. Necessary
+runtime modifications belong to the fork; parent system Elisp, Linux image policy and Web presentation
+belong here. Publish fork commits before updating the parent gitlink.
 Stage the intended pin before contribution checks. CI requires a clean,
 initialized submodule matching that pin; dirty local source is not a published
 handoff. Keep dependencies between fork and parent changes explicit.
@@ -69,12 +61,9 @@ roadmap only when the stated criteria are satisfied. Skills:
 
 ## Contribution checks
 
-Use `make test` for host component checks and `make check` for the full host,
-kernel-probe and native-guest sequence. Compilation uses Docker toolchains;
-host tests additionally need Clang, Emacs and OpenSSL. Worktrees share Docker
-images/layers and keep their generated outputs separate. See
-[build and test](docs/build-and-test.md) for prerequisites and focused commands.
-Guest results belong to the exact committed source and image under test.
+Use `make test` for fast host checks and `make check` for full native validation
+from a clean committed checkout. See [build and test](docs/build-and-test.md)
+for incremental builds, focused checks and optional browser acceptance.
 
 ```sh
 python3 scripts/check-contribution.py --require-clean-submodule

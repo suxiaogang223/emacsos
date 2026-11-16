@@ -1,0 +1,17 @@
+#!/bin/sh
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export TERM=xterm-256color
+export LANG=C.UTF-8
+ulimit -c 0
+status=1
+if test -f /run/emacsos-ready; then
+    /bin/su -s /bin/sh -c \
+        'cd /home/emacs/work && exec emacs -Q -nw -l /usr/share/emacs/site-lisp/emacsos.el' emacs
+    status=$?
+fi
+printf '\nEMACSOS-LINUX-EXIT status=%s\n' "$status"
+sync
+if ! umount /home; then
+    echo 'EMACSOS-LINUX-UNMOUNT-FAILED'
+fi
+poweroff

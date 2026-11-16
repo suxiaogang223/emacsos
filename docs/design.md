@@ -1,264 +1,89 @@
 # System architecture
 
-emacsOS aims to make GNU Emacs the machine's programming and operating
-environment. Standard Elisp APIs are the public interface; file and network
-backends supply actual capabilities. This document describes the selected
-architecture. The first bounded port is
-implemented; [MVP acceptance](mvp.md) defines the exercised guest subset.
+emacsOS makes GNU Emacs the user's programming and operating environment on a
+small Linux system. The browser is the primary presentation target. Standard
+Elisp APIs remain the public interface; Linux and runtime libraries supply
+actual file, network and process behavior.
 
-## Current source and proposed system
+## Selected route
 
-The parent contains BIOS boot, static ELF loading, page mappings/protection,
-serial input/output, PIT/RTC time, readiness waits, a bounded syscall adapter,
-and read-only runtime plus littlefs working files. GNU Emacs executes with its
-matching portable dump. Parent-owned Lisp provides cooperative application
-management. The fixed DATA disk supplies persistence at `/etc`, `/home`, `/tmp`
-and `/var`. A bounded numeric IPv4 TCP backend now uses NE2000 ISA and lwIP;
-[networking](network.md) separates implemented behavior from acceptance gates.
-Kernel-only independent address spaces now provide physical page ownership,
-quotas and reclamation; [memory](memory.md) defines their limits and the next
-process stages. DNS, TLS and isolated execution remain unimplemented. See [storage](storage.md) for disk and
-browser-retention boundaries.
-The fixed-machine profile and limits are in [kernel bootstrap](kernel-bootstrap.md)
-and [files](files.md); the fork itself remains unchanged except provenance.
+Boot an Alpine Linux virtual-machine kernel and a minimal userspace with
+BusyBox init, musl and GNU Emacs built from the pinned 30.2 fork. Init remains
+PID 1 to reap children and coordinate shutdown. One trusted Emacs runs as
+UID 1000 and opens the interactive environment. The parent supplies system
+Elisp and the browser console. No desktop environment or host terminal server
+is needed.
 
-The [browser console](web.md) runs that same fixed-machine image inside a pinned
-QEMU/Wasm runtime, with xterm.js presenting COM1. Its page owns emulator
-startup/restart, keyboard input and display; system and application behavior
-remain in the guest. There is no terminal-server or host Emacs substitute in
-this route. Browser RAM is discarded when the page closes or restarts; completed
-DATA checkpoints are retained separately in IndexedDB for the same origin.
-
-The following diagram shows responsibilities; the network backend is bounded
-by the fixed-machine profile:
+The previous custom C kernel, syscall adapter and cooperative application
+framework have been removed. Linux owns memory management, filesystem and
+device implementation, scheduling and OS processes. Future work concentrates
+on browser display, keyboard input, session lifecycle and Emacs workflows.
 
 ```mermaid
 flowchart TB
-    subgraph environment["1. Emacs environment"]
-      tools["Elisp programs and standard APIs; buffers and Eshell"]
-      runtime["GNU Emacs runtime and command loop"]
-      tools --> runtime
-    end
-    subgraph support["2. Runtime support"]
-      adapter["Static musl + limited Linux x86-64 ABI adapter"]
-      pal["Small typed PAL: console, memory, time/wait, files, streams"]
-      adapter --> pal
-    end
-    subgraph kernel["3. Own C kernel and backends"]
-      core["Memory/resource ownership, events and actual device operations"]
-      backend["Console; readonly runtime and littlefs files; bounded IPv4 TCP"]
-      core --> backend
-    end
-    runtime --> adapter
-    pal --> core
+    browser["Browser controls and xterm.js"] --> serial["QEMU/Wasm serial console"]
+    serial --> emacs["Pinned GNU Emacs and parent system Elisp"]
+    emacs --> linux["Linux: files, sockets, processes and devices"]
+    linux --> session["Session data disk"]
 ```
 
-These are three functional responsibilities, with named implementation pieces;
-they do not require three new frameworks or independently isolated components.
+## Shared system, distinct delivery profiles
 
-## First-port decision
+Both profiles boot the same Linux kernel and initramfs. The image contains a
+matching Emacs executable, portable dump, installed Lisp and data from one
+build. `system/packages.lock` pins the guest package closure;
+`system/build-packages.lock` pins the compiler closure. The base container is
+digest-pinned. Package availability still depends on Alpine repositories;
+byte-identical rebuilding is not claimed.
 
-Use a statically linked GNU Emacs with musl, served by a limited Linux x86-64
-syscall compatibility adapter in our own kernel. The PAL sits below that
-adapter and defines backend semantics. This is a bounded compatibility target,
-not a Linux kernel, full Linux userspace or general Unix process environment.
-The MVP validates this route for its fixed machine and exercised paths.
-
-The initial build profile is terminal-only, using interpreted and bytecompiled
-Lisp. GUI, native compilation, Lisp threads, TLS/HTTPS and external helpers are
-deferred; [runtime build](runtime-build.md) pins configure options and dependencies.
-Functions remaining in a build still need a backend or explicit unsupported
-behavior; the profile does not imply all unsupported functions disappear.
-
-This route retains upstream libc/runtime startup and reduces the initial Emacs
-port surface. It still requires executable loading, startup-stack and libc
-thread-local storage (TLS) setup,
-memory operations, readable runtime files, terminal behavior and event waits.
-Disabling Lisp threads or transport encryption does not remove libc
-thread-local storage and errno initialization. A generic read/write interface
-cannot replace them. A direct Emacs C platform
-port or replacement libc is deferred because it expands the initial integration
-and maintenance work. See [runtime-port requirements](runtime-port.md).
-
-The adapter translates syscall arguments, descriptors and error numbers into
-PAL operations. It must not hide unsupported behavior with success-only stubs.
-Kernel/backends expose typed operations without Linux syscall layouts; the
-adapter consumes those operations. New Elisp wrappers are unnecessary when
-standard functions can use the supported runtime path.
-
-## Layer ownership
-
-| Responsibility | Owns | Does not imply |
+| Profile | Devices and data | Evidence boundary |
 | --- | --- | --- |
-| Emacs environment | Standard Elisp APIs, evaluation, buffers, loading, conditions, command loop and tool clients. | A backend because its function exists; OS processes because a connection object exists. |
-| Runtime support | Static musl startup, bounded ABI translation and typed PAL capability/error/lifetime contracts. | Full Linux compatibility, replacement libc or a generic resource broker. |
-| Own kernel/backends | Real memory/device access, resource tables, bounds and readiness delivery. | Protection, scheduling or durability before those mechanisms exist. |
+| Native QEMU | 1 GiB RAM, COM1, virtio home disk, user-mode network | Real guest acceptance including clean two-boot retention and synchronous HTTPS |
+| Browser QEMU/Wasm | 1 GiB RAM, COM1, fresh virtio session disk, network disabled | Browser boot, keyboard, file and lifecycle acceptance; no storage retention or networking claim |
 
-Kernel, adapter and future PAL code belong to the parent repository. Necessary
-Emacs runtime changes belong to the pinned fork. Future system Elisp and its
-tests belong to the parent. Build-time placement inside installed Emacs Lisp
-does not change source ownership; see [source layout](source-layout.md).
+A template disk is copied into each browser machine's memory. Guest writes do
+not mutate the served template or the native user's disk. Refreshing creates
+a fresh machine and discards that copy. Native writes target a separate
+host-backed disk and are tested across orderly shutdown and reopening.
 
-## Capability contracts
+## Responsibilities and trust
 
-Start with the capabilities needed before interactive Emacs; grow typed file
-and network operations from working backends. Concrete bootstrap contracts and
-bounds are in the kernel/file headers and
-implementation documents; broader operations remain design requirements.
-
-| Capability | Required semantics |
+| Component | Owns |
 | --- | --- |
-| Console | Byte input/output, partial transfer, terminal attributes needed by Emacs, readiness and real device errors. |
-| Memory | Available/reserved ranges; aligned allocations/maps with explicit size, lifetime, release and failure rules; define any supported protection semantics honestly. |
-| Time/wait | Monotonic time, absolute deadlines, readiness sets, timeout and interruption outcomes; define wake/recheck behavior. |
-| Runtime files | Read-only lookup, metadata, open/read/seek/map or a documented equivalent sufficient for executable, dump, Lisp and data loading. |
-| Working files | Typed littlefs file/directory operations, creation flags, offsets, metadata, rename, cleanup and synchronization. |
-| Network streams | Bounded numeric IPv4 TCP: pending/connected/failed state, byte I/O, readiness, EOF, timeout, half-close and close; see network.md. |
+| Linux and installed libraries | Hardware support, memory, filesystems, sockets, OS process execution and errors |
+| BusyBox init and parent boot policy | Mounts, account/session startup, child reaping and shutdown |
+| GNU Emacs | Evaluation, buffers, command loop and standard file/process/network APIs |
+| Parent system Elisp | Welcome workspace and user-facing workflows |
+| Browser | Terminal rendering/input, loading feedback, machine controls and errors |
 
-Share read/write/close/wait conventions where meaningful. Keep directory
-iteration, rename and connection setup typed rather than forcing them into a
-universal operation bag. Do not add a general resource registry or plugin
-framework before these concrete contracts need one.
+An external worker has a separate Linux address space. That does not sandbox
+applications sharing a UID or turn buffers into independent processes.
+Non-returning Lisp, garbage collection or a blocking C operation can still
+stall the main Emacs. No application isolation, enforced resource quotas,
+multi-user policy or real-time response guarantee is claimed.
 
-The following operation families are a **design sketch**, not implemented C
-signatures or a committed binary ABI:
+The browser observes readiness and exit diagnostics on the real serial
+stream. It does not implement application behavior in JavaScript. The HTTP
+server serves allowlisted static assets only; it has no terminal-server,
+upload or command-execution endpoint.
 
-```text
-console_read / console_write / console_attributes
-memory_map / memory_unmap
-clock_monotonic / wait_ready(interests, absolute_deadline)
-file_open / file_read / file_write / file_seek / file_metadata / file_sync
-file_rename / file_remove / directory_open / directory_next
-stream_connect / stream_read / stream_write / stream_take_error
-close_file / close_directory / close_stream
-```
+## Persistence and networking
 
-Every acquired handle has one recorded owner and defined transfer/duplication
-rules. Borrowed buffers remain valid for the operation's documented duration;
-asynchronous ownership must be explicit. Events carry identity/generation
-sufficient to reject stale events after close or handle reuse. The first port
-can keep simple owned synchronous operations and nonblocking readiness rather
-than hidden background pointer retention. Bound handle counts and queues;
-failed acquisition releases
-partial resources.
+Native retention means a normal Emacs save followed by guest synchronization,
+successful home-disk unmount, QEMU poweroff and reopening the same disk. It
+establishes neither power-loss durability nor crash recovery. Browser
+retention requires a separate synchronization and export/store/reopen design.
 
-A positive byte count reports progress and can be shorter than requested.
-For a nonzero read request, distinguish zero-byte EOF from would-block and a
-real error; a zero-length request alone proves no EOF. No-progress writes need
-an explicit would-block/error outcome rather than an infinite retry. The
-adapter preserves those distinctions as appropriate Emacs conditions/events.
+Native networking uses QEMU's user backend. Browser guest networking is
+disabled until an explicit transport is implemented and accepted. Browser
+fetches of system assets are host presentation activity. HTTPS additionally
+requires the runtime feature and certificate validation; having a socket API
+alone proves neither. Async HTTPS needs its own acceptance rather than being
+inferred from a synchronous request.
 
-Close consumes the caller's handle even if final cleanup reports an error;
-retrying that same handle is invalid. Duplication, if supported, adds a reference
-and only final release destroys the underlying resource. Preserve earlier I/O
-failure and separately report final cleanup failure as the documented operation
-requires. File close is not inherently a durable-storage guarantee.
+## Next focus
 
-## Boot and runtime loading
-
-The implemented fixed-machine boot chain follows these requirements:
-
-1. BIOS loads the kernel; x86-64 entry establishes the fixed 1 GiB identity map
-   and stack. This is a QEMU machine contract, not general RAM discovery.
-2. Kernel initialization accounts for available RAM and reserves page tables,
-   kernel sections, stacks, runtime-image backing and future loaded regions.
-   Establish console, memory, monotonic time/wait and read-only bootstrap files.
-3. Load a supported static Emacs ELF, validating segments, sizes, alignment,
-   range arithmetic, overlap and entry placement. Define its initial ABI stack,
-   arguments/environment and required libc thread-local storage startup state.
-4. Expose the matching portable dump, Lisp and runtime data through bootstrap
-   file operations. A read-only image is required before writable user files;
-   it is not a persistent working filesystem.
-5. Enter a controlled base initialization that avoids accidental user/site
-   startup and reaches the command loop. Only then claim interactive Elisp.
-
-The executable, portable dump, source/version, Lisp and runtime data must come
-from a matching build, recorded by an artifact manifest. Source pins alone do
-not identify a built runtime. The exact toolchain, dump configuration, image
-encoding and controlled startup arguments must be selected and validated during
-the port. Do not combine an old dump with new dumped Lisp or a new executable.
-
-## Data and event flow
-
-A supported file read follows Elisp file API → Emacs/libc → supported ABI operation
-→ typed PAL file operation → backend. Data/count/error returns along that path;
-backend limits and original failures remain visible. Littlefs is the only
-writable backend. F1 projects one DATA volume at `/etc`, `/home`, `/tmp` and `/var`, with file sync and ATA flush in the guest. Missing or rejected
-DATA leaves those anchors read-only; it never selects a writable RAM fallback.
-Browser retention additionally needs a frozen copy and a
-completed IndexedDB transaction. A write or successful close alone does not
-establish retention; see [storage semantics](storage.md).
-
-Input and connection readiness follow backend → kernel event/wait state → ABI
-wait result → Emacs command loop → filters, sentinels or Lisp callbacks. Waiting
-must check readiness and arm/recheck without losing events between those steps.
-Use level-style readiness that remains observable while its condition holds.
-A ready result is a hint to retry the typed nonblocking operation, not ownership
-of bytes or proof the next call cannot would-block. Deadlines use monotonic time
-and must define units, overflow and timeout ordering.
-
-Callbacks return promptly. A long Lisp computation or C call can delay input,
-timers and network handlers; there is no CPU latency or forced-cancellation
-guarantee. No new scheduler is required to begin event-driven file/network
-programs. An Emacs connection process object, filter or sentinel is not an
-independent OS process.
-
-## Trust and failure scope
-
-Initially one trusted Emacs and the kernel share a runtime/address-space design;
-the initial shared privileged runtime is not a security boundary. No protected
-user process, independent thread execution or fault isolation is
-promised. Invalid-pointer checks needed for correctness do not by themselves
-supply isolation. A runtime fault can stop the system; explicit errors and
-resource cleanup cover only paths that retain control.
-
-Accounts, service managers, durable startup snapshots, scheduling experiments
-and protected-process implementation are later stages. The browser console
-provides presentation, DATA retention controls and a same-origin Ethernet
-bridge to a private headless QEMU SLIRP session. Guest TCP/IP stays in lwIP;
-[networking](network.md) documents host access and separate browser acceptance.
-Do not restore their previous implementations implicitly. Buffers should be clients of working APIs
-when those tools are introduced.
-
-## Application and process model
-
-Applications have code/entry contracts; each managed invocation has a distinct
-run identity, lifecycle, context and explicit owned/borrowed/shared resources.
-Entry return ends startup; explicit finish and a callback-unwind cleanup barrier
-determine terminal completion. Stop request is not completed exit.
-The A0 MVP adds trusted cooperative instances on the interactive runtime.
-A buffer is their tool/view,
-not an execution unit; GNU network process objects are connections rather than
-kernel processes. Standard file/network APIs remain the common public surface.
-
-The architecture also reserves a real kernel process model: execution context,
-address-space identity, scheduling, enforced limits and exit reclamation. K0
-implements it later; only independent execution can forcibly stop a hung app
-without relying on its returning Lisp callback. The first shared privileged
-runtime provides none of those boundaries. Instance tracking is cleanup policy,
-not authority over ambient APIs or the shared heap.
-
-[The application/process model](process-model.md) defines minimal management,
-context propagation, late-event suppression, bounded communication and the
-implemented `*Processes*` MVP client. It adds no automatic services or startup
-framework
-and does not gate basic file/network capability work.
-
-## Decisions and open gates
-
-| Status | Topic | Decision or gate |
-| --- | --- | --- |
-| MVP validated | First runtime port | Static Emacs + musl + bounded ABI adapter; actual guest acceptance, not general compatibility. |
-| Selected | Public API | Standard Elisp evaluation/file/network APIs; document the supported subset. |
-| Selected | Bootstrap ordering | Read-only runtime files and memory/time/wait precede interactive Emacs; working files follow. |
-| Implemented subset | Concrete interfaces | Bootstrap operations and readonly namespace and littlefs file backend; see kernel-bootstrap.md and files.md. |
-| MVP validated | Runtime artifacts | Pinned build, matching executable/dump/archive, controlled startup, real terminal input and timers. |
-| Implemented: F1 | DATA retention | Fixed 64 MiB littlefs at `/etc`, `/home`, `/tmp`, `/var`, guest sync/ATA flush, frozen browser checkpoints and optional import/export; see storage.md for scope. |
-| Implemented presentation | Browser console | QEMU/Wasm runs the current image; xterm.js exposes COM1, while COM2 supplies DATA checkpoint barriers. Guest network acceptance remains separate from presentation. |
-| N0 proved; N1 subset validated | Network transport and streams | NE2000 ISA + lwIP NO_SYS IPv4 TCP; native QEMU user networking and automatic browser WebSocket/SLIRP bridge. Actual native and pinned-Wasm Emacs TCP/file acceptance pass separately; see network.md. |
-| MVP subset | Trusted application instances | Lifecycle/context, explicit ownership and management implemented; messaging/subscriptions/deadline waits remain future work. |
-| Planned: K0 | Kernel processes | After runtime/ownership contracts: independent execution/address spaces, scheduling, enforced limits and exit cleanup; no implementation yet. |
-| Deferred | Other expansion | Direct libc replacement, runtime latency optimization, broad Unix subprocess compatibility and service frameworks. |
-
-[The roadmap](roadmap.md) turns these gates into staged work. The MVP validates
-the initial port; later capabilities retain separate gates.
+Prioritize reliable browser boot, clear status, keyboard/focus behavior and a
+usable workspace. Follow with retained user files and browser transport, each
+with explicit failure and lifetime contracts. Keep system policy outside the
+Emacs fork and introduce new frameworks only for concrete application needs.

@@ -1,0 +1,3 @@
+::sysinit:/etc/emacsos/boot
+ttyS0::once:/etc/emacsos/start-emacs
+::shutdown:/bin/sync

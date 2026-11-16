@@ -1,7 +1,6 @@
-import { BrowserDisk } from "./storage.js";
 // The browser hosts one real emulated machine; application state stays in Emacs.
 const element = id => document.getElementById(id);
-const buttons = ["command-key", "cancel-key", "eval-key"].map(element);
+const buttons = ["command-key", "cancel-key", "eval-key", "files-key", "shell-key"].map(element);
 const vendor = new URL("./vendor/", import.meta.url);
 let state = "off";
 let initializationStarted = false;
@@ -11,57 +10,7 @@ let terminal;
 let machine;
 let slave;
 let observed = "";
-let storageAttached = false;
-let networkSocket;
-function networkView(next, message) {
-    document.documentElement.dataset.networkState = next;
-    element("network-status").textContent = message;
-}
-function closeNetwork() {
-    if (networkSocket) {
-        networkSocket.close();
-        networkSocket = undefined;
-    }
-    networkView("offline", "Offline");
-}
-async function networkConfiguration() {
-    networkView("connecting", "Checking network…");
-    try {
-        const response = await fetch(new URL("./network", import.meta.url), { signal: AbortSignal.timeout(3000) });
-        if (response.ok && (await response.json()).available === true) {
-            const endpoint = new URL("./network", import.meta.url);
-            endpoint.protocol = location.protocol === "https:" ? "wss:" : "ws:";
-            networkView("connecting", "Connecting…");
-            return endpoint.href;
-        }
-    } catch { /* Static hosting and an unavailable network still permit offline boot. */ }
-    networkView("offline", "Offline · files and Lisp remain available");
-    return undefined;
-}
 const decoder = new TextDecoder();
-function storageView(disk) {
-    document.documentElement.dataset.storageState = disk.state;
-    element("data-status").dataset.state = disk.state;
-    element("data-status").textContent = disk.message;
-    for (const id of ["disk-import", "disk-new"]) element(id).disabled =
-        initializationStarted || disk.busy || Boolean(disk.preparing) || ["loading", "starting"].includes(state);
-    element("boot").disabled = !(state === "off" || (state === "failed" && retryable)) || disk.busy || Boolean(disk.preparing);
-    element("reset").disabled = state === "off" || disk.busy;
-    for (const id of ["disk-export", "disk-save"]) element(id).disabled = !disk.mounted || disk.busy || disk.unknown || disk.frozen || Boolean(disk.healthError);
-    element("disk-resume").hidden = !disk.unknown && !disk.frozen;
-    element("disk-resume").disabled = disk.busy;
-    element("disk-discard").hidden = !initializationStarted;
-    element("disk-discard").disabled = disk.busy;
-}
-const disk = new BrowserDisk(storageView);
-function startStorage() {
-    if (!machine || state !== "running" || storageAttached) return;
-    storageAttached = true;
-    disk.attach(machine).catch(storageError);
-}
-function storageError(error) {
-    disk.emit("error", error instanceof Error ? error.message : String(error));
-}
 
 function render(next, message, error = "") {
     state = next;
@@ -72,7 +21,6 @@ function render(next, message, error = "") {
     element("boot").disabled = !(state === "off" || (state === "failed" && retryable));
     element("reset").disabled = state === "off";
     for (const button of buttons) button.disabled = state !== "running";
-    storageView(disk);
     if (terminal) terminal.options.disableStdin = state !== "running";
     element("idle-screen").hidden = Boolean(terminal) || !["off", "failed"].includes(state);
     element("boot-progress").hidden = !["loading", "starting"].includes(state);
@@ -80,7 +28,6 @@ function render(next, message, error = "") {
 }
 
 function fail(error) {
-    closeNetwork();
     const reason = error instanceof Error ? error.message : String(error);
     render("failed", initializationStarted ? "Machine error. Restart to try again." : "Power-on failed. You can retry.", reason);
     console.error(error);
@@ -90,23 +37,46 @@ function observe(bytes) {
     const text = typeof bytes === "string" ? bytes : decoder.decode(bytes, { stream: true });
     observed = (observed + text).slice(-4096);
     if (["exited", "failed"].includes(state)) return;
-    const exit = observed.match(/\r\nRuntime exited status=(0x[0-9a-fA-F]{16})\r\n/);
+    const exit = observed.match(/\r?\nEMACSOS-LINUX-EXIT status=(\d+)\r?\n/);
     if (exit) {
-        closeNetwork();
-        render("exited", `Emacs exited (${exit[1]}). Restart for a fresh machine.`);
-    } else if (/\r\n(?:PANIC: |FAULT vector=)/.test(observed)) {
+        render("exited", exit[1] === "0" ? "Session ended. Restart to begin again." : `Emacs stopped (${exit[1]}). Restart to try again.`);
+    } else if (/(?:Kernel panic - not syncing:|Oops:)/.test(observed)) {
         fail(new Error("The guest stopped with a kernel fault. The terminal contains its diagnostic."));
-    } else if (state === "starting" && observed.includes("*scratch*")) {
-        render("running", "Emacs ready · COM1 · 80 × 24");
+    } else if (state === "starting" && observed.includes("Your workspace is ready.")) {
+        render("running", "Ready · your Lisp computer");
         element("screen-caption")?.replaceChildren(document.createTextNode("GNU Emacs 30.2 · emacsOS"));
         terminal.focus();
-        startStorage();
     }
 }
 
-async function bootImage() {
-    const response = await fetch(new URL("./emacsos.img", import.meta.url));
-    if (!response.ok) throw new Error(`Boot disk request failed (${response.status}). Build the system image first.`);
+async function bootFiles() {
+    const response = await fetch(new URL("./build.json", import.meta.url));
+    if (!response.ok) throw new Error("The system is unavailable. Run make build and retry.");
+    const manifest = await response.json();
+    const names = ["vmlinuz", "initramfs.cpio.gz", "data-template.ext4"];
+    const progress = new Map(names.map(name => [name, { size: 0, total: 0 }]));
+    const controller = new AbortController();
+    try {
+        return await Promise.all(names.map(async name => {
+            const bytes = await download(name, progress, controller.signal);
+            const actual = await checksum(bytes);
+            if (actual !== manifest.artifacts?.[name]) throw new Error(`System checksum mismatch (${name}). Rebuild and retry.`);
+            return { name, bytes };
+        }));
+    } catch (error) {
+        controller.abort();
+        throw error;
+    }
+}
+
+async function checksum(bytes) {
+    const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+    return Array.from(hash, byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function download(name, progress, signal) {
+    const response = await fetch(new URL(`./${name}`, import.meta.url), { signal });
+    if (!response.ok) throw new Error(`System download failed (${response.status}). Retry Power.`);
     const total = Number(response.headers.get("Content-Length"));
     if (!response.body || !Number.isSafeInteger(total) || total <= 0) return response.arrayBuffer();
     const reader = response.body.getReader();
@@ -117,9 +87,11 @@ async function bootImage() {
         if (done) break;
         chunks.push(value);
         size += value.byteLength;
-        element("boot-progress").value = Math.min(40, size / total * 40);
+        progress.set(name, { size, total });
+        const values = [...progress.values()];
+        element("boot-progress").value = 40 * values.reduce((sum, item) => sum + (item.total ? item.size / item.total : 0), 0) / values.length;
     }
-    if (size !== total) throw new Error("The boot disk download was incomplete. Retry Power.");
+    if (size !== total) throw new Error("The system download was incomplete. Retry Power.");
     const bytes = new Uint8Array(size);
     let offset = 0;
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
@@ -154,7 +126,7 @@ async function start() {
         if (typeof Terminal !== "function" || typeof openpty !== "function") {
             throw new Error("Terminal assets are unavailable. Run make web-assets and reload.");
         }
-        const [image, bios, network] = await Promise.all([bootImage(), biosPackage(), networkConfiguration(), disk.prepare()]);
+        const [files, bios] = await Promise.all([bootFiles(), biosPackage()]);
         terminal = new Terminal({
             cols: 80, rows: 24, cursorBlink: true, macOptionIsMeta: true,
             fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 16,
@@ -171,40 +143,22 @@ async function start() {
         terminal.options.disableStdin = true;
         const moduleUrl = new URL("out.js", vendor).href;
         const config = {
-            arguments: ["-M", "pc", "-m", "1G",
-                ...(network ? ["-netdev", "socket,id=network,connect=127.0.0.1:1",
-                    "-device", "ne2k_isa,netdev=network,iobase=0x300,irq=9,mac=52:54:00:12:34:56"] : ["-nic", "none"]),
-                "-display", "none", "-monitor", "none",
-                "-serial", "stdio", "-chardev", "pipe,id=control,path=/control", "-serial", "chardev:control",
-                "-L", "/pack-rom", "-accel", "tcg,tb-size=64",
-                "-drive", "file=/emacsos.img,format=raw,if=ide,index=0,media=disk",
-                "-drive", "file=/data.img,format=raw,if=ide,index=1,media=disk"],
+            arguments: ["-M", "pc", "-m", "1G", "-nic", "none", "-display", "none", "-monitor", "none",
+                "-serial", "stdio", "-L", "/pack-rom", "-accel", "tcg,tb-size=64",
+                "-kernel", "/vmlinuz", "-initrd", "/initramfs.cpio.gz",
+                "-append", "console=ttyS0,115200 rdinit=/init panic=-1 quiet",
+                "-drive", "file=/data-template.ext4,format=raw,if=virtio", "-no-reboot"],
             locateFile: path => new URL(path, vendor).href,
             mainScriptUrlOrBlob: moduleUrl,
             getPreloadedPackage: () => bios,
             pty: slave, preRun: [],
             onExit: code => {
-                closeNetwork();
                 if (state === "failed") return;
                 if (code) fail(new Error(`Emulator exited unexpectedly (${code}).`));
                 else render("exited", "Emulator exited. Restart for a fresh machine.");
             },
             onAbort: reason => fail(new Error(`Emulator aborted: ${reason}`)),
         };
-        if (network) {
-            config.websocket = { url: network, subprotocol: "binary" };
-            const BrowserSocket = window.WebSocket;
-            window.WebSocket = class extends BrowserSocket {
-                constructor(url, protocols) {
-                    super(url, protocols);
-                    if (new URL(url, location.href).href !== network) return;
-                    networkSocket = this;
-                    this.addEventListener("open", () => networkView("connected", "Network link connected"));
-                    this.addEventListener("close", () => networkView("disconnected", "Disconnected · restart to reconnect"));
-                    this.addEventListener("error", () => networkView("disconnected", "Network unavailable · restart to retry"));
-                }
-            };
-        }
         // The upstream BIOS loader attaches its package callbacks to this object.
         window.Module = config;
         initializationStarted = true;
@@ -232,11 +186,11 @@ async function start() {
             }),
         ]);
         config.preRun.push(module => {
-            module.FS.writeFile("/emacsos.img", image instanceof Uint8Array ? image : new Uint8Array(image), { canOwn: true });
-            disk.install(module.FS);
+            for (const { name, bytes } of files) {
+                module.FS.writeFile(`/${name}`, bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), { canOwn: true });
+            }
         });
         machine = await initialize(config);
-        startStorage();
         raw();
         // The bridge's poll/read must report would-block instead of fake EOF.
         const streams = machine.TTY.stream_ops;
@@ -267,42 +221,16 @@ function send(data) {
 }
 
 element("boot").addEventListener("click", start);
-element("reset").addEventListener("click", async () => {
-    if (initializationStarted && !window.confirm("Save DATA and restart? Unsaved buffer contents will be lost.")) return;
-    try {
-        if (initializationStarted) await disk.checkpoint({ restart: true });
-        approvedReload = true;
-        window.location.reload();
-    } catch (error) { storageError(error); }
-});
-element("disk-discard").addEventListener("click", () => {
-    if (!window.confirm("Discard pending DATA changes and restart? Only the last completed browser checkpoint will return.")) return;
+element("reset").addEventListener("click", () => {
+    if (initializationStarted && !window.confirm("Restart this machine? All temporary files and unsaved work will be lost.")) return;
     approvedReload = true;
     window.location.reload();
 });
-element("disk-import").addEventListener("click", () => element("disk-file").click());
-element("disk-file").addEventListener("change", async event => {
-    const file = event.target.files[0];
-    event.target.value = "";
-    if (file) {
-        disk.busy = true; storageView(disk);
-        try { await disk.import(file); } catch (error) { storageError(error); }
-        finally { disk.busy = false; storageView(disk); }
-    }
-});
-element("disk-new").addEventListener("click", async () => {
-    if (!window.confirm("Stage a new empty DATA disk? The retained disk is replaced only after its guest mount and checkpoint succeed.")) return;
-    disk.busy = true; storageView(disk);
-    try { await disk.newDisk(); } catch (error) { storageError(error); }
-    finally { disk.busy = false; storageView(disk); }
-});
-element("disk-export").addEventListener("click", () => disk.checkpoint({ exportImage: true }).catch(storageError));
-element("disk-save").addEventListener("click", () => disk.checkpoint().catch(storageError));
-element("disk-resume").addEventListener("click", () => disk.recover().catch(storageError));
-window.addEventListener("pagehide", () => { disk.close(); closeNetwork(); });
 element("command-key").addEventListener("click", () => send("\x1bx"));
 element("cancel-key").addEventListener("click", () => send("\x07"));
 element("eval-key").addEventListener("click", () => send("\x1b:"));
+element("files-key").addEventListener("click", () => send("\x18d"));
+element("shell-key").addEventListener("click", () => send("\x1bxeshell\r"));
 element("fullscreen").addEventListener("click", async () => {
     try {
         if (document.fullscreenElement) await document.exitFullscreen();
@@ -326,4 +254,4 @@ window.addEventListener("error", event => {
 window.addEventListener("unhandledrejection", event => {
     if (initializationStarted && ["starting", "running"].includes(state)) fail(event.reason);
 });
-render("off", "Power off · DATA is local");
+render("off", "Power off · files are temporary");

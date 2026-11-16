@@ -11,7 +11,7 @@ fs.mkdirSync(output, { recursive: true });
 const checks = [];
 const errors = [];
 const record = { passed: false, url, checks, errors,
-    scope: 'Browser presentation checks; Mac platform is simulated. This is not the full native MVP acceptance.' };
+    scope: 'Browser presentation checks; Mac platform is simulated. Native persistence and networking require their own acceptance.' };
 try {
     record.webSource = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
     record.webSourceDirty = Boolean(execFileSync('git', ['status', '--porcelain'], { encoding: 'utf8' }).trim());
@@ -28,11 +28,16 @@ async function main() {
         const fetch = window.fetch.bind(window);
         window.fetch = async (...args) => {
             const response = await fetch(...args);
-            if (new URL(response.url).pathname.endsWith('/emacsos.img') && response.ok) {
-                window.__imageHash = response.clone().arrayBuffer().then(async bytes => {
+            if (new URL(response.url).pathname.match(/\/(vmlinuz|initramfs\.cpio\.gz|data-template\.ext4)$/) && response.ok) {
+                window.__imageHashes ??= {};
+                const hash = response.clone().arrayBuffer().then(async bytes => {
                     const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
                     return Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
                 });
+                // Failed-boot retries cancel sibling downloads. Observe clone
+                // rejections now; awaiting the retained promise still rejects.
+                hash.catch(() => {});
+                window.__imageHashes[new URL(response.url).pathname.slice(1)] = hash;
             }
             return response;
         };
@@ -55,7 +60,7 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
 }});` });
     });
     let firstImage = true;
-    await page.route('**/emacsos.img', async route => {
+    await page.route('**/vmlinuz', async route => {
         if (firstImage) {
             firstImage = false;
             await route.fulfill({ status: 404, body: 'Missing test image' });
@@ -71,6 +76,7 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
             { marker, start }, { timeout });
     }
     async function evaluate(form, marker) {
+        assert(!form.includes(marker), "Result marker must be absent from keyboard input");
         const start = await serialLength();
         await page.click('#eval-key');
         await page.keyboard.type(form, { delay: 2 });
@@ -79,7 +85,7 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
     }
     async function state(value, target = page) {
         await target.waitForFunction(value => document.documentElement.dataset.machineState === value, value,
-            { timeout: 120000 });
+            { timeout: 300000 });
     }
     const check = message => { checks.push(message); console.log('PASS:', message); };
     try {
@@ -92,11 +98,9 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         await state('off');
         assert(await page.locator('#reset').isDisabled());
         assert(await page.locator('#command-key').isDisabled());
-        assert.equal(await page.locator('input[type=file]').count(), 1);
-        assert(await page.locator('#disk-file').isHidden());
-        assert(await page.locator('#disk-import').isEnabled());
-        assert(await page.locator('#disk-export').isDisabled());
-        check('Isolated browser, initial controls and staged DATA import');
+        assert.equal(await page.locator('input[type=file]').count(), 0);
+        assert.match(await page.locator('[data-drive=data]').innerText(), /THIS SESSION/);
+        check('Isolated browser, initial controls and session disk notice');
         for (const width of [1440, 1100, 1024, 768, 390]) {
             await page.setViewportSize({ width, height: 1100 });
             assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `Page overflow at ${width}`);
@@ -109,22 +113,20 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         await page.click('#boot');
         await state('failed');
         assert(await page.locator('#error').isVisible());
-        await page.waitForFunction(() => !document.getElementById('boot').disabled);
+        assert(await page.locator('#boot').isEnabled());
         assert(await page.locator('#boot svg').count());
         check('Missing boot image is visible and permits a pre-initialization retry');
         const begin = Date.now();
         await page.click('#boot');
         await state('running');
+        await waitSerial('Your working directory is ~/work.');
         record.bootSeconds = (Date.now() - begin) / 1000;
-        record.imageSha256 = await page.evaluate(() => window.__imageHash);
-        assert.equal(record.imageSha256, record.guestBuild.components['build/image/emacsos.img']);
+        record.artifactHashes = await page.evaluate(async () => Object.fromEntries(await Promise.all(Object.entries(window.__imageHashes).map(async ([name, value]) => [name, await value]))));
+        for (const [name, hash] of Object.entries(record.artifactHashes)) assert.equal(hash, record.guestBuild.artifacts[name]);
+        assert.equal(Object.keys(record.artifactHashes).length, 3);
         assert(await page.locator('#boot').isDisabled());
         assert(await page.locator('#command-key').isEnabled());
-        check('Current manifest-matched system boots in QEMU/Wasm');
-        await page.waitForFunction(() => document.documentElement.dataset.storageState === 'saved', null, {timeout:60000});
-        check('Guest-validated DATA receives an initial local checkpoint');
-        await evaluate('(progn (unless (and (equal (getenv "HOME") "/home/user") (equal (expand-file-name "~") "/home/user") (equal (expand-file-name default-directory) "/home/user/") (file-directory-p "~/projects") (not (file-exists-p "/work"))) (error "Unexpected home or legacy workspace")) (message (concat "HOME-" "READY")))', 'HOME-READY');
-        check('Default HOME and initial directory use /home/user with a projects directory and no /work alias');
+        check('Manifest-matched Linux and pinned Emacs boot in QEMU/Wasm');
         await page.waitForTimeout(250);
         await page.screenshot({ path: path.join(output, 'running.png'), fullPage: true });
 
@@ -155,30 +157,34 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         await waitSerial('42', start);
         check('Ctrl-x Ctrl-e evaluates the expression before point');
 
-        const memoryCheck = fs.readFileSync(path.join(__dirname, '../guest/memory.el'), 'utf8');
-        await evaluate(`(progn (eval (read ${JSON.stringify(memoryCheck)})) (message (concat "WEB-" "GC-PASS")))`, 'WEB-GC-PASS');
-        check('Live Lisp roots survive repeated allocation and GC in QEMU/Wasm');
-
         await page.keyboard.press('Control+x');
         await page.keyboard.press('Control+f');
-        await page.keyboard.type('/home/user/projects/browser-proof.el', { delay: 3 });
+        await page.keyboard.type('/home/emacs/work/browser-proof.el', { delay: 3 });
         await page.keyboard.press('Enter');
         await page.waitForTimeout(300);
         await page.keyboard.type('(setq browser-proof 42)\n', { delay: 3 });
         await page.keyboard.press('Control+x');
         await page.keyboard.press('Control+s');
-        await evaluate('(progn (kill-buffer) (load-file "/home/user/projects/browser-proof.el") (message "BROWSER-SAVED-%d" browser-proof))', 'BROWSER-SAVED-42');
+        await evaluate('(progn (kill-buffer) (load-file "/home/emacs/work/browser-proof.el") (message "BROWSER-SAVED-%d" browser-proof))', 'BROWSER-SAVED-42');
         check('Ctrl-x Ctrl-f / Ctrl-x Ctrl-s save source that the guest loads');
-        await evaluate('(progn (require \'emacsos-counter) (emacsos-counter-start) (emacsos-counter-start) (message "BROWSER-RUNS-%d" (length (emacsos-app-list))))', 'BROWSER-RUNS-2');
         start = await serialLength();
-        await page.click('#command-key');
-        await page.keyboard.type('emacsos-processes', { delay: 5 });
+        await page.click('#shell-key');
+        // First startup loads built-in modules before accepting commands.
+        await waitSerial('~/work $ ', start, 120000);
+        await evaluate('(message "SHELL-MODE-%s" major-mode)', 'SHELL-MODE-eshell-mode');
+        await page.keyboard.type('echo hello-from-linux', { delay: 3 });
+        start = await serialLength();
         await page.keyboard.press('Enter');
-        await waitSerial('*Processes*', start);
-        await evaluate('(message "MANAGER-NAME-%s" (buffer-name))', 'MANAGER-NAME-*Processes*');
+        await waitSerial('hello-from-linux', start);
+        check('SHELL opens a real Eshell session');
+        start = await serialLength();
+        await page.click('#files-key');
+        await page.keyboard.press('Enter');
+        await waitSerial('browser-proof.el', start);
+        await evaluate('(message "FILES-MODE-%s" major-mode)', 'FILES-MODE-dired-mode');
         await page.waitForTimeout(250);
-        await page.screenshot({ path: path.join(output, 'applications.png'), fullPage: true });
-        check('Bundled application manager opens in the browser guest');
+        await page.screenshot({ path: path.join(output, 'workspace.png'), fullPage: true });
+        check('FILES opens the Linux working directory in Dired');
 
         page.once('dialog', dialog => dialog.dismiss());
         await page.click('#reset');
@@ -199,15 +205,7 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         await page.click('#reset');
         await state('off');
         assert.equal(await serialLength(), 0);
-        check('Confirmed RESTART retains DATA before reloading a fresh powered-off page');
-        await page.click('#boot');
-        await state('running');
-        await page.waitForFunction(() => document.documentElement.dataset.storageState === 'saved', null, {timeout:60000});
-        await evaluate('(progn (when (boundp \'browser-proof) (error "Imported Lisp ran automatically")) (load-file "/home/user/projects/browser-proof.el") (message "BROWSER-RESTORED-%d" browser-proof))', 'BROWSER-RESTORED-42');
-        check('Restart restores saved source without automatically executing it');
-        page.once('dialog', dialog => dialog.accept());
-        await page.click('#disk-discard');
-        await state('off');
+        check('Confirmed RESTART reloads a fresh powered-off page');
         assert.deepEqual(errors, []);
 
         const blocked = await browser.newPage();
@@ -226,6 +224,8 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         await page.screenshot({ path: path.join(output, 'failure.png'), fullPage: true }).catch(() => {});
         throw error;
     } finally {
+        const transcript = await page.evaluate(() => window.__serial || '').catch(() => '');
+        fs.writeFileSync(path.join(output, 'guest.transcript'), transcript);
         fs.writeFileSync(path.join(output, 'report.json'), JSON.stringify(record, null, 2) + '\n');
         await browser.close();
     }

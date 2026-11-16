@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
-"""Serve only the browser UI, allowlisted vendor filenames and the built system and empty DATA images."""
+"""Serve only the browser UI, allowlisted vendor filenames and the built Linux system."""
 import argparse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
 import shutil
-import signal
 import ssl
 from urllib.parse import unquote, urlsplit
-
-from network import NetworkManager, upgrade
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -21,11 +18,11 @@ def routes(root):
         "/": (root / "web/index.html", "text/html; charset=utf-8"),
         "/index.html": (root / "web/index.html", "text/html; charset=utf-8"),
         "/machine.js": (root / "web/machine.js", "text/javascript; charset=utf-8"),
-        "/storage.js": (root / "web/storage.js", "text/javascript; charset=utf-8"),
         "/terminal.css": (root / "web/terminal.css", "text/css; charset=utf-8"),
-        "/emacsos.img": (root / "build/image/emacsos.img", "application/octet-stream"),
-        "/data-empty.img": (root / "build/image/data-empty.img", "application/octet-stream"),
-        "/build.json": (root / "build/image/manifest.json", "application/json"),
+        "/vmlinuz": (root / "build/machine/vmlinuz", "application/octet-stream"),
+        "/initramfs.cpio.gz": (root / "build/machine/initramfs.cpio.gz", "application/octet-stream"),
+        "/data-template.ext4": (root / "build/machine/data-template.ext4", "application/octet-stream"),
+        "/build.json": (root / "build/machine/manifest.json", "application/json"),
         "/assets.json": (root / "web/assets.json", "application/json"),
         "/licenses.html": (root / "web/licenses.html", "text/html; charset=utf-8"),
     }
@@ -44,8 +41,6 @@ def handler_for(root):
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "emacsOSWeb/1"
-        protocol_version = "HTTP/1.1"
-        rbufsize = 0  # Do not prefetch WebSocket bytes beyond the HTTP headers.
         sys_version = ""
 
         def end_headers(self):
@@ -67,22 +62,6 @@ def handler_for(root):
                 name = unquote(urlsplit(self.path).path, errors="strict")
             except (UnicodeError, ValueError):
                 self.send_error(400)
-                return
-            if name == "/network":
-                manager = getattr(self.server, "network", None)
-                if body and self.headers.get("Upgrade"):
-                    if manager is None:
-                        self.send_error(503, "Network unavailable")
-                    else:
-                        upgrade(self, manager)
-                    return
-                data = json.dumps({"available": bool(manager and manager.available), "path": "/network"}).encode()
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(data)))
-                self.end_headers()
-                if body:
-                    self.wfile.write(data)
                 return
             target = allowed.get(name)
             if target is None:
@@ -124,21 +103,14 @@ def main():
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain(args.cert, args.key)
     server = ThreadingHTTPServer((args.host, args.port), handler_for(ROOT))
-    server.network = NetworkManager()
-    server.network_host = args.host
-    server.network_tls = bool(context)
     if context:
         server.socket = context.wrap_socket(server.socket, server_side=True)
-    def terminate(signum, frame):
-        raise KeyboardInterrupt
-    signal.signal(signal.SIGTERM, terminate)
     print(f"emacsOS: {'https' if context else 'http'}://{args.host}:{server.server_port}/", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
-        server.network.close()
         server.server_close()
 
 
