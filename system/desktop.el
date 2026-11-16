@@ -18,6 +18,7 @@
             (set-buffer-modified-p nil)
             (setq buffer-read-only t)
             (goto-char (point-min))
+            (redisplay t)
             (message "EMACSOS-LINUX-READY")))
 
 ;;; desktop.el ends here

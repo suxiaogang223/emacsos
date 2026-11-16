@@ -115,6 +115,7 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         const begin = Date.now();
         await page.click('#boot');
         await state('running');
+        await waitSerial('Your working directory is ~/work.');
         record.bootSeconds = (Date.now() - begin) / 1000;
         record.artifactHashes = await page.evaluate(async () => Object.fromEntries(await Promise.all(Object.entries(window.__imageHashes).map(async ([name, value]) => [name, await value]))));
         for (const [name, hash] of Object.entries(record.artifactHashes)) assert.equal(hash, record.guestBuild.artifacts[name]);
@@ -169,8 +170,10 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         await page.keyboard.press('Enter');
         await waitSerial('hello-from-linux', start);
         check('SHELL opens a real Eshell session');
+        start = await serialLength();
         await page.click('#files-key');
         await page.keyboard.press('Enter');
+        await waitSerial('browser-proof.el', start);
         await evaluate('(message "FILES-MODE-%s" major-mode)', 'FILES-MODE-dired-mode');
         await page.waitForTimeout(250);
         await page.screenshot({ path: path.join(output, 'workspace.png'), fullPage: true });
