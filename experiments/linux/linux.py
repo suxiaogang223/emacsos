@@ -192,9 +192,22 @@ def https_fixture():
         directory = Path(temporary)
         certificate, key = directory / "ca.pem", directory / "key.pem"
         run("openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
-            "-keyout", key, "-out", certificate, "-subj", "/CN=emacsOS Linux test fixture",
-            "-addext", "subjectAltName=IP:10.0.2.2", stdout=subprocess.DEVNULL,
+            "-keyout", key, "-out", certificate, "-subj", "/CN=emacsOS Linux test CA",
+            "-addext", "basicConstraints=critical,CA:TRUE", stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL)
+        server_key = directory / "server-key.pem"
+        request = directory / "server.csr"
+        server_certificate = directory / "server.pem"
+        extensions = directory / "extensions.cnf"
+        extensions.write_text("subjectAltName=IP:10.0.2.2\nbasicConstraints=critical,CA:FALSE\n"
+                              "keyUsage=critical,digitalSignature,keyEncipherment\n"
+                              "extendedKeyUsage=serverAuth\n")
+        run("openssl", "req", "-new", "-newkey", "rsa:2048", "-nodes", "-keyout", server_key,
+            "-out", request, "-subj", "/CN=emacsOS Linux test server",
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        run("openssl", "x509", "-req", "-in", request, "-CA", certificate, "-CAkey", key,
+            "-CAcreateserial", "-days", "1", "-extfile", extensions, "-out", server_certificate,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         nonce = secrets.token_hex(24)
 
         class Handler(http.server.BaseHTTPRequestHandler):
@@ -211,7 +224,7 @@ def https_fixture():
         server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         server.daemon_threads = True
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        context.load_cert_chain(certificate, key)
+        context.load_cert_chain(server_certificate, server_key)
         server.socket = context.wrap_socket(server.socket, server_side=True)
         worker = threading.Thread(target=server.serve_forever, daemon=True)
         worker.start()
@@ -273,11 +286,11 @@ def check(internet_url=None):
             guest.evaluate('(progn (setq linux-fault (make-process :name "fault" :buffer "*fault*" :command \'("/bin/sh" "-c" "kill -SEGV $$") :noquery t)) (message "LINUX-%s" "FAULT-SENT"))', "LINUX-FAULT-SENT")
             assertion(guest, "worker segmentation fault leaves Emacs alive", "(and (eq (process-status linux-fault) 'signal) (= (process-exit-status linux-fault) 11) (> linux-ticks 1))")
             assertion(guest, "GnuTLS available", "(progn (require 'url) (require 'gnutls) (require 'nsm) (advice-add 'nsm-query :before (lambda (&rest arguments) (send-string-to-terminal (format \"\\nTLS policy: %s\\n\" (car (last arguments)))))) (gnutls-available-p))")
-            # TLS setup can finish in an asynchronous callback. Configure this
-            # disposable test Emacs globally, then restore the distribution CAs.
+            # Configure this disposable acceptance session with a test-only CA,
+            # then restore the distribution CA bundle for the public request.
             request = ('(progn (setq linux-system-trustfiles gnutls-trustfiles '
                        'gnutls-trustfiles (list "/home/emacs/work/fixture-ca.pem") '
-                       'gnutls-verify-error t network-security-level \'high nsm-noninteractive t url-proxy-services nil) '
+                       'gnutls-verify-error t network-security-level \'high nsm-noninteractive t url-request-noninteractive t url-proxy-services nil) '
                        '(let ((response (url-retrieve-synchronously %s t t 20))) '
                        '(unless response (error "No HTTPS response")) '
                        '(unwind-protect (with-current-buffer response (goto-char (point-min)) '
