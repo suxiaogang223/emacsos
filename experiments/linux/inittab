@@ -1,4 +1,3 @@
 ::sysinit:/etc/emacsos/boot
-::once:/etc/emacsos/start-emacs
+ttyS0::once:/etc/emacsos/start-emacs
 ::shutdown:/bin/sync
-::shutdown:/bin/umount -a -r

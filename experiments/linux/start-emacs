@@ -5,7 +5,7 @@ export LANG=C.UTF-8
 ulimit -c 0
 status=1
 if test -f /run/emacsos-ready; then
-    /bin/busybox cttyhack /bin/su -s /bin/sh -c \
+    /bin/su -s /bin/sh -c \
         'cd /home/emacs/work && exec emacs -Q -nw -l /usr/share/emacs/site-lisp/emacsos-linux.el' emacs
     status=$?
 fi
