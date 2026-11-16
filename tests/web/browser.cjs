@@ -163,7 +163,10 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         await page.keyboard.press('Control+s');
         await evaluate('(progn (kill-buffer) (load-file "/home/emacs/work/browser-proof.el") (message "BROWSER-SAVED-%d" browser-proof))', 'BROWSER-SAVED-42');
         check('Ctrl-x Ctrl-f / Ctrl-x Ctrl-s save source that the guest loads');
+        start = await serialLength();
         await page.click('#shell-key');
+        // First startup loads built-in modules before accepting commands.
+        await waitSerial('~/work $ ', start, 120000);
         await evaluate('(message "SHELL-MODE-%s" major-mode)', 'SHELL-MODE-eshell-mode');
         await page.keyboard.type('echo hello-from-linux', { delay: 3 });
         start = await serialLength();
