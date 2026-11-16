@@ -10,6 +10,17 @@ CFLAGS := --target=x86_64-unknown-none-elf -std=c11 -O2 -g -Wall -Wextra -Werror
 .PHONY: image kernel container-image build mvp run runtime runtime-smoke \
         test test-files test-lisp test-tooling check-web test-probes test-guest \
         check-mvp lint check web web-assets web-serve test-browser help
+.PHONY: linux-build linux-run linux-check
+
+# A separate exploration; the default image and MVP acceptance stay unchanged.
+linux-build:
+	python3 experiments/linux/linux.py build
+
+linux-run: linux-build
+	python3 experiments/linux/linux.py run
+
+linux-check: linux-build
+	python3 experiments/linux/linux.py check $(if $(LINUX_INTERNET_URL),--internet-url '$(LINUX_INTERNET_URL)')
 .NOTPARALLEL: check
 BUILD_IMAGE := emacsos-skeleton:alpine3.22
 KERNEL_C := main hardware memory loader runtime files file_abi
@@ -124,6 +135,8 @@ test-browser:
 	node tests/web/browser.cjs '$(WEB_URL)'
 
 help:
+	@echo 'make linux-run - build and boot the separate Linux exploration'
+	@echo 'make linux-check - accept the Linux exploration across two guest boots'
 	@echo 'make build  - incrementally build the complete image (default)'
 	@echo 'make run    - build and launch the native console'
 	@echo 'make web    - build, verify browser assets and serve the browser console'

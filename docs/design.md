@@ -6,6 +6,10 @@ backends supply actual capabilities. This document describes the selected
 architecture. The first bounded port is
 implemented; [MVP acceptance](mvp.md) defines the exercised guest subset.
 
+A separate [Linux exploration](linux-exploration.md) evaluates an Emacs-first
+environment on a Linux kernel. Its image and acceptance are independent of
+the selected own-kernel architecture described here.
+
 ## Current source and proposed system
 
 The parent contains BIOS boot, static ELF loading, page mappings/protection,
