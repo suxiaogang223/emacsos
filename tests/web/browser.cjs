@@ -30,10 +30,14 @@ async function main() {
             const response = await fetch(...args);
             if (new URL(response.url).pathname.match(/\/(vmlinuz|initramfs\.cpio\.gz|data-template\.ext4)$/) && response.ok) {
                 window.__imageHashes ??= {};
-                window.__imageHashes[new URL(response.url).pathname.slice(1)] = response.clone().arrayBuffer().then(async bytes => {
+                const hash = response.clone().arrayBuffer().then(async bytes => {
                     const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
                     return Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
                 });
+                // Failed-boot retries cancel sibling downloads. Observe clone
+                // rejections now; awaiting the retained promise still rejects.
+                hash.catch(() => {});
+                window.__imageHashes[new URL(response.url).pathname.slice(1)] = hash;
             }
             return response;
         };
