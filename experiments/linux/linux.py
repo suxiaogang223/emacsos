@@ -298,7 +298,7 @@ def check(internet_url=None):
             assertion(guest, "HTTPS with certificate verification and unpredictable response",
                       request % (json.dumps(url), json.dumps(nonce)))
             assertion(guest, "untrusted HTTPS certificate rejected",
-                      '(progn (setq gnutls-trustfiles nil) (condition-case failure (progn (open-network-stream "untrusted" nil "10.0.2.2" %d :type \'tls) nil) (error (string-match-p "Certificate validation failed" (error-message-string failure)))))' % urlsplit(url).port)
+                      '(progn (setq gnutls-trustfiles nil) (let ((kill-buffer-query-functions nil)) (condition-case failure (progn (open-network-stream "untrusted" nil "10.0.2.2" %d :type \'tls) nil) (error (string-match-p "Certificate validation failed" (error-message-string failure))))))' % urlsplit(url).port)
             guest.evaluate('(progn (setq gnutls-trustfiles linux-system-trustfiles) (message "LINUX-%s" "TRUST-RESTORED"))', "LINUX-TRUST-RESTORED")
             if internet_url:
                 assertion(guest, "public DNS and HTTPS",
