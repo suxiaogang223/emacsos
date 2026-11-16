@@ -120,6 +120,7 @@ class Guest:
     def __init__(self, disk, transcript):
         self.path = transcript
         self.transcript = bytearray()
+        self.started = time.monotonic()
         self.process = subprocess.Popen(command(disk), stdin=subprocess.PIPE,
                                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         self.selector = selectors.DefaultSelector()
@@ -211,6 +212,13 @@ def https_fixture():
         nonce = secrets.token_hex(24)
 
         class Handler(http.server.BaseHTTPRequestHandler):
+            def handle(self):
+                # Certificate rejection intentionally closes before HTTP input.
+                try:
+                    super().handle()
+                except (ConnectionError, ssl.SSLError):
+                    pass
+
             def do_GET(self):
                 payload = nonce.encode()
                 self.send_response(200)
@@ -246,7 +254,8 @@ def check(internet_url=None):
     result = {"passed": False, "parent": manifest["parent"], "checks": checks,
               "manifest_sha256": digest(OUT / "manifest.json"),
               "scope": "Native QEMU Linux exploration only; separate from the own-kernel MVP",
-              "internet_url": internet_url}
+              "internet_url": internet_url, "boot_seconds": [],
+              "network_scope": "Synchronous HTTPS only; asynchronous HTTPS remains unresolved"}
 
     def assertion(guest, name, condition):
         index = len(checks)
@@ -259,12 +268,15 @@ def check(internet_url=None):
     disk = OUT / "acceptance-data.ext4"
     # Only this generated test disk is replaced. data.ext4 is never touched.
     disk.unlink(missing_ok=True)
+    for name in ("first-boot.transcript", "second-boot.transcript", "acceptance.json"):
+        (OUT / name).unlink(missing_ok=True)
     try:
         with https_fixture() as (certificate, url, nonce):
             create_disk(disk, certificate)
             guest = Guest(disk, OUT / "first-boot.transcript")
             guests.append(guest)
             guest.wait(b"EMACSOS-LINUX-READY")
+            result["boot_seconds"].append(round(time.monotonic() - guest.started, 3))
             assertion(guest, "interactive Linux Emacs as uid 1000",
                       "(and (eq system-type 'gnu/linux) (= (user-uid) 1000) (equal emacs-version \"30.1\"))")
             guest.evaluate('(progn (switch-to-buffer "*typing*") (erase-buffer) (message "LINUX-%s" "TYPE"))', "LINUX-TYPE")
@@ -311,8 +323,9 @@ def check(internet_url=None):
             guest = Guest(disk, OUT / "second-boot.transcript")
             guests.append(guest)
             guest.wait(b"EMACSOS-LINUX-READY")
+            result["boot_seconds"].append(round(time.monotonic() - guest.started, 3))
             assertion(guest, "source and backup retained across a new QEMU boot",
-                      '(and (with-temp-buffer (insert-file-contents "/home/emacs/work/probe.el") (equal (buffer-string) %s)) (file-exists-p "/home/emacs/work/probe.el~"))' % json.dumps(source + ";; second revision\n"))
+                      '(and (with-temp-buffer (insert-file-contents "/home/emacs/work/probe.el") (equal (buffer-string) %s)) (with-temp-buffer (insert-file-contents "/home/emacs/work/probe.el~") (equal (buffer-string) %s)))' % (json.dumps(source + ";; second revision\n"), json.dumps(source)))
             assertion(guest, "retained Elisp executes after reboot",
                       f'(progn (load-file "/home/emacs/work/probe.el") (equal linux-probe "{nonce}"))')
             guest.shutdown()

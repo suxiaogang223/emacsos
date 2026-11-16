@@ -59,6 +59,33 @@ request. Functional acceptance is explicitly limited to that synchronous
 network path. Diagnose the asynchronous integration with the pinned runtime
 before selecting this as a production base; the root cause is not established.
 
+## Observed results (2026-11-16)
+
+The native prototype passed the two-boot interactive acceptance, including
+the optional public request to `https://example.org/`. This supports the
+Linux route for the tested file, process and synchronous-network workflows.
+It does not establish readiness as a daily-use system.
+
+| Validation | Observed result |
+| --- | --- |
+| `make linux-check LINUX_INTERNET_URL=https://example.org/` | 17 guest checks, including normal saves/locks/backups, independent workers, HTTPS and retained Elisp across two clean boots |
+| `make test` | Host file checks, 20 ERT tests, 38 tooling tests and 8 web tests passed |
+| Contribution checker | Clean pinned submodule and English/format checks passed |
+| Native machine | QEMU 10.2.2, software emulation, 1 GiB RAM and serial terminal |
+| Boot payload | Approximately 11.29 MiB kernel plus 84.81 MiB compressed userspace; 168.42 MiB unpacked archive |
+| Data disk | Separate 64 MiB ext4 image; acceptance uses a disposable disk |
+
+Generated `build/linux/acceptance.json` identifies the tested parent revision,
+manifest and both transcripts. It also records startup times for this host;
+these are observations, not performance guarantees. The image is a useful
+baseline rather than a minimum-size distribution: all 48 pinned packages and
+their installed data remain present.
+
+The next technical priority is building the pinned Emacs 30.2 fork on this
+Linux base and resolving asynchronous HTTPS. Then exercise the existing
+application policy and choose native versus browser delivery before investing
+in image trimming or replacing the packaging with Buildroot.
+
 ## Decision after the experiment
 
 Prefer this route for a usable Emacs-first environment if the guest checks
