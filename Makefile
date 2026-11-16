@@ -20,7 +20,7 @@ linux-run: linux-build
 	python3 experiments/linux/linux.py run
 
 linux-check: linux-build
-	python3 experiments/linux/linux.py check $(if $(LINUX_INTERNET_URL),--internet-url '$(LINUX_INTERNET_URL)')
+	python3 experiments/linux/linux.py check
 .NOTPARALLEL: check
 BUILD_IMAGE := emacsos-skeleton:alpine3.22
 KERNEL_C := main hardware memory loader runtime files file_abi

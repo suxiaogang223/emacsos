@@ -15,6 +15,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from urllib.parse import urlsplit
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
@@ -137,6 +138,8 @@ class Guest:
         end = time.monotonic() + timeout
         while marker not in self.transcript[start:]:
             self.pump()
+            if b"LINUX-CHECK-ERROR" in self.transcript[start:]:
+                raise RuntimeError(f"Interactive Elisp failed; see {self.path}")
             if self.process.poll() is not None:
                 raise RuntimeError(f"Guest exited before {marker!r}; see {self.path}")
             if time.monotonic() >= end:
@@ -153,7 +156,9 @@ class Guest:
         if marker in form.encode():
             raise ValueError("Result marker occurs in input; terminal echo could pass the check")
         start = len(self.transcript)
-        self.send(b"\x1b:" + form.encode() + b"\r")
+        guarded = ('(condition-case failure %s (error (send-string-to-terminal '
+                   '(format "\\nLINUX-%%s %%S\\n" "CHECK-ERROR" failure))))') % form
+        self.send(b"\x1b:" + guarded.encode() + b"\r")
         self.wait(marker, start)
 
     def shutdown(self):
@@ -267,20 +272,20 @@ def check(internet_url=None):
             assertion(guest, "worker can be forcibly stopped", '(and (not (process-live-p linux-worker)) (eq (process-status linux-worker) \'signal))')
             guest.evaluate('(progn (setq linux-fault (make-process :name "fault" :buffer "*fault*" :command \'("/bin/sh" "-c" "kill -SEGV $$") :noquery t)) (message "LINUX-%s" "FAULT-SENT"))', "LINUX-FAULT-SENT")
             assertion(guest, "worker segmentation fault leaves Emacs alive", "(and (eq (process-status linux-fault) 'signal) (= (process-exit-status linux-fault) 11) (> linux-ticks 1))")
-            assertion(guest, "GnuTLS available", "(progn (require 'url) (require 'gnutls) (require 'nsm) (gnutls-available-p))")
+            assertion(guest, "GnuTLS available", "(progn (require 'url) (require 'gnutls) (require 'nsm) (advice-add 'nsm-query :before (lambda (&rest arguments) (send-string-to-terminal (format \"\\nTLS policy: %s\\n\" (car (last arguments)))))) (gnutls-available-p))")
             request = ('(let ((gnutls-trustfiles (list "/home/emacs/work/fixture-ca.pem")) '
-                       '(gnutls-verify-error t) (network-security-level \'high) (url-proxy-services nil)) '
+                       '(gnutls-verify-error t) (network-security-level \'high) (nsm-noninteractive t) (url-proxy-services nil)) '
                        '(require \'url) (let ((response (url-retrieve-synchronously %s t t 20))) '
                        '(unless response (error "No HTTPS response")) '
-                       '(unwind-protect (with-current-buffer response '
+                       '(unwind-protect (with-current-buffer response (goto-char (point-min)) '
                        '(and (= url-http-response-status 200) (search-forward %s nil t))) (kill-buffer response))))')
             assertion(guest, "HTTPS with certificate verification and unpredictable response",
                       request % (json.dumps(url), json.dumps(nonce)))
             assertion(guest, "untrusted HTTPS certificate rejected",
-                      '(let ((gnutls-trustfiles nil) (gnutls-verify-error t) (network-security-level \'high) (url-proxy-services nil)) (condition-case nil (progn (url-retrieve-synchronously %s t t 15) nil) (error t)))' % json.dumps(url))
+                      '(let ((gnutls-trustfiles nil) (gnutls-verify-error t) (network-security-level \'high) (nsm-noninteractive t)) (condition-case failure (progn (open-network-stream "untrusted" nil "10.0.2.2" %d :type \'tls) nil) (error (string-match-p "Certificate validation failed" (error-message-string failure)))))' % urlsplit(url).port)
             if internet_url:
                 assertion(guest, "public DNS and HTTPS",
-                          '(let ((gnutls-verify-error t) (network-security-level \'high) (url-proxy-services nil)) (let ((response (url-retrieve-synchronously %s t t 30))) (and response (unwind-protect (with-current-buffer response (= url-http-response-status 200)) (kill-buffer response)))))' % json.dumps(internet_url))
+                          '(let ((gnutls-verify-error t) (network-security-level \'high) (nsm-noninteractive t) (url-proxy-services nil)) (let ((response (url-retrieve-synchronously %s t t 30))) (and response (unwind-protect (with-current-buffer response (= url-http-response-status 200)) (kill-buffer response)))))' % json.dumps(internet_url))
             guest.evaluate('(progn (cancel-timer linux-timer) (message "LINUX-%s" "CLEANED"))', "LINUX-CLEANED")
             guest.shutdown()
             guest.close()
@@ -312,8 +317,11 @@ def check(internet_url=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("build", "run", "check"))
-    parser.add_argument("--internet-url", help="Also require public DNS/HTTPS for this URL")
+    parser.add_argument("--internet-url", default=os.environ.get("LINUX_INTERNET_URL"),
+                        help="Also require public DNS/HTTPS for this URL")
     args = parser.parse_args()
+    if args.internet_url and urlsplit(args.internet_url).scheme != "https":
+        parser.error("The optional internet check requires an https:// URL")
     if args.action == "build":
         build()
     elif args.action == "run":
