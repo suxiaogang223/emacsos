@@ -291,7 +291,7 @@ def check(internet_url=None):
             request = ('(progn (setq linux-system-trustfiles gnutls-trustfiles '
                        'gnutls-trustfiles (list "/home/emacs/work/fixture-ca.pem") '
                        'gnutls-verify-error t network-security-level \'high nsm-noninteractive t url-request-noninteractive t url-proxy-services nil) '
-                       '(let ((response (url-retrieve-synchronously %s t t 20))) '
+                       '(let ((response (url-retrieve-synchronously %s t t))) '
                        '(unless response (error "No HTTPS response")) '
                        '(unwind-protect (with-current-buffer response (goto-char (point-min)) '
                        '(and (= url-http-response-status 200) (search-forward %s nil t))) (kill-buffer response))))')
@@ -302,7 +302,7 @@ def check(internet_url=None):
             guest.evaluate('(progn (setq gnutls-trustfiles linux-system-trustfiles) (message "LINUX-%s" "TRUST-RESTORED"))', "LINUX-TRUST-RESTORED")
             if internet_url:
                 assertion(guest, "public DNS and HTTPS",
-                          '(let ((gnutls-verify-error t) (network-security-level \'high) (nsm-noninteractive t) (url-proxy-services nil)) (let ((response (url-retrieve-synchronously %s t t 30))) (and response (unwind-protect (with-current-buffer response (= url-http-response-status 200)) (kill-buffer response)))))' % json.dumps(internet_url))
+                          '(let ((gnutls-verify-error t) (network-security-level \'high) (nsm-noninteractive t) (url-proxy-services nil)) (let ((response (url-retrieve-synchronously %s t t))) (and response (unwind-protect (with-current-buffer response (= url-http-response-status 200)) (kill-buffer response)))))' % json.dumps(internet_url))
             guest.evaluate('(progn (cancel-timer linux-timer) (message "LINUX-%s" "CLEANED"))', "LINUX-CLEANED")
             guest.shutdown()
             guest.close()

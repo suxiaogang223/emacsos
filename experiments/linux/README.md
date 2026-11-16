@@ -67,3 +67,13 @@ The kernel is Alpine `linux-virt=6.12.117-r0`; the runtime is the distribution's
 packages are version-pinned in `packages.lock`; the Alpine base image is
 digest-pinned. Package availability remains dependent on Alpine repositories.
 Image byte reproducibility is not claimed.
+
+## Observed network limitation
+
+On this distribution build, timeout-enabled `url-retrieve-synchronously` and
+an asynchronous `url-retrieve` left the local TLS connection in `connect`
+state. The synchronous URL path without that optional timeout completed the
+same certificate-verified HTTPS request. Acceptance uses that synchronous
+path, bounded by the host's 60-second assertion deadline. It does not establish
+working asynchronous HTTPS or a responsive UI during a blocking request.
+Investigate this separately with the pinned Emacs 30.2 runtime before adoption.

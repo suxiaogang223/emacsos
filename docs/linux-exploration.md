@@ -52,6 +52,13 @@ boot success and those functional assertions are distinct results. The data
 retention claim is limited to orderly shutdown and reopening the same native
 QEMU disk; browser storage and power-loss recovery remain open.
 
+The distribution's asynchronous HTTPS path remained in `connect` state in
+local-fixture experiments, including the timeout-enabled URL helper. The
+synchronous helper without its optional timeout completed the same verified
+request. Functional acceptance is explicitly limited to that synchronous
+network path. Diagnose the asynchronous integration with the pinned runtime
+before selecting this as a production base; the root cause is not established.
+
 ## Decision after the experiment
 
 Prefer this route for a usable Emacs-first environment if the guest checks
