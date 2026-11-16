@@ -7,15 +7,15 @@ Unicode tables, names, test data and unchanged third-party sources.
 
 Read the [design](docs/design.md), [roadmap](docs/roadmap.md) and
 [source ownership](docs/source-layout.md) before architectural changes. The
-MVP runs a trusted Emacs with volatile files and cooperative applications on
-the fixed QEMU profile. Describe that bounded behavior separately from planned
-networking, persistence and protected processes; see [acceptance](docs/mvp.md).
+system runs a pinned GNU Emacs on Linux. Native retention and networking do
+not establish browser capabilities; see [acceptance](docs/mvp.md). Keep build,
+boot and actual functional evidence distinct.
 
 ## Source ownership
 
 Initialize `emacs/` with `git submodule update --init --recursive`. Necessary
-runtime modifications belong to the fork; parent system features and future PAL
-backends belong here. Publish fork commits before updating the parent gitlink.
+runtime modifications belong to the fork; parent system Elisp, Linux image policy and Web presentation
+belong here. Publish fork commits before updating the parent gitlink.
 Stage the intended pin before contribution checks. CI requires a clean,
 initialized submodule matching that pin; dirty local source is not a published
 handoff. Keep dependencies between fork and parent changes explicit.

@@ -17,8 +17,10 @@ test "$(stat -c %u /home/emacs)" = 1000
 
 # This address plan belongs specifically to QEMU's user network backend.
 ip link set lo up
-ip link set eth0 up
-ip addr add 10.0.2.15/24 dev eth0
-ip route add default via 10.0.2.2
-printf 'nameserver 10.0.2.3\n' > /etc/resolv.conf
+if ip link show eth0 >/dev/null 2>&1; then
+    ip link set eth0 up
+    ip addr add 10.0.2.15/24 dev eth0
+    ip route add default via 10.0.2.2
+    printf 'nameserver 10.0.2.3\n' > /etc/resolv.conf
+fi
 touch /run/emacsos-ready

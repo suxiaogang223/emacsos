@@ -1,6 +1,6 @@
 // The browser hosts one real emulated machine; application state stays in Emacs.
 const element = id => document.getElementById(id);
-const buttons = ["command-key", "cancel-key", "eval-key"].map(element);
+const buttons = ["command-key", "cancel-key", "eval-key", "files-key", "shell-key"].map(element);
 const vendor = new URL("./vendor/", import.meta.url);
 let state = "off";
 let initializationStarted = false;
@@ -37,21 +37,46 @@ function observe(bytes) {
     const text = typeof bytes === "string" ? bytes : decoder.decode(bytes, { stream: true });
     observed = (observed + text).slice(-4096);
     if (["exited", "failed"].includes(state)) return;
-    const exit = observed.match(/\r\nRuntime exited status=(0x[0-9a-fA-F]{16})\r\n/);
+    const exit = observed.match(/\r?\nEMACSOS-LINUX-EXIT status=(\d+)\r?\n/);
     if (exit) {
-        render("exited", `Emacs exited (${exit[1]}). Restart for a fresh machine.`);
-    } else if (/\r\n(?:PANIC: |FAULT vector=)/.test(observed)) {
+        render("exited", exit[1] === "0" ? "Session ended. Restart to begin again." : `Emacs stopped (${exit[1]}). Restart to try again.`);
+    } else if (/(?:Kernel panic - not syncing:|Oops:)/.test(observed)) {
         fail(new Error("The guest stopped with a kernel fault. The terminal contains its diagnostic."));
-    } else if (state === "starting" && observed.includes("*scratch*")) {
-        render("running", "Emacs ready · COM1 · 80 × 24 · temporary files");
+    } else if (state === "starting" && observed.includes("EMACSOS-LINUX-READY")) {
+        render("running", "Ready · your Lisp computer");
         element("screen-caption")?.replaceChildren(document.createTextNode("GNU Emacs 30.2 · emacsOS"));
         terminal.focus();
     }
 }
 
-async function bootImage() {
-    const response = await fetch(new URL("./emacsos.img", import.meta.url));
-    if (!response.ok) throw new Error(`Boot disk request failed (${response.status}). Build the MVP image first.`);
+async function bootFiles() {
+    const response = await fetch(new URL("./build.json", import.meta.url));
+    if (!response.ok) throw new Error("The system is unavailable. Run make build and retry.");
+    const manifest = await response.json();
+    const names = ["vmlinuz", "initramfs.cpio.gz", "data-template.ext4"];
+    const progress = new Map(names.map(name => [name, { size: 0, total: 0 }]));
+    const controller = new AbortController();
+    try {
+        return await Promise.all(names.map(async name => {
+            const bytes = await download(name, progress, controller.signal);
+            const actual = await checksum(bytes);
+            if (actual !== manifest.artifacts?.[name]) throw new Error(`System checksum mismatch (${name}). Rebuild and retry.`);
+            return { name, bytes };
+        }));
+    } catch (error) {
+        controller.abort();
+        throw error;
+    }
+}
+
+async function checksum(bytes) {
+    const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+    return Array.from(hash, byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function download(name, progress, signal) {
+    const response = await fetch(new URL(`./${name}`, import.meta.url), { signal });
+    if (!response.ok) throw new Error(`System download failed (${response.status}). Retry Power.`);
     const total = Number(response.headers.get("Content-Length"));
     if (!response.body || !Number.isSafeInteger(total) || total <= 0) return response.arrayBuffer();
     const reader = response.body.getReader();
@@ -62,9 +87,11 @@ async function bootImage() {
         if (done) break;
         chunks.push(value);
         size += value.byteLength;
-        element("boot-progress").value = Math.min(40, size / total * 40);
+        progress.set(name, { size, total });
+        const values = [...progress.values()];
+        element("boot-progress").value = 40 * values.reduce((sum, item) => sum + (item.total ? item.size / item.total : 0), 0) / values.length;
     }
-    if (size !== total) throw new Error("The boot disk download was incomplete. Retry Power.");
+    if (size !== total) throw new Error("The system download was incomplete. Retry Power.");
     const bytes = new Uint8Array(size);
     let offset = 0;
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
@@ -99,7 +126,7 @@ async function start() {
         if (typeof Terminal !== "function" || typeof openpty !== "function") {
             throw new Error("Terminal assets are unavailable. Run make web-assets and reload.");
         }
-        const [image, bios] = await Promise.all([bootImage(), biosPackage()]);
+        const [files, bios] = await Promise.all([bootFiles(), biosPackage()]);
         terminal = new Terminal({
             cols: 80, rows: 24, cursorBlink: true, macOptionIsMeta: true,
             fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 16,
@@ -118,7 +145,9 @@ async function start() {
         const config = {
             arguments: ["-M", "pc", "-m", "1G", "-nic", "none", "-display", "none", "-monitor", "none",
                 "-serial", "stdio", "-L", "/pack-rom", "-accel", "tcg,tb-size=64",
-                "-drive", "file=/emacsos.img,format=raw,if=ide,index=0,media=disk"],
+                "-kernel", "/vmlinuz", "-initrd", "/initramfs.cpio.gz",
+                "-append", "console=ttyS0,115200 rdinit=/init panic=-1 quiet",
+                "-drive", "file=/data-template.ext4,format=raw,if=virtio", "-no-reboot"],
             locateFile: path => new URL(path, vendor).href,
             mainScriptUrlOrBlob: moduleUrl,
             getPreloadedPackage: () => bios,
@@ -156,7 +185,11 @@ async function start() {
                 document.head.append(script);
             }),
         ]);
-        config.preRun.push(module => module.FS.writeFile("/emacsos.img", image instanceof Uint8Array ? image : new Uint8Array(image), { canOwn: true }));
+        config.preRun.push(module => {
+            for (const { name, bytes } of files) {
+                module.FS.writeFile(`/${name}`, bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), { canOwn: true });
+            }
+        });
         machine = await initialize(config);
         raw();
         // The bridge's poll/read must report would-block instead of fake EOF.
@@ -196,6 +229,8 @@ element("reset").addEventListener("click", () => {
 element("command-key").addEventListener("click", () => send("\x1bx"));
 element("cancel-key").addEventListener("click", () => send("\x07"));
 element("eval-key").addEventListener("click", () => send("\x1b:"));
+element("files-key").addEventListener("click", () => send("\x18d"));
+element("shell-key").addEventListener("click", () => send("\x1bxeshell\r"));
 element("fullscreen").addEventListener("click", async () => {
     try {
         if (document.fullscreenElement) await document.exitFullscreen();

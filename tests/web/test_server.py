@@ -31,7 +31,7 @@ class ServerTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temporary = tempfile.TemporaryDirectory()
         cls.root = Path(cls.temporary.name)
-        files = {"web/index.html": b"<title>emacsOS</title>", "web/machine.js": b"export {};", "web/terminal.css": b"body{}", "build/mvp/emacsos.img": b"disk", "build/mvp/manifest.json": b"{}", "build/web-vendor/out.js": b"module", "build/web-vendor/machine.wasm": b"wasm", "build/web-vendor/rom.data": b"rom", "web/licenses/notice.txt": b"notice", ".git/config": b"must stay private", "AGENTS.md": b"must stay private"}
+        files = {"web/index.html": b"<title>emacsOS</title>", "web/machine.js": b"export {};", "web/terminal.css": b"body{}", "build/machine/vmlinuz": b"linux", "build/machine/initramfs.cpio.gz": b"root", "build/machine/data-template.ext4": b"disk", "build/machine/manifest.json": b"{}", "build/web-vendor/out.js": b"module", "build/web-vendor/machine.wasm": b"wasm", "build/web-vendor/rom.data": b"rom", "web/licenses/notice.txt": b"notice", ".git/config": b"must stay private", "AGENTS.md": b"must stay private"}
         for name, data in files.items():
             target = cls.root / name
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -57,7 +57,7 @@ class ServerTests(unittest.TestCase):
         return result
 
     def test_allowlisted_routes_and_mime(self):
-        for path, mime in [("/", "text/html; charset=utf-8"), ("/machine.js", "text/javascript; charset=utf-8"), ("/vendor/machine.wasm", "application/wasm"), ("/vendor/rom.data", "application/octet-stream"), ("/emacsos.img", "application/octet-stream"), ("/build.json", "application/json"), ("/licenses/notice.txt", "text/plain; charset=utf-8")]:
+        for path, mime in [("/", "text/html; charset=utf-8"), ("/machine.js", "text/javascript; charset=utf-8"), ("/vendor/machine.wasm", "application/wasm"), ("/vendor/rom.data", "application/octet-stream"), ("/vmlinuz", "application/octet-stream"), ("/initramfs.cpio.gz", "application/octet-stream"), ("/data-template.ext4", "application/octet-stream"), ("/build.json", "application/json"), ("/licenses/notice.txt", "text/plain; charset=utf-8")]:
             with self.subTest(path=path):
                 status, headers, body = self.request(path)
                 self.assertEqual(status, 200)
@@ -69,11 +69,11 @@ class ServerTests(unittest.TestCase):
                 self.assertEqual(headers["X-Content-Type-Options"], "nosniff")
 
     def test_head_preserves_length_without_body(self):
-        status, headers, body = self.request("/emacsos.img", "HEAD")
+        status, headers, body = self.request("/data-template.ext4", "HEAD")
         self.assertEqual((status, headers["Content-Length"], body), (200, "4", b""))
 
     def test_source_git_and_traversal_not_exposed(self):
-        for path in ["/.git/config", "/AGENTS.md", "/../AGENTS.md", "/%2e%2e/.git/config", "/vendor/../../.git/config", "/vendor/%2e%2e%2f.git/config", "/vendor/", "/web/machine.js", "/build/runtime/emacs", "/vendor/out.js/.."]:
+        for path in ["/.git/config", "/AGENTS.md", "/../AGENTS.md", "/%2e%2e/.git/config", "/vendor/../../.git/config", "/vendor/%2e%2e%2f.git/config", "/vendor/", "/web/machine.js", "/build/machine/data.ext4", "/build/machine/context/source.tar", "/emacsos.img", "/vendor/out.js/.."]:
             with self.subTest(path=path):
                 status, headers, body = self.request(path)
                 self.assertEqual(status, 404)

@@ -7,10 +7,12 @@ and tests. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Read [design](docs/design.md), [roadmap](docs/roadmap.md) and
 [source ownership](docs/source-layout.md) before changing architecture. The
-MVP runs one trusted Emacs with volatile files and cooperative application
-management on the fixed QEMU profile. See docs/mvp.md for acceptance. Do not
-imply networking, persistence, isolation or general Linux compatibility.
-Compilation, boot execution and guest functional acceptance are different claims.
+system runs one trusted Emacs on a minimal Linux guest. Native and browser
+profiles have different networking and storage lifetimes; see docs/mvp.md.
+Do not infer browser networking, retention or application isolation from native
+results. Compilation, boot execution and guest functional acceptance are
+different claims. Linux owns kernel/backend mechanisms; parent system policy
+and Web presentation remain the development focus.
 
 Before preparing/updating a PR, read
 [emacsos-pr](.agents/skills/emacsos-pr/SKILL.md). Before reviewing/integrating one,

@@ -66,7 +66,7 @@ html[data-machine-state="loading"] .screen, html[data-machine-state="starting"] 
 .monitor-bottomline { padding: 12px 7px 0; font-size: 6px; min-height: 19px; }
 .monitor-mark { color: #333c2b; display: flex; gap: 13px; align-items: center; }
 .monitor-mark i { display: block; width: 23px; height: 5px; border: 1px solid #292f23; border-radius: 3px; background: #414937; }
-.key-strip { min-height: 78px; display: flex; gap: 9px; align-items: center; padding: 16px 7px 8px; }
+.key-strip { min-height: 78px; display: flex; flex-wrap: wrap; gap: 9px; align-items: center; padding: 16px 7px 8px; }
 .key-strip-label { font-size: 7px; letter-spacing: .7px; line-height: 1.6; color: #7b7a68; margin-right: 7px; }
 .keycap { background: linear-gradient(130deg, #f2eedf, #e1dcc9); border: 1px solid #aaa58d; border-radius: 4px; box-shadow: inset 0 1px 0 #fff9, 0 3px 0 #b8b099, 0 4px 0 #9d9582, 0 5px 3px #76705b1a; min-width: 89px; height: 47px; padding: 6px 10px; text-align: left; }
 .keycap kbd { display: block; font-size: 13px; font-family: inherit; font-weight: 700; line-height: 1.2; }
@@ -108,10 +108,10 @@ html[data-machine-state="loading"] .screen, html[data-machine-state="starting"] 
 .eject-block { position: absolute; right: 11px; bottom: 4px; width: 24px; height: 6px; border: 1px solid #9b937d; background: #c2b9a1; box-shadow: 0 1px 0 #e6dbc0; border-radius: 1px; }
 .drive-file { margin: 0; font-size: 9px; color: #4e5444; }
 .drive-detail { margin: 5px 0 0; font-size: 9px; color: #666957; line-height: 1.7; }
-.drive-data { background: transparent; border-style: dashed; box-shadow: none; }
-.drive-data .drive-face { opacity: .62; }
-.drive-data .drive-label b { background: #a59f89; color: #eae4d1; }
-.future-tag { border: 1px solid #aca189; border-radius: 2px; padding: 2px 3px; color: #8a7654; }
+.drive-data { background: #d6d0bd; }
+
+
+
 .speaker { display: grid; gap: 4px; margin: 22px 30px 15px; }
 .speaker i { height: 2px; background: #a29e89; border-top: 1px solid #918e78; border-bottom: 1px solid #f0e8d0; border-radius: 3px; }
 .panel-footnote { text-align: center; font-size: 6px; line-height: 1.8; letter-spacing: 1px; color: #909079; }

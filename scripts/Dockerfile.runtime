@@ -1,6 +1,0 @@
-FROM alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f
-
-# Pin the complete package closure, including libc/compiler transitive inputs.
-COPY runtime-packages.lock /tmp/runtime-packages.lock
-RUN xargs apk add --no-cache < /tmp/runtime-packages.lock
-WORKDIR /work

@@ -1,110 +1,84 @@
-# Browser machine
+# Browser computer
 
-The browser console boots the current MVP disk image in QEMU compiled to
-WebAssembly. xterm.js presents the emulated COM1 terminal at 80 columns by
-24 lines. It runs the same trusted GNU Emacs runtime as the native QEMU MVP;
-JavaScript handles the display, keyboard and machine controls. Application and
-file operations remain in the guest.
-
-The profile is fixed: one x86-64 machine, 1 GiB guest memory, a raw system disk,
-no network device, no graphical adapter output, and no QEMU monitor. The browser
-runtime's prebuilt Wasm heap reserves about 2.25 GiB of address space, in addition
-to browser and image overhead. Use a desktop browser with WebAssembly threads
-and enough available memory. Boot can take tens of seconds; the progress bar
-becomes indeterminate after downloading the disk.
+The Web console boots Linux and the pinned GNU Emacs 30.2 runtime inside
+QEMU/WebAssembly. xterm.js displays the actual COM1 terminal at 80 by 24.
+The page owns display, keyboard, download feedback and machine controls;
+application and file operations execute in the guest.
 
 ## Start locally
-
-From the repository root:
 
 ```sh
 make web
 ```
 
-This builds the MVP image, verifies or downloads the pinned vendor assets into
-`build/web-vendor`, and serves the console at `http://127.0.0.1:18082/`. Building
-the MVP requires the tools described in [MVP acceptance](mvp.md). To serve an
-already built image without invoking its build again:
+Open `http://127.0.0.1:18082/`. This builds the system, verifies/downloads the
+pinned vendors and serves an explicit allowlist of UI, artifacts and notices.
+`make web-serve` serves an existing build. Set `WEB_PORT` or `WEB_HOST` to
+choose another address. The server never exposes the repository, native user
+disk or build context and has no upload or remote-command API.
 
-```sh
-make web-serve
-```
-
-The server defaults to loopback. Override `WEB_HOST` and `WEB_PORT` when needed,
-or invoke `python3 scripts/serve-web.py --help`. It exposes an explicit list of
-UI, vendor, image, manifest and license routes. It does not expose the repository
-directory or accept uploaded files. Run `make check-web` for route, MIME,
-isolation-header, TLS and asset-cache tests.
+Use a desktop browser with WebAssembly threads and available memory. The
+emulator reserves about 2.25 GiB of Wasm address space in addition to page and
+image overhead. The guest has 1 GiB RAM, a Linux kernel and initramfs, one fresh
+virtio session disk, COM1 and no network device or QEMU monitor.
 
 ## Access from another computer
 
-WebAssembly threads require `SharedArrayBuffer`, a secure browser context and
-cross-origin isolation. The server sends `Cross-Origin-Opener-Policy:
-same-origin` and `Cross-Origin-Embedder-Policy: require-corp`. Plain HTTP on a
-remote LAN or Tailscale address does not satisfy the secure-context requirement.
-
-Keep the server on loopback and forward it through SSH. For example, run this
-on a Mac whose SSH target is `socrates@100.110.132.80`:
+SharedArrayBuffer requires a secure context and cross-origin isolation.
+The server supplies COOP `same-origin` and COEP `require-corp`. Plain HTTP on
+a remote LAN or Tailscale address is insufficient. Keep the server on loopback
+and forward it through SSH from the browser's computer, for example:
 
 ```sh
 ssh -N -o ExitOnForwardFailure=yes \
   -L 127.0.0.1:18081:127.0.0.1:18082 socrates@100.110.132.80
 ```
 
-Then open `http://127.0.0.1:18081/` on that Mac. The tunnel must remain open.
-Replace the account, address or local port for another host.
-
-Alternatively, serve HTTPS with a certificate trusted by the client:
+Then open `http://127.0.0.1:18081/` locally. Adjust the account, remote address
+and ports for your host. Alternatively use trusted HTTPS:
 
 ```sh
 python3 scripts/serve-web.py --host 0.0.0.0 --port 18082 \
   --cert /path/to/certificate.pem --key /path/to/private-key.pem
 ```
 
-A reverse proxy or static host must preserve the isolation headers, serve
-`.wasm` as `application/wasm`, and map the same allowlisted URLs. Serve vendor
-files from the same origin. The local server has no authentication and is for
-development; choose the listening address deliberately.
+A reverse proxy/static host must preserve the isolation headers, allowlisted
+paths and Wasm MIME type. The development server has no authentication.
 
-## Controls and lifecycle
+## Display and lifecycle
 
-POWER downloads the image and starts one emulator instance. Repeated clicks
-cannot create another instance. Download and environment failures before
-emulator initialization allow another POWER attempt. Once initialization has
-begun, use RESTART to reload a fresh machine. Errors remain visible in the
-status panel; there is no automatic restart.
+POWER downloads and verifies the kernel, initramfs and disk template against
+the served system manifest, then starts one emulator. Download failures permit
+a retry. After emulator initialization begins, RESTART reloads the page to
+create a new machine. The progress indicator covers downloads, then becomes
+indeterminate during boot. The real guest startup marker enables input.
 
-The console becomes ready when the guest first displays its scratch buffer.
-Normal Emacs keyboard input then reaches the raw serial terminal. On Mac,
-Control supplies `C-` and Option supplies `M-`; `Esc`, then `x`, also invokes
-`M-x`. The COMMAND, EVALUATE and CANCEL keys send `M-x`, `M-:` and `C-g` and
-return focus to the terminal. The browser's shortcuts outside the terminal
-retain their normal behavior.
+The direct keys send `M-x`, `M-:`, `C-g`, `C-x d` and `M-x eshell` and restore
+terminal focus. On Mac, Control supplies `C-` and Option supplies `M-`; `Esc`,
+then `x`, also opens commands. FULL SCREEN expands the monitor. Guest exit,
+kernel panic and emulator/worker failures update the status; an undiagnosed
+hang can remain in its last state. Browser shortcuts outside the terminal
+retain normal behavior.
 
-RESTART asks for confirmation after emulator initialization. Leaving the page
-requests the browser's standard unload warning; browsers may suppress it.
-Guest runtime-exit and kernel-fault diagnostics update the machine status, as do
-reported emulator exits or aborts. This observes the fixed MVP's serial output,
-not a separate guest control protocol. A guest that hangs without a diagnostic
-can remain in its last displayed state.
+The DATA bay describes a working session disk. It has no import/export or
+browser retention controls. Saves remain available while this machine runs;
+closing, refreshing or restarting discards them. Restart asks for confirmation,
+and leaving requests the browser's unload warning, which browsers may suppress.
+Native data retention does not imply browser retention.
 
-All writable guest files are volatile. Saving in `/work` preserves a file only
-inside that running machine. Closing or restarting the page discards the whole
-RAM filesystem. The DATA expansion bay is a visual reservation: there is no
-writable disk mount, browser persistence, import/export, network API or guest
-isolation beyond the current MVP. See [the MVP scope](mvp.md).
+## Asset identity and notices
 
-## Asset identity and licenses
+`web/assets.json` pins the QEMU/Wasm artifact commit and individual hashes,
+xterm.js 5.3.0 and xterm-pty 0.12.0. The fetcher verifies cached files and installs
+replacements atomically. System identity is separate in `build/machine/manifest.json`.
+The browser verifies each system download before emulator initialization.
 
-`web/assets.json` pins the QEMU/Wasm artifact repository commit, individual
-SHA-256 hashes, xterm.js 5.3.0 and xterm-pty 0.12.0. `make web-assets` accepts
-cached bytes only when their hashes match, and downloads replacements through
-a temporary file before atomic installation. The system image is independent
-of those cached assets: `build/mvp/manifest.json` binds its guest components.
+The prebuilt experimental emulator has not had its exact source/compiler,
+linked dependencies and firmware provenance reconstructed here. The
+[notices](../web/licenses.html) preserve available reference texts;
+`web/licenses/sources.json` records URLs/hashes. Complete corresponding-source
+and distribution materials remain a separate task before public distribution.
+Guest package licenses remain those of Linux, Alpine components and GNU Emacs.
 
-The vendor emulator is a prebuilt experimental upstream artifact. This project
-has not reproduced its source/compiler build or audited the exact corresponding
-source and firmware provenance. The local [browser notices](../web/licenses.html)
-retain the available upstream reference notices and explain that limit.
-`web/licenses/sources.json` records their URLs and hashes. Public distribution
-requires resolving the remaining build and license-material provenance.
+See [browser acceptance](web-browser-checks.md) for actual guest tests and
+screenshots. Browser networking and persistent storage require separate work.

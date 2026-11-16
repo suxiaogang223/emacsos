@@ -1,73 +1,48 @@
-# First MVP: develop and run Elisp inside emacsOS
+# Functional acceptance
 
-The acceptance target is a fixed QEMU PC with 1 GiB RAM, BIOS boot, an IDE image
-and COM1 terminal. One trusted static GNU Emacs 30.2 runs on the parent C kernel.
-The runtime fork contains provenance changes only. The exact supported kernel
-profile, volatile files and application policy are documented in
-[kernel bootstrap](kernel-bootstrap.md), [files](files.md),
-[runtime build](runtime-build.md) and [application MVP](application-mvp.md).
+The reference machine is a QEMU PC with 1 GiB RAM, COM1, a Linux kernel,
+initramfs and separate virtio home disk. GNU Emacs 30.2 is compiled from the
+pinned fork and runs as UID 1000. The browser uses the same kernel/userspace
+with a fresh session disk and networking disabled.
 
-## Reproduce
+## Native acceptance
 
-Initialize the pinned submodule, then use Docker, Make, Python 3 and QEMU:
+From a clean committed checkout:
 
 ```sh
-make build
 make check
-make run
+# Optional public network check:
+LINUX_INTERNET_URL=https://example.org/ make test-guest
 ```
 
-Acceptance requires a clean committed parent and initialized submodule.
-`make build` builds the kernel and static runtime, installs parent-owned Lisp,
-packs the image and records build identity. `make check` runs the host checks
-and kernel probes, rebuilds as needed, and drives the real terminal command loop.
-Use `make test-guest` for just native guest acceptance (`make check-mvp` remains
-an alias). `make run` launches the same image
-for manual interaction; `C-a x` exits QEMU and `C-a a` sends Emacs a literal
-`C-a`.
+The script drives the real Emacs command loop over serial. It checks keyboard
+input, UID/version, ordinary save state, editing locks, backup contents,
+loading saved Elisp, timers beside a running worker, forced worker stop and
+survival of a worker segmentation fault. It performs certificate-verified
+synchronous HTTPS against a local fixture with an unpredictable response,
+and requires a certificate error when the fixture CA is untrusted.
 
-The script enters normal terminal text and `M-:` forms. It creates
-`/work/mvp-program.el` with `find-file`, inserts source, saves, kills the buffer
-and loads the saved file. A second edit checks the ordinary symlink lock,
-backup contents and modified-state cleanup. It also checks directory, copy,
-rename, metadata and deletion APIs, and preserves a real read-only filesystem
-error with the unsaved buffer intact.
-
-The saved application creates two timer-driven instances. The test visits
-source through `*Processes*`, edits one instance's buffer, stops it and restarts
-it through manager commands. It waits for real timer delivery and checks that
-the old timer is removed, edited contents survive, the other instance advances,
-and the restarted instance has a new identity and advances independently.
-Assertions use output markers absent from the typed input to reject serial-echo
-false positives. A failed assertion or guest exit fails acceptance.
+It exits Emacs, synchronizes and unmounts the home disk, waits for QEMU poweroff,
+then opens a new QEMU process with that same disk. Both edited source and backup
+contents must match, and the saved Elisp must execute again. The acceptance disk
+is disposable and distinct from the interactive user's disk.
 
 ## Evidence
 
-Generated artifacts live under ignored `build/`:
+`build/machine/manifest.json` identifies source, fork, container, build inputs
+and system artifacts. `acceptance.json` binds its result to the manifest,
+source, disk and both serial transcripts. Only a matching `passed: true` record
+establishes completion. Compilation and host checks do not prove guest behavior.
 
-| Artifact | Meaning |
-| --- | --- |
-| `runtime/manifest.json` | Pinned runtime source, toolchain/packages, executable, dump and installed archive identity. |
-| `mvp/emacsos.img` | Complete kernel, static executable and runtime archive boot image. |
-| `mvp/manifest.json` | Parent commit/tree, fork pin, dirty state, component hashes, build container IDs and machine profile. Build identity alone proves no guest behavior. |
-| `mvp/guest.transcript` | Actual QEMU serial bytes for the latest acceptance attempt. |
-| `mvp/acceptance.json` | Success/failure, passed assertions, parent/fork, image/build-manifest and transcript hashes. |
-
-Only `passed: true` in the matching acceptance record establishes that this
-script completed for that image. Host ERT, file sanitizer tests and the three
-kernel probes give separate component evidence. Compilation and a startup
-banner do not substitute for functional acceptance.
+[Browser acceptance](web-browser-checks.md) has a separate report with actual
+Wasm boot, downloaded artifact identity, keyboard, session files and lifecycle.
+It is required independently before claiming browser behavior.
 
 ## Boundaries
 
-Working files are volatile; save, close and sync do not retain data across boot.
-The runtime image is read-only. There is no networking, external subprocess
-support, service startup, account isolation or per-application address space.
-The kernel and Emacs share privilege. Tracked resource counts are bookkeeping,
-not enforced heap quotas. Application stop relies on callbacks returning;
-non-yielding Lisp or a runtime fault can stop the whole environment.
-
-This MVP implements the first application-management subset, not every A0
-contract in the broader process model. Message queues, completion subscriptions
-and deadline waits remain future work. F1 persistence, N0 transport feasibility
-and K0 independent execution retain separate acceptance gates.
+Native retention covers clean shutdown and reopening the same host-backed disk.
+Power-loss durability, crash recovery and browser storage retention are untested.
+A synchronous HTTPS check does not establish asynchronous HTTPS. A worker's
+separate address space is not an application sandbox; processes share an account.
+The main Emacs still has one command loop and heap. Browser networking remains
+disabled; native results do not transfer to a browser transport.

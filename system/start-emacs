@@ -6,7 +6,7 @@ ulimit -c 0
 status=1
 if test -f /run/emacsos-ready; then
     /bin/su -s /bin/sh -c \
-        'cd /home/emacs/work && exec emacs -Q -nw -l /usr/share/emacs/site-lisp/emacsos-linux.el' emacs
+        'cd /home/emacs/work && exec emacs -Q -nw -l /usr/share/emacs/site-lisp/emacsos.el' emacs
     status=$?
 fi
 printf '\nEMACSOS-LINUX-EXIT status=%s\n' "$status"
