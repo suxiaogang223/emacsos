@@ -19,6 +19,6 @@
             (setq buffer-read-only t)
             (goto-char (point-min))
             (redisplay t)
-            (message "EMACSOS-LINUX-READY")))
+            (message "Your workspace is ready.")))
 
 ;;; desktop.el ends here

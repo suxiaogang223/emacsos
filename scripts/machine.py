@@ -64,9 +64,13 @@ def build():
         raise RuntimeError("Initialize a clean Emacs checkout matching the parent gitlink")
     context = OUT / "context"
     context.mkdir(exist_ok=True)
-    for path in SYSTEM.iterdir():
-        if path.is_file():
-            shutil.copyfile(path, context / path.name)
+    system_files = [path for path in SYSTEM.iterdir() if path.is_file()]
+    retained = {path.name for path in system_files} | {"source.tar", "source-pin"}
+    for path in context.iterdir():
+        if path.name not in retained and path.is_file():
+            path.unlink()
+    for path in system_files:
+        shutil.copyfile(path, context / path.name)
     source = context / "source.tar"
     if not source.exists() or not (context / "source-pin").exists() or (context / "source-pin").read_text() != pin:
         with source.open("wb") as stream:

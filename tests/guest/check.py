@@ -181,7 +181,7 @@ def check(internet_url=None):
             create_disk(disk, certificate)
             guest = Guest(disk, OUT / "first-boot.transcript")
             guests.append(guest)
-            guest.wait(b"EMACSOS-LINUX-READY")
+            guest.wait(b"Your workspace is ready.")
             result["boot_seconds"].append(round(time.monotonic() - guest.started, 3))
             assertion(guest, "interactive Linux Emacs as uid 1000",
                       "(and (eq system-type 'gnu/linux) (= (user-uid) 1000) (equal emacs-version \"30.2\"))")
@@ -228,7 +228,7 @@ def check(internet_url=None):
             result["disk_after_shutdown_sha256"] = digest(disk)
             guest = Guest(disk, OUT / "second-boot.transcript")
             guests.append(guest)
-            guest.wait(b"EMACSOS-LINUX-READY")
+            guest.wait(b"Your workspace is ready.")
             result["boot_seconds"].append(round(time.monotonic() - guest.started, 3))
             assertion(guest, "source and backup retained across a new QEMU boot",
                       '(and (with-temp-buffer (insert-file-contents "/home/emacs/work/probe.el") (equal (buffer-string) %s)) (with-temp-buffer (insert-file-contents "/home/emacs/work/probe.el~") (equal (buffer-string) %s)))' % (json.dumps(source + ";; second revision\n"), json.dumps(source)))

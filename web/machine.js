@@ -42,7 +42,7 @@ function observe(bytes) {
         render("exited", exit[1] === "0" ? "Session ended. Restart to begin again." : `Emacs stopped (${exit[1]}). Restart to try again.`);
     } else if (/(?:Kernel panic - not syncing:|Oops:)/.test(observed)) {
         fail(new Error("The guest stopped with a kernel fault. The terminal contains its diagnostic."));
-    } else if (state === "starting" && observed.includes("EMACSOS-LINUX-READY")) {
+    } else if (state === "starting" && observed.includes("Your workspace is ready.")) {
         render("running", "Ready · your Lisp computer");
         element("screen-caption")?.replaceChildren(document.createTextNode("GNU Emacs 30.2 · emacsOS"));
         terminal.focus();
