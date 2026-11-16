@@ -68,12 +68,14 @@ def build():
     # The archive never includes Docker's mounted /dev, /proc, /sys or /out.
     package = r'''
 set -eu
+set -o pipefail
 cp /boot/vmlinuz-virt /out/vmlinuz
-{ find bin etc home init lib media mnt opt root run sbin srv tmp usr var -xdev -print0;
-  printf 'dev\0proc\0sys\0'; } | sort -z | cpio --null -o -H newc --owner=0:0 2>/out/cpio.log | gzip -n > /out/initramfs.cpio.gz
+find bin etc home init lib media mnt opt root run sbin srv tmp usr var -xdev -print0 > /out/archive.list
+printf 'dev\0proc\0sys\0' >> /out/archive.list
+sort -z /out/archive.list | cpio --null -o -H newc --owner=0:0 2>/out/cpio.log | gzip -n > /out/initramfs.cpio.gz
 apk list --installed > /out/packages.txt
 emacs --batch -Q --eval '(princ (format "%s\n%s\n" emacs-version system-configuration-options))' > /out/emacs.txt
-chown "$OUTPUT_UID:$OUTPUT_GID" /out/vmlinuz /out/initramfs.cpio.gz /out/packages.txt /out/emacs.txt /out/cpio.log
+chown "$OUTPUT_UID:$OUTPUT_GID" /out/vmlinuz /out/initramfs.cpio.gz /out/packages.txt /out/emacs.txt /out/cpio.log /out/archive.list
 '''
     run("docker", "run", "--rm", "--platform", "linux/amd64",
         "-e", f"OUTPUT_UID={os.getuid()}", "-e", f"OUTPUT_GID={os.getgid()}",
@@ -127,6 +129,7 @@ class Guest:
             data = os.read(key.fd, 65536)
             if data:
                 self.transcript.extend(data)
+                self.path.write_bytes(self.transcript)
             else:
                 self.selector.unregister(key.fileobj)
 
@@ -252,11 +255,11 @@ def check(internet_url=None):
             source = f';;; Probe authored inside the guest.\n(setq linux-probe "{nonce}")\n'
             guest.evaluate('(progn (find-file "/home/emacs/work/probe.el") (insert %s) (save-buffer) (message "LINUX-%%s" "SAVED"))' % json.dumps(source), "LINUX-SAVED")
             assertion(guest, "ordinary Emacs save and cleared modified state", '(and (not (buffer-modified-p)) (file-exists-p buffer-file-name))')
-            guest.evaluate('(progn (goto-char (point-max)) (insert ";; second revision\\n") (message "LINUX-%s" "EDITED"))', "LINUX-EDITED")
+            guest.evaluate('(progn (goto-char (point-max)) (insert %s) (message "LINUX-%%s" "EDITED"))' % json.dumps(";; second revision\n"), "LINUX-EDITED")
             assertion(guest, "editing creates normal file lock", '(file-symlink-p "/home/emacs/work/.#probe.el")')
             guest.evaluate('(progn (save-buffer) (message "LINUX-%s" "RESAVED"))', "LINUX-RESAVED")
             assertion(guest, "backup preserves original source and save releases lock",
-                      '(and (not (file-exists-p "/home/emacs/work/.#probe.el")) (with-temp-buffer (insert-file-contents "/home/emacs/work/probe.el~") (equal (buffer-string) %s)))' % json.dumps(source))
+                      '(and (not (file-symlink-p "/home/emacs/work/.#probe.el")) (with-temp-buffer (insert-file-contents "/home/emacs/work/probe.el~") (equal (buffer-string) %s)))' % json.dumps(source))
             assertion(guest, "saved Elisp executes", f'(progn (load-file "/home/emacs/work/probe.el") (equal linux-probe "{nonce}"))')
             guest.evaluate('(progn (setq linux-ticks 0 linux-worker (make-process :name "worker" :buffer "*worker*" :command \'("/bin/sh" "-c" "while :; do sleep 1; done") :noquery t) linux-timer (run-at-time 0 0.1 (lambda () (setq linux-ticks (1+ linux-ticks))))) (message "LINUX-%s" "WORKER"))', "LINUX-WORKER")
             assertion(guest, "timer and command loop progress beside a running worker", '(and (> linux-ticks 0) (process-live-p linux-worker))')
@@ -264,7 +267,7 @@ def check(internet_url=None):
             assertion(guest, "worker can be forcibly stopped", '(and (not (process-live-p linux-worker)) (eq (process-status linux-worker) \'signal))')
             guest.evaluate('(progn (setq linux-fault (make-process :name "fault" :buffer "*fault*" :command \'("/bin/sh" "-c" "kill -SEGV $$") :noquery t)) (message "LINUX-%s" "FAULT-SENT"))', "LINUX-FAULT-SENT")
             assertion(guest, "worker segmentation fault leaves Emacs alive", "(and (eq (process-status linux-fault) 'signal) (= (process-exit-status linux-fault) 11) (> linux-ticks 1))")
-            assertion(guest, "GnuTLS available", "(gnutls-available-p)")
+            assertion(guest, "GnuTLS available", "(progn (require 'url) (require 'gnutls) (require 'nsm) (gnutls-available-p))")
             request = ('(let ((gnutls-trustfiles (list "/home/emacs/work/fixture-ca.pem")) '
                        '(gnutls-verify-error t) (network-security-level \'high) (url-proxy-services nil)) '
                        '(require \'url) (let ((response (url-retrieve-synchronously %s t t 20))) '
