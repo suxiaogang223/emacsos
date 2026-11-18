@@ -1,0 +1,46 @@
+name: Assemble release upload
+on:
+  push:
+    branches: [codex/open-source-showcase]
+    paths: [.github/workflows/release-relay.yml]
+permissions:
+  contents: write
+jobs:
+  relay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: browser-demo-2026-11-18
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Wait for the complete upload manifest
+        run: |
+          mkdir -p build/relay
+          for attempt in $(seq 1 120); do
+            if gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern relay-manifest.json --dir build/relay --clobber; then exit 0; fi
+            sleep 10
+          done
+          exit 1
+      - name: Assemble and verify the original release files
+        run: |
+          python3 - <<'PY'
+          from concurrent.futures import ThreadPoolExecutor
+          import hashlib,json,os,pathlib,subprocess
+          base=pathlib.Path('build/relay')
+          manifest=json.loads((base/'relay-manifest.json').read_text())
+          def fetch(name):
+              subprocess.run(['gh','release','download',os.environ['RELEASE_TAG'],'--repo',os.environ['GITHUB_REPOSITORY'],'--pattern',name,'--dir',str(base)],check=True)
+          with ThreadPoolExecutor(max_workers=8) as pool:
+              list(pool.map(fetch,[name for item in manifest for name in item['parts']]))
+          for item in manifest:
+              target=base/item['name']
+              with target.open('wb') as output:
+                  for name in item['parts']: output.write((base/name).read_bytes())
+              with target.open('rb') as source: digest=hashlib.file_digest(source,'sha256').hexdigest()
+              if digest!=item['sha256']: raise ValueError(item['name'])
+              print('VERIFIED',item['name'],digest,flush=True)
+              subprocess.run(['gh','release','upload',os.environ['RELEASE_TAG'],'--repo',os.environ['GITHUB_REPOSITORY'],'--clobber',str(target)],check=True)
+          PY
