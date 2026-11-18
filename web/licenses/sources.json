@@ -15,10 +15,6 @@
     "url": "https://raw.githubusercontent.com/ktock/qemu-wasm/0ef7b4e2814b231705d8371dd7997f5b72e70baf/COPYING.LIB",
     "sha256": "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551"
   },
-  "qemu-bios-README.txt": {
-    "url": "https://raw.githubusercontent.com/ktock/qemu-wasm/0ef7b4e2814b231705d8371dd7997f5b72e70baf/pc-bios/README",
-    "sha256": "bad452a2f09022efc8caa7c71d19dda5475eb13423267bc98067eec38fd1cab2"
-  },
   "emscripten-LICENSE.txt": {
     "url": "https://raw.githubusercontent.com/emscripten-core/emscripten/3.1.50/LICENSE",
     "sha256": "620a78084fc7ca97c0b5dea9abf891f3ffcadfdbf305276f099c9c4e12fc1d86"
@@ -34,5 +30,29 @@
   "zlib-README.txt": {
     "url": "https://raw.githubusercontent.com/madler/zlib/v1.3.1/README",
     "sha256": "d106dcdb2a0b3087cb3a2380b9f00a0bbadc7eb835cd80408f94a2d78d69727d"
+  },
+  "seabios-COPYING.txt": {
+    "url": "https://raw.githubusercontent.com/coreboot/seabios/a6ed6b701f0a57db0569ab98b0661c12a6ec3ff8/COPYING",
+    "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+  },
+  "coi-serviceworker-MIT.txt": {
+    "url": "https://raw.githubusercontent.com/gzuidhof/coi-serviceworker/7b1d2a092d0d2dd2b7270b6f12f13605de26f214/LICENSE",
+    "sha256": "3ee2c88cec9f3036fd4b0cba94e94485bb8b4673be7b8e0f3b1496c5baff75cb"
+  },
+  "emacs-COPYING.txt": {
+    "url": "https://raw.githubusercontent.com/suxiaogang223/emacs/73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5/COPYING",
+    "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+  },
+  "pixman-COPYING.txt": {
+    "url": "https://www.cairographics.org/releases/pixman-0.42.2.tar.gz",
+    "sha256": "fac9270f0987b96ff4533fca3548c633e02083cbba4a0172a3b149b2e4019793"
+  },
+  "pcre2-LICENCE.txt": {
+    "url": "https://github.com/PCRE2Project/pcre2/tree/pcre2-10.40",
+    "sha256": "87d884eceb7fc54611470ce9f74280d28612b0c877adfc767e9676892a638987"
+  },
+  "libfdt-BSD-2-Clause.txt": {
+    "url": "https://github.com/qemu/dtc/tree/b6910bec11614980a21e46fbccc35934b671bd81",
+    "sha256": "6313108c23efffa36948f8b2cff1560a5935373b527b0e1a837cc77e6ed1bacd"
   }
 }

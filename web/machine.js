@@ -143,7 +143,7 @@ async function start() {
         terminal.options.disableStdin = true;
         const moduleUrl = new URL("out.js", vendor).href;
         const config = {
-            arguments: ["-M", "pc", "-m", "1G", "-nic", "none", "-display", "none", "-monitor", "none",
+            arguments: ["-M", "pc", "-m", "1G", "-nic", "none", "-vga", "none", "-display", "none", "-monitor", "none",
                 "-serial", "stdio", "-L", "/pack-rom", "-accel", "tcg,tb-size=64",
                 "-kernel", "/vmlinuz", "-initrd", "/initramfs.cpio.gz",
                 "-append", "console=ttyS0,115200 rdinit=/init panic=-1 quiet",
@@ -244,7 +244,7 @@ element("fullscreen").addEventListener("click", async () => {
 window.addEventListener("beforeunload", event => {
     if (initializationStarted && !approvedReload) { event.preventDefault(); event.returnValue = ""; }
 });
-// Worker startup errors in this prebuilt emulator can escape its onAbort hook
+// Worker startup errors can escape the emulator's onAbort hook
 // and leave its initialization promise pending. Surface uncaught failures too.
 window.addEventListener("error", event => {
     if (initializationStarted && ["starting", "running"].includes(state)) {
@@ -254,4 +254,15 @@ window.addEventListener("error", event => {
 window.addEventListener("unhandledrejection", event => {
     if (initializationStarted && ["starting", "running"].includes(state)) fail(event.reason);
 });
-render("off", "Power off · files are temporary");
+if (window.isSecureContext && !window.crossOriginIsolated && navigator.serviceWorker) {
+    render("preparing", "Preparing your workspace · reloading once");
+    setTimeout(() => {
+        if (state === "preparing") {
+            retryable = false;
+            render("failed", "Browser setup needs a reload.",
+                "Press RESTART. If this continues, allow service workers or use a browser with WebAssembly threads.");
+        }
+    }, 15000);
+} else {
+    render("off", "Power off · files are temporary");
+}

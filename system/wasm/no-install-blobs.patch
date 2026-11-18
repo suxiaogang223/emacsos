@@ -1,0 +1,11 @@
+--- a/meson.build
++++ b/meson.build
+@@ -158,7 +158,7 @@
+ edk2_targets = [ 'arm-softmmu', 'aarch64-softmmu', 'i386-softmmu', 'x86_64-softmmu' ]
+ unpack_edk2_blobs = false
+ foreach target : edk2_targets
+-  if target in target_dirs
++  if get_option('install_blobs') and target in target_dirs
+     bzip2 = find_program('bzip2', required: get_option('install_blobs'))
+     unpack_edk2_blobs = bzip2.found()
+     break

@@ -1,47 +1,71 @@
 <!doctype html>
 <html lang="en">
+<head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>emacsOS browser runtime notices</title>
+<title>emacsOS · Sources and licenses</title>
+<style>
+body { margin: 3rem auto; padding: 0 1.5rem; max-width: 54rem; background: #e2dece; color: #28372e; font: 17px/1.6 system-ui, sans-serif; }
+a { color: #315b43; } h1, h2 { line-height: 1.2; } h2 { margin-top: 2rem; } li { margin: .5rem 0; } code { font-size: .9em; }
+</style>
+</head>
+<body>
 <main>
-  <h1>Browser runtime notices</h1>
-  <p>The browser runs the current emacsOS image in a third-party QEMU/WebAssembly
-  build, with xterm.js and xterm-pty providing its serial terminal. The
-  <a href="./assets.json">asset manifest</a> identifies the downloaded bytes and
-  their source URLs. These files are cached locally, not committed to emacsOS.</p>
-  <h2>Terminal</h2>
+  <p><a href="./">← Back to your computer</a></p>
+  <h1>Free software, all the way down.</h1>
+  <p>emacsOS brings together GNU Emacs, Linux and a source-built QEMU/WebAssembly
+  emulator. Parent-owned emacsOS code is licensed under GPL-3.0-or-later.
+  Every third-party component keeps its original license.</p>
+  <h2>Download the corresponding source</h2>
+  <p>The <a href="https://github.com/suxiaogang223/emacsos/releases/tag/browser-demo-2026-11-18">browser release</a>
+  supplies binaries and source together:</p>
   <ul>
+    <li><a href="https://github.com/suxiaogang223/emacsos/releases/download/browser-demo-2026-11-18/emulator-sources.tar.gz">Emulator and firmware sources</a>:
+    QEMU/Wasm, SeaBIOS, libfdt, key maps, linked libraries, Emscripten runtime,
+    terminal sources, patches and build recipes.</li>
+    <li><a href="https://github.com/suxiaogang223/emacsos/releases/download/browser-demo-2026-11-18/guest-sources.tar.gz">Guest system sources</a>:
+    the exact GNU Emacs source and every installed Alpine package's source,
+    build recipe, patches and configuration.</li>
+    <li><a href="https://github.com/suxiaogang223/emacsos">Parent source repository</a>:
+    Linux image policy, Emacs setup, browser presentation, scripts and tests.</li>
+  </ul>
+  <p><a href="./sources.json">Source archive hashes</a> ·
+  <a href="./assets.json">Emulator asset hashes</a> ·
+  <a href="./wasm-build.json">Emulator build record</a> ·
+  <a href="./build.json">Guest build record</a> ·
+  <a href="./guest-packages.json">Guest package inventory</a></p>
+  <p>The emulator is built from QEMU/Wasm commit
+  <code>0ef7b4e2814b231705d8371dd7997f5b72e70baf</code> with Emscripten 3.1.50.
+  SeaBIOS and the small Linux boot ROMs are compiled from the supplied sources.
+  The serial-only browser profile has no VGA or network device and uses no
+  precompiled firmware from the old demo bundle.</p>
+  <h2>Component notices</h2>
+  <ul>
+    <li>GNU Emacs and parent-owned emacsOS: <a href="./licenses/emacs-COPYING.txt">GNU GPL v3</a>;
+    individual upstream file notices also apply.</li>
+    <li>QEMU: <a href="./licenses/qemu-COPYING.txt">COPYING</a> and
+    <a href="./licenses/qemu-COPYING.LIB.txt">COPYING.LIB</a>.
+    QEMU includes components under multiple original licenses.</li>
+    <li>SeaBIOS: <a href="./licenses/seabios-COPYING.txt">COPYING</a>;
+    QEMU boot ROMs retain their individual source headers.</li>
+    <li>Emscripten and linked runtime: <a href="./licenses/emscripten-LICENSE.txt">license notices</a>;
+    the full source archive includes its component notices.</li>
+    <li>GLib and GVDB: <a href="./licenses/glib-COPYING.txt">LGPL notice</a>;
+    PCRE2: <a href="./licenses/pcre2-LICENCE.txt">LICENCE</a>.</li>
+    <li>libffi: <a href="./licenses/libffi-LICENSE.txt">LICENSE</a>;
+    pixman: <a href="./licenses/pixman-COPYING.txt">COPYING</a>;
+    zlib: <a href="./licenses/zlib-README.txt">README and license</a>;
+    libfdt: <a href="./licenses/libfdt-BSD-2-Clause.txt">BSD notice</a>.</li>
     <li>xterm.js 5.3.0: <a href="./licenses/xterm-MIT.txt">MIT notice</a>;
-    <a href="https://github.com/xtermjs/xterm.js/tree/5.3.0">source</a>.</li>
-    <li>xterm-pty 0.12.0: <a href="./licenses/xterm-pty-MIT.txt">MIT notice</a>;
-    <a href="https://github.com/mame/xterm-pty/tree/v0.12.0">source</a>.</li>
+    xterm-pty 0.12.0: <a href="./licenses/xterm-pty-MIT.txt">MIT notice</a>.</li>
+    <li>coi-serviceworker: <a href="./licenses/coi-serviceworker-MIT.txt">MIT notice</a>.
+    The upstream script prepares isolation on static hosting; it does not retain guest files.</li>
+    <li>Linux and Alpine packages: licenses are recorded in the
+    <a href="./guest-packages.json">installed package inventory</a>.
+    Full source archives retain their original license texts and notices.</li>
   </ul>
-  <h2>Emulator and firmware</h2>
-  <p>The QEMU/Wasm and BIOS package files come from
-  <a href="https://github.com/ktock/qemu-wasm-demo-images/tree/b7c549b5e6f4c376f76483a03e983214421434ad/alpine-x86_64">this pinned artifact tree</a>.
-  QEMU contains code under multiple licenses, including GPL and LGPL; the demo
-  repository's license does not replace those component licenses.</p>
-  <ul>
-    <li>QEMU: <a href="./licenses/qemu-COPYING.txt">COPYING</a>,
-    <a href="./licenses/qemu-COPYING.LIB.txt">COPYING.LIB</a>, and
-    <a href="./licenses/qemu-bios-README.txt">firmware notices and source references</a>.</li>
-    <li>Emscripten: <a href="./licenses/emscripten-LICENSE.txt">license notices</a>.</li>
-    <li>GLib: <a href="./licenses/glib-COPYING.txt">LGPL notice</a>.</li>
-    <li>libffi: <a href="./licenses/libffi-LICENSE.txt">license notice</a>.</li>
-    <li>zlib: <a href="./licenses/zlib-README.txt">README and license notice</a>.</li>
-  </ul>
-  <p>The upstream <a href="https://github.com/ktock/qemu-wasm">QEMU/Wasm source and build instructions</a>
-  are a build reference. This integration pins prebuilt artifact hashes; it has
-  not reconstructed the exact compiler, source revisions, linked libraries or
-  firmware provenance of those artifacts. The notices above preserve upstream
-  reference texts, without claiming an exact corresponding-source audit.
-  Reconstructing that build and its complete distribution materials remains
-  necessary before a public runtime distribution.</p>
-  <h2>Guest system</h2>
-  <p>The boot image is built separately from the emacsOS checkout and its pinned
-  GNU Emacs fork. Its <a href="./build.json">build manifest</a> records component
-  hashes and source identity. Guest Emacs license files accompany its runtime
-  archive. This page does not change their licenses.</p>
-  <p><a href="./">Return to the computer</a></p>
+  <p><a href="https://github.com/suxiaogang223/emacsos/blob/main/docs/releasing.md">Rebuild and release guide</a> ·
+  <a href="https://github.com/suxiaogang223/emacsos/blob/main/docs/licensing.md">Licensing details</a></p>
 </main>
+</body>
 </html>

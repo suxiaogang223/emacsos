@@ -14,6 +14,7 @@ The browser test driver is optional and described in [browser checks](web-browse
 | `make build` | Compile the pinned runtime and package the Linux system |
 | `make run` | Build and boot the native reference with its retained home disk |
 | `make web` | Build, verify vendor assets and serve the browser computer |
+| `make wasm` | Rebuild the source-pinned browser emulator and firmware |
 | `make web-serve` | Serve already built artifacts after verifying vendor assets |
 | `make test` | Run fast host tooling and HTTP/asset tests |
 | `make lint` | Check contribution language, format and the clean submodule pin |
@@ -54,3 +55,7 @@ All generated files live under `build/`:
 
 There is no automatic clean target that deletes user data. Remove generated
 build contexts or caches deliberately; retain any disk containing wanted files.
+
+Public runtime sources, release identities and Pages deployment are described
+in [releasing](releasing.md). `EMACSOS_HOSTED=1` enables browser acceptance
+through the actual service-worker hosting path.

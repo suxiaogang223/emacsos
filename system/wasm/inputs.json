@@ -1,0 +1,90 @@
+{
+  "format": 1,
+  "source_date_epoch": 1756965210,
+  "emsdk": "3.1.50",
+  "emsdk_image": "emscripten/emsdk@sha256:b6ea0e55fdc95be36427df6df7892d5e5e27f0440cfcf442a55f784aba09a4fa",
+  "repositories": {
+    "qemu": {
+      "path": "qemu",
+      "url": "https://github.com/ktock/qemu-wasm",
+      "commit": "0ef7b4e2814b231705d8371dd7997f5b72e70baf",
+      "checkout": "qemu"
+    },
+    "seabios": {
+      "path": "qemu/roms/seabios",
+      "url": "https://github.com/coreboot/seabios",
+      "commit": "a6ed6b701f0a57db0569ab98b0661c12a6ec3ff8",
+      "checkout": "qemu/roms/seabios"
+    },
+    "keycodemapdb": {
+      "path": "qemu/subprojects/keycodemapdb",
+      "url": "https://github.com/qemu/keycodemapdb",
+      "commit": "f5772a62ec52591ff6870b7e8ef32482371f22c6",
+      "checkout": "qemu/subprojects/keycodemapdb"
+    },
+    "dtc": {
+      "path": "qemu/subprojects/dtc",
+      "url": "https://github.com/qemu/dtc",
+      "commit": "b6910bec11614980a21e46fbccc35934b671bd81",
+      "checkout": "dtc"
+    },
+    "softfloat": {
+      "path": "qemu/subprojects/berkeley-softfloat-3",
+      "url": "https://github.com/qemu/berkeley-softfloat-3",
+      "commit": "b64af41c3276f97f0e181920400ee056b9c88037",
+      "checkout": "softfloat"
+    },
+    "testfloat": {
+      "path": "qemu/subprojects/berkeley-testfloat-3",
+      "url": "https://github.com/qemu/berkeley-testfloat-3",
+      "commit": "e7af9751d9f9fd3b47911f51a5cfd08af256a9ab",
+      "checkout": "testfloat"
+    }
+  },
+  "archives": {
+    "zlib-1.3.1.tar.xz": {
+      "url": "https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.xz",
+      "sha256": "38ef96b8dfe510d42707d9c781877914792541133e1870841463bfa73f883e32"
+    },
+    "glib-2.75.0.tar.xz": {
+      "url": "https://download.gnome.org/sources/glib/2.75/glib-2.75.0.tar.xz",
+      "sha256": "6dde8e55cc4a2c83d96797120b08bcffb5f645b2e212164ae22d63c40e0e6360"
+    },
+    "libffi.tar.gz": {
+      "url": "https://api.github.com/repos/libffi/libffi/tarball/adbcf2b247696dde2667ab552cb93e0c79455c84",
+      "sha256": "4f8748bead8eeaf7b282c5434c48d2033a732209ef56791ce67b95e22e994999"
+    },
+    "pixman-0.42.2.tar.gz": {
+      "url": "https://www.cairographics.org/releases/pixman-0.42.2.tar.gz",
+      "sha256": "ea1480efada2fd948bc75366f7c349e1c96d3297d09a3fe62626e38e234a625e"
+    },
+    "pcre2-mirror.tar.bz2": {
+      "url": "https://distfiles.alpinelinux.org/distfiles/v3.16/pcre2-10.40.tar.bz2",
+      "sha256": "14e4b83c4783933dc17e964318e6324f7cae1bc75d8f3c79bc6969f00c159d68"
+    },
+    "pcre2_10.40-3_patch.zip": {
+      "url": "https://wrapdb.mesonbuild.com/v2/pcre2_10.40-3/get_patch",
+      "sha256": "95391923529b4c1647a2cf88cd3b59cceb4f92393775e011f530e7865de0c7fb"
+    },
+    "gvdb.tar.gz": {
+      "url": "https://api.github.com/repos/GNOME/gvdb/tarball/0854af0fdb6d527a8d1999835ac2c5059976c210",
+      "sha256": "7d5c89913565aae16e10069a5d26c9af60c105ce21c77588751d48aab959f943"
+    },
+    "xterm-pty-0.12.0.tgz": {
+      "url": "https://registry.npmjs.org/xterm-pty/-/xterm-pty-0.12.0.tgz",
+      "sha256": "27b223d13f3c395c15ba91b18b70e7b0a10eabc81b716684eb4211f10b90c340"
+    },
+    "emscripten-3.1.50.tar.gz": {
+      "url": "https://api.github.com/repos/emscripten-core/emscripten/tarball/3.1.50",
+      "sha256": "455ded69f884bce68a43bc0eb937f495ceb957e3113b6d8c45262e1fdf788196"
+    },
+    "xterm-source.tar.gz": {
+      "url": "https://api.github.com/repos/xtermjs/xterm.js/tarball/5.3.0",
+      "sha256": "44e2db9ff4176db2dd8ffb9ffbe29fb577068644bd654f563f20bc750232bd34"
+    },
+    "xterm-pty-source.tar.gz": {
+      "url": "https://api.github.com/repos/mame/xterm-pty/tarball/v0.12.0",
+      "sha256": "f7538143d57ceee88bd4c9a370b57c9bf35e26822ad460871f184406fda2aff9"
+    }
+  }
+}

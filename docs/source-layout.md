@@ -4,6 +4,7 @@
 emacsos/
 ├── emacs/                 # Pinned GNU Emacs 30.2 fork submodule
 ├── system/                # Linux image recipe, package locks, init and system Elisp
+├── system/wasm/           # Pinned emulator, firmware and source-collection recipes
 ├── scripts/               # System build/native launcher, asset fetcher and web server
 ├── tests/guest/           # Real Linux guest acceptance across two QEMU boots
 ├── tests/tooling/         # Contribution and build contract checks

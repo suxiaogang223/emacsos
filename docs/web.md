@@ -5,6 +5,13 @@ QEMU/WebAssembly. xterm.js displays the actual COM1 terminal at 80 by 24.
 The page owns display, keyboard, download feedback and machine controls;
 application and file operations execute in the guest.
 
+## Open the public computer
+
+Visit [emacsOS](https://suxiaogang223.github.io/emacsos/) and press **POWER**.
+The first visit may reload once to prepare browser isolation. Use a desktop
+browser and allow a few minutes for download and startup. The
+[first-session guide](first-session.md) starts with a short Lisp expression.
+
 ## Start locally
 
 ```sh
@@ -31,7 +38,7 @@ and forward it through SSH from the browser's computer, for example:
 
 ```sh
 ssh -N -o ExitOnForwardFailure=yes \
-  -L 127.0.0.1:18081:127.0.0.1:18082 socrates@100.110.132.80
+  -L 127.0.0.1:18081:127.0.0.1:18082 user@your-linux-host
 ```
 
 Then open `http://127.0.0.1:18081/` locally. Adjust the account, remote address
@@ -68,17 +75,21 @@ Native data retention does not imply browser retention.
 
 ## Asset identity and notices
 
-`web/assets.json` pins the QEMU/Wasm artifact commit and individual hashes,
+`web/assets.json` pins the source-built QEMU/Wasm and firmware outputs,
 xterm.js 5.3.0 and xterm-pty 0.12.0. The fetcher verifies cached files and installs
 replacements atomically. System identity is separate in `build/machine/manifest.json`.
 The browser verifies each system download before emulator initialization.
 
-The prebuilt experimental emulator has not had its exact source/compiler,
-linked dependencies and firmware provenance reconstructed here. The
-[notices](../web/licenses.html) preserve available reference texts;
-`web/licenses/sources.json` records URLs/hashes. Complete corresponding-source
-and distribution materials remain a separate task before public distribution.
-Guest package licenses remain those of Linux, Alpine components and GNU Emacs.
+The [runtime release](releasing.md) supplies corresponding source archives,
+exact dependency pins, build scripts, firmware inventory and notices.
+`web/wasm-build.json` records the actual emulator build; `web/sources.json`
+identifies the full source downloads. The old third-party prebuilt emulator
+has been replaced. Guest packages and GNU Emacs retain their own licenses.
+
+GitHub Pages uses a pinned, MIT-licensed Service Worker to supply isolation
+headers on navigation. It reloads the initial visit once and does not cache
+user files. Its scope stays inside `/emacsos/`; local hosting supplies headers
+directly. See [publication and rebuilding](releasing.md).
 
 See [browser acceptance](web-browser-checks.md) for actual guest tests and
 screenshots. Browser networking and persistent storage require separate work.
