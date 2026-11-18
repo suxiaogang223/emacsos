@@ -78,7 +78,10 @@ async function download(name, progress, signal) {
     const response = await fetch(new URL(`./${name}`, import.meta.url), { signal });
     if (!response.ok) throw new Error(`System download failed (${response.status}). Retry Power.`);
     const total = Number(response.headers.get("Content-Length"));
-    if (!response.body || !Number.isSafeInteger(total) || total <= 0) return response.arrayBuffer();
+    const encoding = response.headers.get("Content-Encoding");
+    // Fetch decodes compressed responses; Content-Length counts encoded bytes.
+    // The boot manifest still verifies every decoded image with SHA-256.
+    if ((encoding && encoding !== "identity") || !response.body || !Number.isSafeInteger(total) || total <= 0) return response.arrayBuffer();
     const reader = response.body.getReader();
     const chunks = [];
     let size = 0;
