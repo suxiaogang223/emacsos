@@ -18,6 +18,15 @@ def package(root, destination):
     destination.mkdir(parents=True, exist_ok=False)
     assets = json.loads((root / "web/assets.json").read_text())
     manifest = json.loads((root / "build/machine/manifest.json").read_text())
+    sources = json.loads((root / "web/sources.json").read_text())
+    emulator = json.loads((root / "web/wasm-build.json").read_text())
+    if emulator["source_archive_sha256"] != sources["emulator"]["sha256"]:
+        raise ValueError("Emulator source archive and build receipt disagree")
+    if set(emulator["artifacts"]) != set(assets["assets"]) - {"xterm.js", "xterm.css", "xterm-pty.js"}:
+        raise ValueError("Emulator build receipt does not cover every emulator asset")
+    for name, digest in emulator["artifacts"].items():
+        if assets["assets"][name]["sha256"] != digest:
+            raise ValueError(f"Emulator asset and build receipt disagree: {name}")
     expected = {**{"/vendor/" + name: item["sha256"] for name, item in assets["assets"].items()},
                 **{"/" + name: manifest["artifacts"][name] for name in
                    ("vmlinuz", "initramfs.cpio.gz", "data-template.ext4")}}

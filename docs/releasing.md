@@ -29,7 +29,7 @@ individual notices. See [licensing](licensing.md) and the
 
 ## Rebuild the emulator
 
-On Linux, install Docker, Python 3.11+, curl and Make. From the release checkout:
+On Linux, install Docker, Python 3.12+, curl and Make. From the release checkout:
 
 ```sh
 make wasm

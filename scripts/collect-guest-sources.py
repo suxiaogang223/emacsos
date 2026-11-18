@@ -40,7 +40,7 @@ def inventory(database):
             continue
         package = {key: fields.get(field, "") for key, field in
                    (("package", "P"), ("version", "V"), ("origin", "o"), ("commit", "c"), ("license", "L"))}
-        if not re.fullmatch(r"[a-zA-Z0-9+_.-]+", package["origin"]) or not re.fullmatch(r"[0-9a-f]{40}", package["commit"]):
+        if package["origin"] in (".", "..") or not re.fullmatch(r"[a-zA-Z0-9+_.-]+", package["origin"]) or not re.fullmatch(r"[0-9a-f]{40}", package["commit"]):
             raise ValueError(f"Missing source identity: {package['package']}")
         result.append(package)
     if not result:

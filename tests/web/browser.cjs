@@ -38,7 +38,7 @@ async function main() {
                 // Failed-boot retries cancel sibling downloads. Observe clone
                 // rejections now; awaiting the retained promise still rejects.
                 hash.catch(() => {});
-                window.__imageHashes[new URL(response.url).pathname.slice(1)] = hash;
+                window.__imageHashes[new URL(response.url).pathname.split('/').pop()] = hash;
             }
             return response;
         };

@@ -28,6 +28,8 @@ def fetch():
     if payloads.keys() != allowed:
         raise ValueError("Public runtime archive is incomplete")
     manifest = json.loads(payloads["manifest.json"])
+    if manifest["dirty"]:
+        raise ValueError("Public runtime must identify a clean source checkout")
     for name in allowed - {"manifest.json"}:
         if hashlib.sha256(payloads[name]).hexdigest() != manifest["artifacts"][name]:
             raise ValueError(f"Guest checksum mismatch: {name}")

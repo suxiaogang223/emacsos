@@ -16,6 +16,9 @@ concurrency:
 
 jobs:
   package:
+    permissions:
+      contents: read
+      pages: read
     if: >-
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'workflow_dispatch' ||

@@ -24,7 +24,7 @@
     },
     "load-rom.data": {
       "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-demo-2026-11-18/load-rom.data",
-      "sha256": "ca678ae0e2f602a7c3a41ce6b9d2327e3002cbe6e584268866e65ce5e8fb3bf5",
+      "sha256": "9d70ccb5e6f98bd6e5e1f3c4712acc017c1c843bcb7d504be030b605d6fb1e57",
       "license": "QEMU or firmware aggregate; see licenses.html"
     },
     "xterm.js": {

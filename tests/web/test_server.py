@@ -152,6 +152,8 @@ class PublicationTests(unittest.TestCase):
         payload = b"verified artifact"
         digest = hashlib.sha256(payload).hexdigest()
         (root / "web/assets.json").write_text(json.dumps({"assets": {"out.js": {"sha256": digest}}}))
+        (root / "web/sources.json").write_text(json.dumps({"emulator": {"sha256": digest}}))
+        (root / "web/wasm-build.json").write_text(json.dumps({"source_archive_sha256": digest, "artifacts": {"out.js": digest}}))
         artifacts = {name: digest for name in ("vmlinuz", "initramfs.cpio.gz", "data-template.ext4")}
         (root / "build/machine/manifest.json").write_text(json.dumps({"artifacts": artifacts}))
         self.stage(root)
@@ -179,6 +181,14 @@ class PublicationTests(unittest.TestCase):
             self.fixture(root)
             (root / "build/machine/vmlinuz").write_bytes(b"changed")
             with self.assertRaisesRegex(ValueError, "checksum mismatch"):
+                publisher.package(root, root / "public")
+
+    def test_unmatched_emulator_source_cannot_be_published(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.fixture(root)
+            (root / "web/sources.json").write_text(json.dumps({"emulator": {"sha256": "unknown"}}))
+            with self.assertRaisesRegex(ValueError, "source archive and build receipt disagree"):
                 publisher.package(root, root / "public")
 
 
