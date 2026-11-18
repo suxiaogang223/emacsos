@@ -1,73 +1,112 @@
 # emacsOS
 
-Your personal Lisp computer: GNU Emacs 30.2 on a small Linux system, presented
-as a computer in the browser. Linux supplies devices, files, networking and OS
-processes; Emacs supplies the user's programming and operating environment.
-The project concentrates on the Web console and Emacs workflows.
+**Your machine. Your Lisp.**
 
-## Start the browser computer
+A personal computer built around GNU Emacs, with a browser for its screen.
+Boot a small Linux system, open a real Emacs session, and make the environment
+your own: write a note, explore files, run a shell, or turn a Lisp function into
+your next tool.
 
-Install Docker with Linux/amd64 support, Make, Python 3.11+, e2fsprogs
-(`mkfs.ext4` and `debugfs`) and curl. Initialize the pinned runtime source:
+![The emacsOS browser computer running a real GNU Emacs session](docs/images/workspace.png)
+
+[**Try the live computer →**](https://suxiaogang223.github.io/emacsos/) · [Run locally](#run-it-yourself) · [First five minutes](docs/first-session.md) ·
+[Documentation](docs/README.md) · [Roadmap](docs/roadmap.md)
+
+## A computer you can change
+
+The screen is a real 80 × 24 terminal connected to GNU Emacs 30.2 inside
+QEMU/WebAssembly. Editing, evaluation and file operations happen in the guest.
+Linux supplies the kernel and ordinary files and processes; Emacs is where you
+work. The browser supplies the case, screen, keyboard shortcuts and power switch.
+
+There is no separate application framework to learn. A buffer can be an
+interface, an interactive Lisp function can be a tool, and a plain text file can
+be its data. The project focuses on bringing that style of personal computing
+to the Web.
+
+## Start with something small
+
+| Try this | How |
+| --- | --- |
+| Ask your computer a question | Press **EVALUATE**, enter `(+ 20 22)`, then Enter |
+| Write and run your own command | Follow the [first-session walkthrough](docs/first-session.md) |
+| Explore your workspace | Press **FILES**, then Enter to open `~/work` in Dired |
+| Run a command | Press **SHELL**, wait for the prompt, then enter `echo hello` |
+
+On a Mac, use **Control** for `C-` shortcuts and **Option** for `M-` shortcuts.
+`Esc`, then `x`, also opens `M-x`. `C-g` cancels a command.
+
+<details>
+<summary>See files inside the running computer</summary>
+
+![Dired listing a file saved and loaded inside the emacsOS Linux guest](docs/images/files.png)
+
+This is the guest's filesystem, shown by Emacs' built-in Dired. Screenshots
+come from actual browser acceptance runs; see [image provenance](docs/images/README.md).
+
+</details>
+
+## Run it yourself
+
+On Linux, install Docker with Linux/amd64 support, Make, Python 3.11+, curl and
+e2fsprogs (`mkfs.ext4` and `debugfs`). Then:
 
 ```sh
-git clone --single-branch --branch main --recurse-submodules https://github.com/suxiaogang223/emacsos.git emacsos
+git clone --single-branch --branch main --recurse-submodules https://github.com/suxiaogang223/emacsos.git
 cd emacsos
 make web
 ```
 
-Open `http://127.0.0.1:18082/` in a desktop browser and press POWER. The first
-build compiles the pinned GNU Emacs source; subsequent builds reuse Docker
-layers and verified system artifacts. WebAssembly threads, a secure context
-(localhost or trusted HTTPS), cross-origin isolation and sufficient memory
-are required. The prebuilt emulator reserves roughly 2.25 GiB plus page and
-image overhead. See [browser hosting](docs/web.md) for remote access.
+Open **http://127.0.0.1:18082/** in a desktop browser and press **POWER**.
+The first build compiles the pinned Emacs source; later builds reuse Docker
+layers and verified artifacts. Startup can take a few minutes.
 
-The display is a real 80 by 24 Emacs terminal. On Mac use Control for `C-` and
-Option for `M-`; `Esc`, then `x`, also invokes `M-x`. The direct-access keys
-open commands, evaluation, cancellation, files and Eshell. Create a file with
-`C-x C-f`, save with `C-x C-s`, and execute Elisp with `M-x load-file`.
-Your working directory is `~/work`.
+The browser needs WebAssembly threads and sufficient memory: the emulator
+reserves about **2.25 GiB**, plus page and image overhead. Remote access needs
+trusted HTTPS or an SSH tunnel; see [browser hosting](docs/web.md).
 
-The browser gets its own writable session disk. Closing or restarting the
-page discards all session files. Browser retention, disk import/export and
-network transport remain future work. The page's own asset downloads do not
-provide guest networking.
+**Browser files belong to the current session.** Closing, refreshing or
+restarting the page discards them. Browser retention and guest networking are
+not implemented yet.
 
-## Native reference and checks
+## What works today
 
-Install `qemu-system-x86_64` and OpenSSL for native guest validation:
+| | Browser computer | Native reference |
+| --- | --- | --- |
+| Runtime | GNU Emacs 30.2 on Linux | The same kernel and userspace |
+| Files | Writable session disk | Separate host-backed home disk |
+| Retention | Until the page closes or restarts | Tested across orderly shutdown and reopening |
+| Guest networking | Disabled | QEMU user networking; synchronous HTTPS acceptance |
+| User environment | One trusted Emacs and account | One trusted Emacs and account |
 
-```sh
-make run
-make test
-# From a clean committed checkout:
-make check
-```
+For the native console, install `qemu-system-x86_64` and OpenSSL, then use
+`make run`. Its home disk is `build/machine/data.ext4`; preserve that file when
+cleaning build outputs. Neither profile provides application sandboxing.
 
-`make run` boots the same kernel and userspace with a separate host-backed
-home disk at `build/machine/data.ext4`. Native acceptance uses a disposable
-disk across two QEMU boots and checks ordinary editing, backups, locks,
-subprocesses and certificate-verified synchronous HTTPS. Native data retention
-is limited to clean shutdown and reopening the same disk; power-loss recovery
-and browser retention are separate claims.
+This is an experimental project. Native acceptance, browser acceptance and
+compilation establish different things; the [acceptance guide](docs/mvp.md)
+defines those boundaries. The public runtime is built from pinned sources;
+[release and rebuild materials](docs/releasing.md) accompany the binaries.
 
-Use `make test-browser` against a running server for actual QEMU/Wasm boot,
-keyboard, file, Eshell and lifecycle acceptance. See [browser checks](docs/web-browser-checks.md)
-for the optional Playwright dependency and [build and test](docs/build-and-test.md)
-for commands and evidence locations.
+## Build with us
 
-## Architecture and contribution
+The next steps are a more useful Emacs workspace, browser workspace continuity,
+and a verified browser network transport. See the [roadmap](docs/roadmap.md).
+System policy and the Web console live in this repository; `emacs/` pins a
+[GNU Emacs fork](https://github.com/suxiaogang223/emacs) that currently adds
+provenance only.
 
-Read [design](docs/design.md), [roadmap](docs/roadmap.md),
-[source ownership](docs/source-layout.md) and [acceptance](docs/mvp.md).
-`emacs/` pins [the GNU Emacs fork](https://github.com/suxiaogang223/emacs);
-system policy and Web code belong in the parent. The source fork currently
-adds provenance only. The previous custom kernel and compatibility adapter
-have been removed; their history is available in Git.
+- [Documentation map](docs/README.md): choose a reading path.
+- [Architecture](docs/design.md): how the browser, Emacs and Linux fit together.
+- [Build and test](docs/build-and-test.md): commands, dependencies and evidence.
+- [Contributing](CONTRIBUTING.md): ownership, language and PR workflow.
 
-Use English for public project text; private discussion follows the user's
-preference. See [CONTRIBUTING.md](CONTRIBUTING.md). GNU Emacs licensing remains
-in the submodule; [runtime notices](web/licenses.html) describe the browser
-emulator and guest components. Prebuilt emulator provenance remains a
-separate distribution task.
+## License and credits
+
+Parent-owned code is licensed under **GPL-3.0-or-later**; see [LICENSE](LICENSE).
+GNU Emacs and other third-party components retain their own licenses.
+See [licensing and distribution](docs/licensing.md) and
+[browser runtime notices](web/licenses.html).
+
+Built on GNU Emacs, Linux, Alpine, BusyBox, QEMU, Emscripten, xterm.js and
+xterm-pty. emacsOS brings these pieces together as a personal Lisp computer.

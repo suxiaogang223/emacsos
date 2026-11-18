@@ -1,0 +1,19 @@
+{
+  "format": 1,
+  "release": "https://github.com/suxiaogang223/emacsos/releases/tag/browser-demo-2026-11-18",
+  "emulator": {
+    "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-demo-2026-11-18/emulator-sources.tar.gz",
+    "sha256": "4ecea7bbf9a525e1de524b64bdf614e04d70e88d5ea595ea66f2fa243f0491e0",
+    "description": "QEMU/Wasm, SeaBIOS, linked libraries, Emscripten runtime source, terminal source and build recipes"
+  },
+  "guest": {
+    "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-demo-2026-11-18/guest-sources.tar.gz",
+    "sha256": "f78559e7c75d1ea8c899f3cc12e02e9e9afa5f82113322723234baf73c9d04a8",
+    "description": "Complete source packages for 42 installed APK packages / 32 origins; exact GNU Emacs source and parent image policy"
+  },
+  "isolation": {
+    "url": "https://raw.githubusercontent.com/gzuidhof/coi-serviceworker/7b1d2a092d0d2dd2b7270b6f12f13605de26f214/coi-serviceworker.js",
+    "sha256": "e97bbac6017322d48aa54a5bc7ce473c725a4b7376ff245002e0ba71c3dcdd7e",
+    "license": "MIT"
+  }
+}

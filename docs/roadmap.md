@@ -11,6 +11,7 @@ focuses on the browser computer and Emacs user workflows.
 | Native reference | QEMU, ordinary Emacs files, OS subprocesses and GnuTLS | Two-boot guest acceptance; public DNS/HTTPS is an optional additional check |
 | Browser computer | QEMU/Wasm, xterm.js, power/restart/fullscreen, files and Eshell keys | Browser acceptance and screenshots at multiple viewport widths |
 | Browser workspace | A writable ext4 disk owned by the current machine | Save and reload inside the same browser session |
+| Public distribution | Source-built QEMU/Wasm and firmware, complete guest sources, GitHub Pages | Verified source bundles, runtime hashes and deployed browser acceptance |
 | Browser retention | Not implemented | Guest sync/unmount, storage/export, interruption and reopen tests |
 | Browser networking | Disabled | Real transport, connection lifecycle, DNS/TLS and error acceptance |
 
@@ -29,9 +30,8 @@ define the selected system; their code and documents have been removed.
    using standard APIs and external workers where appropriate.
 4. **Browser transport:** select a supported network bridge and verify actual
    guest traffic. Validate asynchronous TLS separately on the pinned runtime.
-5. **Distribution:** reconstruct the prebuilt emulator's source/compiler and
-   complete corresponding-source/license materials, then optimize download
-   size and startup time from measurements.
+5. **Distribution:** keep source and binary releases paired; optimize download
+   size and startup time from measurements. See [release materials](releasing.md).
 
 ## Data-disk gate
 

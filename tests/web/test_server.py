@@ -24,6 +24,7 @@ def module(name, path):
 
 server = module("serve_web", SCRIPTS / "serve-web.py")
 fetcher = module("fetch_web", SCRIPTS / "fetch-web-assets.py")
+publisher = module("package_web", SCRIPTS / "package-web.py")
 
 
 class ServerTests(unittest.TestCase):
@@ -134,6 +135,51 @@ class AssetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             with self.assertRaises(ValueError):
                 fetcher.fetch_assets({"assets": {"../outside": {}}}, Path(directory))
+
+
+class PublicationTests(unittest.TestCase):
+    def stage(self, root):
+        for route, (path, _mime) in server.routes(root).items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if not path.exists():
+                path.write_bytes(route.encode())
+        private = root / "build/machine/data.ext4"
+        private.write_bytes(b"private retained home")
+
+    def fixture(self, root):
+        (root / "web").mkdir()
+        (root / "build/machine").mkdir(parents=True)
+        payload = b"verified artifact"
+        digest = hashlib.sha256(payload).hexdigest()
+        (root / "web/assets.json").write_text(json.dumps({"assets": {"out.js": {"sha256": digest}}}))
+        artifacts = {name: digest for name in ("vmlinuz", "initramfs.cpio.gz", "data-template.ext4")}
+        (root / "build/machine/manifest.json").write_text(json.dumps({"artifacts": artifacts}))
+        self.stage(root)
+        for name in artifacts:
+            (root / "build/machine" / name).write_bytes(payload)
+        (root / "build/web-vendor/out.js").write_bytes(payload)
+
+    def test_static_bundle_excludes_retained_home_and_rejects_overwrite(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.fixture(root)
+            destination = root / "public"
+            publisher.package(root, destination)
+            self.assertTrue((destination / "index.html").is_file())
+            self.assertTrue((destination / "coi-serviceworker.js").is_file())
+            self.assertFalse((destination / "data.ext4").exists())
+            self.assertFalse((destination / "build").exists())
+            self.assertTrue((destination / ".nojekyll").exists())
+            with self.assertRaises(FileExistsError):
+                publisher.package(root, destination)
+
+    def test_modified_image_cannot_be_published(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.fixture(root)
+            (root / "build/machine/vmlinuz").write_bytes(b"changed")
+            with self.assertRaisesRegex(ValueError, "checksum mismatch"):
+                publisher.package(root, root / "public")
 
 
 if __name__ == "__main__":

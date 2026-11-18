@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
+const hosted = process.env.EMACSOS_HOSTED === '1';
 const url = process.argv[2] || 'http://127.0.0.1:18082/';
 const output = path.resolve(process.env.EMACSOS_WEB_REPORT || 'build/web-browser');
 fs.mkdirSync(output, { recursive: true });
@@ -42,25 +43,30 @@ async function main() {
             return response;
         };
     });
-    // Capture actual serial writes without a production debug API or fake guest.
-    await page.route('**/vendor/xterm.js', async route => {
-        const response = await route.fetch();
-        const source = await response.text();
-        await route.fulfill({ response, body: source + `
-window.__serial = '';
-window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
-    const terminal = Reflect.construct(Target, args);
-    const write = terminal.write.bind(terminal);
-    const decoder = new TextDecoder();
-    terminal.write = (bytes, ...rest) => {
-        window.__serial += typeof bytes === 'string' ? bytes : decoder.decode(bytes, {stream:true});
-        return write(bytes, ...rest);
-    };
-    return terminal;
-}});` });
+    // Install before xterm loads, including on service-worker navigations.
+    // Hosted requests pass through the worker and cannot use page.route().
+    await page.addInitScript(() => {
+        window.__serial = '';
+        let exposed;
+        Object.defineProperty(window, 'Terminal', {
+            configurable: true,
+            get: () => exposed,
+            set: Target => {
+                exposed = new Proxy(Target, { construct(Constructor, args) {
+                    const terminal = Reflect.construct(Constructor, args);
+                    const write = terminal.write.bind(terminal);
+                    const decoder = new TextDecoder();
+                    terminal.write = (bytes, ...rest) => {
+                        window.__serial += typeof bytes === 'string' ? bytes : decoder.decode(bytes, { stream: true });
+                        return write(bytes, ...rest);
+                    };
+                    return terminal;
+                }});
+            },
+        });
     });
     let firstImage = true;
-    await page.route('**/vmlinuz', async route => {
+    if (!hosted) await page.route('**/vmlinuz', async route => {
         if (firstImage) {
             firstImage = false;
             await route.fulfill({ status: 404, body: 'Missing test image' });
@@ -84,12 +90,19 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         await waitSerial(marker, start);
     }
     async function state(value, target = page) {
-        await target.waitForFunction(value => document.documentElement.dataset.machineState === value, value,
+        await target.waitForFunction(value => document.documentElement.dataset.machineState === value ||
+            (value !== 'failed' && document.documentElement.dataset.machineState === 'failed'), value,
             { timeout: 300000 });
+        const actual = await target.locator('html').getAttribute('data-machine-state');
+        assert.equal(actual, value, await target.locator('#error').innerText());
     }
     const check = message => { checks.push(message); console.log('PASS:', message); };
     try {
-        const response = await page.goto(url);
+        let response = await page.goto(url);
+        if (hosted) {
+            await page.waitForFunction(() => crossOriginIsolated, null, { timeout: 30000 });
+            response = await page.reload();
+        }
         assert.equal(response.headers()['cross-origin-opener-policy'], 'same-origin');
         assert.equal(response.headers()['cross-origin-embedder-policy'], 'require-corp');
         assert(await page.evaluate(() => isSecureContext && crossOriginIsolated));
@@ -110,12 +123,14 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         await page.screenshot({ path: path.join(output, 'off.png'), fullPage: true });
         check('Responsive outer page at five desktop/tablet/mobile widths');
 
+        if (!hosted) {
         await page.click('#boot');
         await state('failed');
         assert(await page.locator('#error').isVisible());
         assert(await page.locator('#boot').isEnabled());
         assert(await page.locator('#boot svg').count());
         check('Missing boot image is visible and permits a pre-initialization retry');
+        }
         const begin = Date.now();
         await page.click('#boot');
         await state('running');
@@ -208,8 +223,12 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         check('Confirmed RESTART reloads a fresh powered-off page');
         assert.deepEqual(errors, []);
 
+        if (!hosted) {
         const blocked = await browser.newPage();
-        await blocked.addInitScript(() => Object.defineProperty(window, 'crossOriginIsolated', { value: false }));
+        await blocked.addInitScript(() => {
+            Object.defineProperty(window, 'crossOriginIsolated', { value: false });
+            Object.defineProperty(navigator, 'serviceWorker', { value: undefined });
+        });
         await blocked.goto(url);
         await blocked.click('#boot');
         await state('failed', blocked);
@@ -217,6 +236,9 @@ window.Terminal = new Proxy(window.Terminal, { construct(Target, args) {
         assert(await blocked.locator('#boot').isEnabled());
         await blocked.close();
         check('Unsuitable browser context fails visibly before VM initialization');
+        } else {
+            check('Hosted service-worker navigation and restart preserve browser isolation');
+        }
         record.passed = true;
     } catch (error) {
         record.failure = String(error);
