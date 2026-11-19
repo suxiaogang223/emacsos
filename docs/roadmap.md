@@ -7,7 +7,7 @@ focuses on the browser computer and Emacs user workflows.
 
 | Area | Implementation | Required evidence |
 | --- | --- | --- |
-| System image | Pinned Alpine kernel/userspace plus compiled Emacs 30.2; one default build | Manifest-matched actual guest boot |
+| System image | Fixed-machine Linux build, minimal Alpine userspace and compiled Emacs 30.2; one default build | Manifest-matched actual guest boot |
 | Native reference | QEMU, ordinary Emacs files, OS subprocesses and GnuTLS | Two-boot guest acceptance; public DNS/HTTPS is an optional additional check |
 | Browser computer | QEMU/Wasm, xterm.js, power/restart/fullscreen, files and Eshell keys | Browser acceptance and screenshots at multiple viewport widths |
 | Browser workspace | A writable ext4 disk owned by the current machine | Save and reload inside the same browser session |
@@ -24,6 +24,7 @@ define the selected system; their code and documents have been removed.
 
 1. **Web experience:** clear download/startup states, stable terminal sizing,
    keyboard/focus, useful direct actions and honest session-lifetime messages.
+   Continue reducing cold manual/library delays after the slim-system baseline.
 2. **Workspace continuity:** define how user files leave the guest and return
    in a later machine, then validate interruption and storage errors.
 3. **Emacs workflows:** files, Eshell, program evaluation and useful tools,

@@ -1,0 +1,95 @@
+name: Assemble slim runtime release
+on:
+  push:
+    branches: [codex/slim-linux-runtime]
+    paths: [.github/workflows/release-relay.yml]
+permissions:
+  contents: write
+jobs:
+  relay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: browser-slim-2026-11-19
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: df376073dbc6c6bcfddb521eff7e58b7e7bfe647
+          persist-credentials: false
+      - name: Wait for completed upload parts
+        run: |
+          mkdir -p build/relay
+          for attempt in $(seq 1 120); do
+            if gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern relay-manifest.json --dir build/relay --clobber; then exit 0; fi
+            sleep 10
+          done
+          exit 1
+      - name: Assemble and verify runtime uploads
+        run: |
+          python3 - <<'PY'
+          from concurrent.futures import ThreadPoolExecutor
+          import hashlib,json,os,pathlib,subprocess
+          base=pathlib.Path('build/relay')
+          manifest=json.loads((base/'relay-manifest.json').read_text())
+          def fetch(name):
+              subprocess.run(['gh','release','download',os.environ['RELEASE_TAG'],'--repo',os.environ['GITHUB_REPOSITORY'],'--pattern',name,'--dir',str(base)],check=True)
+          with ThreadPoolExecutor(max_workers=8) as pool:
+              list(pool.map(fetch,[name for item in manifest for name in item['parts']]))
+          for item in manifest:
+              target=base/item['name']
+              with target.open('wb') as output:
+                  for name in item['parts']: output.write((base/name).read_bytes())
+              with target.open('rb') as source: digest=hashlib.file_digest(source,'sha256').hexdigest()
+              if digest!=item['sha256']: raise ValueError(item['name'])
+              print('VERIFIED',item['name'],digest,flush=True)
+              subprocess.run(['gh','release','upload',os.environ['RELEASE_TAG'],'--repo',os.environ['GITHUB_REPOSITORY'],'--clobber',str(target)],check=True)
+          PY
+      - name: Collect matching guest sources from the verified previous bundle
+        run: |
+          gh release download browser-demo-2026-11-18 --repo "$GITHUB_REPOSITORY" --pattern guest-sources.tar.gz --dir build/previous
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern emacs-build.txt --dir build/relay
+          python3 - <<'PY'
+          import hashlib,importlib.util,io,json,pathlib,tarfile,subprocess
+          base=pathlib.Path('build/relay');previous=pathlib.Path('build/previous/guest-sources.tar.gz')
+          def digest(path):
+              with path.open('rb') as stream:return hashlib.file_digest(stream,'sha256').hexdigest()
+          def check(data,expected,label):
+              if hashlib.sha256(data).hexdigest()!=expected:raise ValueError(label)
+          assert digest(previous)=='f78559e7c75d1ea8c899f3cc12e02e9e9afa5f82113322723234baf73c9d04a8'
+          assert digest(base/'guest-runtime.tar.gz')=='5ccc7254b29043a9aa05602222fb0f5d4daa4c91521d8f173750c1129bb78a17'
+          spec=importlib.util.spec_from_file_location('collector','scripts/collect-guest-sources.py');collector=importlib.util.module_from_spec(spec);spec.loader.exec_module(collector)
+          inventory=json.loads(pathlib.Path('web/guest-packages.json').read_text())
+          with tarfile.open(base/'guest-runtime.tar.gz') as runtime:
+              manifest=json.load(runtime.extractfile('manifest.json'))
+              image=runtime.extractfile('initramfs.cpio.gz').read();check(image,manifest['artifacts']['initramfs.cpio.gz'],'initramfs')
+              (base/'initramfs.cpio.gz').write_bytes(image)
+          installed=collector.installed_database(base/'initramfs.cpio.gz')
+          assert collector.inventory(installed)==inventory['packages']
+          assert not manifest['dirty'] and manifest['parent']=='df376073dbc6c6bcfddb521eff7e58b7e7bfe647'
+          for name,expected in manifest['inputs'].items():assert digest(pathlib.Path(name))==expected
+          assert digest(base/'emacs-build.txt')==manifest['artifacts']['emacs.txt']
+          def add(bundle,name,data):
+              item=tarfile.TarInfo('guest/'+name);item.size=len(data);item.mode=0o644;item.mtime=1794388991;bundle.addfile(item,io.BytesIO(data))
+          target=base/'guest-sources.tar.gz'
+          with tarfile.open(previous) as old,tarfile.open(target,'w:gz',compresslevel=6) as new:
+              for name,expected in inventory['source_packages'].items():
+                  data=old.extractfile('guest/alpine/'+name).read();check(data,expected,name);add(new,'alpine/'+name,data)
+              emacs=old.extractfile('guest/emacs-source.tar').read();check(emacs,'725a266d8695ce0f762e334e1d2331d108bd5a346c2bb5dc1c671a8dd51c3879','GNU Emacs source');add(new,'emacs-source.tar',emacs)
+              linux=old.extractfile('guest/alpine/linux-lts-6.12.117-0.src.tar.gz').read()
+              with tarfile.open(fileobj=io.BytesIO(linux)) as kernel:
+                  for name,member in [('linux.tar.xz','linux-6.12.tar.xz'),('linux.patch.xz','patch-6.12.117.patch.xz')]:
+                      data=kernel.extractfile('linux-lts/'+member).read();check(data,inventory['kernel']['sources'][name]['sha256'],name);add(new,'kernel/'+name,data)
+              add(new,'installed.txt',installed.encode());add(new,'packages.json',json.dumps(inventory['packages'],indent=2).encode()+b'\n')
+              add(new,'source-inventory.json',json.dumps(inventory,indent=2).encode()+b'\n')
+              add(new,'emacs-build.txt',(base/'emacs-build.txt').read_bytes())
+              for path in sorted(pathlib.Path('system').iterdir()):
+                  if path.is_file():add(new,'system/'+path.name,path.read_bytes())
+              add(new,'scripts/machine.py',pathlib.Path('scripts/machine.py').read_bytes())
+              add(new,'LICENSE',pathlib.Path('LICENSE').read_bytes())
+              guide='''# Guest source build\n\nParent policy: df376073dbc6c6bcfddb521eff7e58b7e7bfe647.\nGNU Emacs gitlink: 73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5.\n\nCheck out the parent release and initialize that gitlink, then run make build\non a Linux host with Docker, Python, curl, Make and e2fsprogs. The supplied\nLinux base source and stable patch can be copied to build/machine/context/\nas linux.tar.xz and linux.patch.xz to reuse the verified downloads. The parent\nbuild checks their SHA-256 identities, compiles the kernel with kernel.config,\nbuilds GNU Emacs and its matching portable dump, then packages /usr as SquashFS.\nThe complete Alpine source packages preserve their APKBUILD, patches and\nlicenses. The installed inventory corresponds to the actual released initramfs.\n\n'''
+              add(new,'runtime-build.md',guide.encode()+pathlib.Path('docs/build-and-test.md').read_bytes())
+          report={'parent':manifest['parent'],'guest_runtime_sha256':digest(base/'guest-runtime.tar.gz'),'guest_sources_sha256':digest(target),'packages':len(inventory['packages']),'origins':len(inventory['source_packages']),'kernel':inventory['kernel'],'emacs_source_sha256':'725a266d8695ce0f762e334e1d2331d108bd5a346c2bb5dc1c671a8dd51c3879','emacs_gitlink':inventory['emacs_gitlink']}
+          (base/'source-verification.json').write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2),flush=True)
+          PY
+          gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --clobber build/relay/guest-sources.tar.gz build/relay/source-verification.json

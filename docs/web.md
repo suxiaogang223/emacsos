@@ -86,6 +86,24 @@ closing, refreshing or restarting discards them. Restart asks for confirmation,
 and leaving requests the browser's unload warning, which browsers may suppress.
 Native data retention does not imply browser retention.
 
+## Performance
+
+On one Linux development host with headless Chromium 141, the slim system
+started in 18.6 seconds from localhost and restarted in 17.6 seconds. That
+restart includes a deliberately corrupted-cache kernel refetch. First Eshell
+startup took 0.35 seconds; the first Info manual open still took 9.6 seconds.
+These are individual acceptance observations, not cross-device guarantees or
+Internet download timings. The same host's typing probe measured about 28 ms
+median from terminal input to rendering across 35 samples after warm-up.
+
+The fixed-machine kernel, built-in drivers, smaller userspace, preloaded common
+libraries and read-on-demand runtime avoid work at every boot. The QEMU/Wasm
+patch bounds cached function-table entries and evicts them directly instead of
+waiting for JavaScript finalization callbacks before admitting new code. The
+browser engine still manages reclamation of evicted code. Cold library and
+manual work can remain slow under CPU emulation; the old custom kernel's startup
+time has not been matched. Release reports bind measurements to actual images.
+
 ## Asset identity and notices
 
 `web/assets.json` pins the source-built QEMU/Wasm and firmware outputs,
