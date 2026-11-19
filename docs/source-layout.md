@@ -30,8 +30,11 @@ explicit fork branch and must be published before updating the parent gitlink.
 Check the initialized checkout matches the staged pin. Ordinary system policy
 belongs in the parent, even when installed under Emacs' Lisp directory.
 
-`make build` produces `build/machine/vmlinuz`, `initramfs.cpio.gz`, a fresh
-browser disk template and their manifest. `make run` uses the separate native
+`make build` produces `build/machine/vmlinuz`, a small `initramfs.cpio.gz`,
+the read-only `/usr` disk `runtime.squashfs`, a fresh browser disk template and
+their manifest. `system/slim.sh` retains the fixed QEMU device-driver closure,
+compresses paired Lisp sources and manuals, and removes Emacs debug information.
+`make run` uses the separate native
 `data.ext4`; `make web` serves those artifacts through the pinned emulator.
 Generated artifacts and downloaded vendors remain under ignored `build/`.
 See [build and test](build-and-test.md) and [browser hosting](web.md).

@@ -18,7 +18,8 @@ emulator build inputs, output hashes and firmware inventory.
 - `guest-sources.tar.gz`: every installed Alpine package's source, APKBUILD,
   patches and configuration, plus the exact GNU Emacs source archive. A package
   inventory records all installed versions, licenses and Alpine source commits.
-- `guest-runtime.tar.gz`: kernel, initramfs, fresh disk template and build manifest.
+- `guest-runtime.tar.gz`: kernel, small initramfs, read-only SquashFS runtime,
+  fresh disk template and build manifest.
   It contains no native retained home disk.
 - The tagged repository supplies the parent image recipe, init/session policy,
   Web presentation, tooling and license grant. The Emacs gitlink is unchanged.

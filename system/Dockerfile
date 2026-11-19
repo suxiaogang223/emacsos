@@ -8,11 +8,11 @@ RUN mkdir /source && tar -xf /tmp/source.tar -C /source
 WORKDIR /source
 RUN ./autogen.sh && ./configure --prefix=/usr --without-all --without-x \
     --without-native-compilation --without-modules --without-libgmp \
-    --with-gnutls --with-threads --with-file-notification=inotify \
+    --with-gnutls --with-zlib --with-threads --with-file-notification=inotify \
     --with-dumping=pdumper --without-compress-install --disable-build-details
 RUN make -j4 && make install DESTDIR=/runtime
 
-FROM alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f
+FROM alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f AS runtime
 COPY packages.lock /tmp/packages.lock
 RUN xargs apk add --no-cache < /tmp/packages.lock
 COPY --from=builder /runtime/ /
@@ -24,3 +24,15 @@ COPY inittab /etc/inittab
 COPY boot start-emacs /etc/emacsos/
 COPY desktop.el /usr/share/emacs/site-lisp/emacsos.el
 RUN chmod 755 /init /etc/emacsos/boot /etc/emacsos/start-emacs
+
+FROM builder AS packager
+RUN apk add --no-cache squashfs-tools=4.6.1-r1
+COPY --from=runtime / /guest/
+COPY slim.sh /slim.sh
+RUN sh /slim.sh /guest
+RUN env -u SOURCE_DATE_EPOCH mksquashfs /guest/usr /usr.squashfs -comp gzip -noappend -all-root \
+    -no-xattrs -processors 2 -mkfs-time "$SOURCE_DATE_EPOCH" -all-time "$SOURCE_DATE_EPOCH"
+
+FROM scratch
+COPY --from=packager /guest/ /
+COPY --from=packager /usr.squashfs /boot/usr.squashfs

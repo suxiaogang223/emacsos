@@ -37,6 +37,7 @@ class ServerTests(unittest.TestCase):
             target = cls.root / name
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data)
+        (cls.root / "build/machine/runtime.squashfs").write_bytes(b"read-only runtime")
         (cls.root / "web/assets.json").write_text(json.dumps({"assets": {"out.js": {}, "machine.wasm": {}, "rom.data": {}}}))
         cls.httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), server.handler_for(cls.root))
         cls.thread = threading.Thread(target=cls.httpd.serve_forever, daemon=True)
@@ -72,6 +73,11 @@ class ServerTests(unittest.TestCase):
     def test_head_preserves_length_without_body(self):
         status, headers, body = self.request("/data-template.ext4", "HEAD")
         self.assertEqual((status, headers["Content-Length"], body), (200, "4", b""))
+
+    def test_read_only_system_disk_is_served(self):
+        status, headers, body = self.request("/runtime.squashfs")
+        self.assertEqual((status, headers["Content-Type"], body),
+                         (200, "application/octet-stream", b"read-only runtime"))
 
     def test_source_git_and_traversal_not_exposed(self):
         for path in ["/.git/config", "/AGENTS.md", "/../AGENTS.md", "/%2e%2e/.git/config", "/vendor/../../.git/config", "/vendor/%2e%2e%2f.git/config", "/vendor/", "/web/machine.js", "/build/machine/data.ext4", "/build/machine/context/source.tar", "/emacsos.img", "/vendor/out.js/.."]:
@@ -154,7 +160,7 @@ class PublicationTests(unittest.TestCase):
         (root / "web/assets.json").write_text(json.dumps({"assets": {"out.js": {"sha256": digest}}}))
         (root / "web/sources.json").write_text(json.dumps({"emulator": {"sha256": digest}}))
         (root / "web/wasm-build.json").write_text(json.dumps({"source_archive_sha256": digest, "artifacts": {"out.js": digest}}))
-        artifacts = {name: digest for name in ("vmlinuz", "initramfs.cpio.gz", "data-template.ext4")}
+        artifacts = {name: digest for name in ("vmlinuz", "initramfs.cpio.gz", "runtime.squashfs", "data-template.ext4")}
         (root / "build/machine/manifest.json").write_text(json.dumps({"artifacts": artifacts}))
         self.stage(root)
         for name in artifacts:

@@ -73,7 +73,7 @@ not implemented yet.
 
 | | Browser computer | Native reference |
 | --- | --- | --- |
-| Runtime | GNU Emacs 30.2 on Linux | The same kernel and userspace |
+| Runtime | GNU Emacs 30.2 on Linux; runtime files read from SquashFS | The same kernel and userspace |
 | Files | Writable session disk | Separate host-backed home disk |
 | Retention | Until the page closes or restarts | Tested across orderly shutdown and reopening |
 | Guest networking | Disabled | QEMU user networking; synchronous HTTPS acceptance |

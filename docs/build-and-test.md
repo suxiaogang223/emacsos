@@ -47,6 +47,8 @@ Compilation, emulator startup and interactive acceptance remain separate claims.
 All generated files live under `build/`:
 
 - `machine/manifest.json`: source and system artifact identity.
+- `machine/initramfs.cpio.gz`: boot tools and required kernel drivers.
+- `machine/runtime.squashfs`: read-only Emacs, libraries, source and manuals.
 - `machine/data.ext4`: native user's disk; preserve it when cleaning builds.
 - `machine/data-template.ext4`: fresh template copied into each browser VM.
 - `machine/acceptance.json` and boot transcripts: native functional evidence.

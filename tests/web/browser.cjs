@@ -29,7 +29,7 @@ async function main() {
         const fetch = window.fetch.bind(window);
         window.fetch = async (...args) => {
             const response = await fetch(...args);
-            if (new URL(response.url).pathname.match(/\/(vmlinuz|initramfs\.cpio\.gz|data-template\.ext4)$/) && response.ok) {
+            if (new URL(response.url).pathname.match(/\/(vmlinuz|initramfs\.cpio\.gz|runtime\.squashfs|data-template\.ext4)$/) && response.ok) {
                 window.__imageHashes ??= {};
                 const hash = response.clone().arrayBuffer().then(async bytes => {
                     const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
@@ -138,7 +138,7 @@ async function main() {
         record.bootSeconds = (Date.now() - begin) / 1000;
         record.artifactHashes = await page.evaluate(async () => Object.fromEntries(await Promise.all(Object.entries(window.__imageHashes).map(async ([name, value]) => [name, await value]))));
         for (const [name, hash] of Object.entries(record.artifactHashes)) assert.equal(hash, record.guestBuild.artifacts[name]);
-        assert.equal(Object.keys(record.artifactHashes).length, 3);
+        assert.equal(Object.keys(record.artifactHashes).length, 4);
         assert(await page.locator('#boot').isDisabled());
         assert(await page.locator('#command-key').isEnabled());
         check('Manifest-matched Linux and pinned Emacs boot in QEMU/Wasm');
@@ -171,6 +171,11 @@ async function main() {
         await page.keyboard.press('Control+e');
         await waitSerial('42', start);
         check('Ctrl-x Ctrl-e evaluates the expression before point');
+
+        await evaluate('(progn (require \'dired) (require \'find-func) (message "SOURCE-%s" (if (string-suffix-p ".el.gz" (buffer-file-name (car (find-function-noselect \'dired)))) "AVAILABLE" "MISSING")))', 'SOURCE-AVAILABLE');
+        check('Compressed Lisp source opens through find-function in the browser guest');
+        await evaluate('(save-window-excursion (info "(emacs)Top") (message "MANUAL-%s" (if (and (eq major-mode \'Info-mode) (equal Info-current-node "Top")) "AVAILABLE" "MISSING")))', 'MANUAL-AVAILABLE');
+        check('Compressed Emacs manual opens in Info in the browser guest');
 
         await page.keyboard.press('Control+x');
         await page.keyboard.press('Control+f');

@@ -8,9 +8,10 @@ mount -t devpts devpts /dev/pts
 chmod 1777 /tmp
 hostname emacsos-linux
 
-for module in virtio_pci virtio_blk virtio_net ext4; do
+for module in virtio_pci virtio_blk virtio_net ext4 squashfs; do
     modprobe "$module"
 done
+mount -t squashfs -o ro /dev/vdb /usr
 mount -t ext4 -o rw /dev/vda /home
 test -d /home/emacs/work
 test "$(stat -c %u /home/emacs)" = 1000

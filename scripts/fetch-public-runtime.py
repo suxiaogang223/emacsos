@@ -18,7 +18,7 @@ def fetch():
     with archive.open("rb") as stream:
         if hashlib.file_digest(stream, "sha256").hexdigest() != release["sha256"]:
             raise ValueError("Public runtime archive checksum mismatch")
-    allowed = {"vmlinuz", "initramfs.cpio.gz", "data-template.ext4", "manifest.json"}
+    allowed = {"vmlinuz", "initramfs.cpio.gz", "runtime.squashfs", "data-template.ext4", "manifest.json"}
     payloads = {}
     with tarfile.open(archive) as bundle:
         for member in bundle:

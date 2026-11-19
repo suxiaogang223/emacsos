@@ -26,8 +26,9 @@ disk or build context and has no upload or remote-command API.
 
 Use a desktop browser with WebAssembly threads and available memory. The
 emulator reserves about 2.25 GiB of Wasm address space in addition to page and
-image overhead. The guest has 1 GiB RAM, a Linux kernel and initramfs, one fresh
-virtio session disk, COM1 and no network device or QEMU monitor.
+image overhead. The guest has 1 GiB RAM, a Linux kernel and small initramfs,
+a read-only runtime disk, one fresh virtio session disk, COM1 and no network
+device or QEMU monitor.
 
 ## Access from another computer
 
@@ -54,8 +55,11 @@ paths and Wasm MIME type. The development server has no authentication.
 
 ## Display and lifecycle
 
-POWER downloads and verifies the kernel, initramfs and disk template against
-the served system manifest, then starts one emulator. Download failures permit
+POWER downloads and verifies the kernel, initramfs, read-only runtime and disk
+template against the served system manifest, then starts one emulator. When
+available, the browser's native `DecompressionStream` expands the verified
+initramfs before boot; other browsers let Linux expand the gzip archive.
+Emacs files stay in SquashFS and are read as needed. Download failures permit
 a retry. After emulator initialization begins, RESTART reloads the page to
 create a new machine. The progress indicator covers downloads, then becomes
 indeterminate during boot. The real guest startup marker enables input.

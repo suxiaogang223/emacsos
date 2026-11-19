@@ -23,6 +23,7 @@ def routes(root):
         "/terminal.css": (root / "web/terminal.css", "text/css; charset=utf-8"),
         "/vmlinuz": (root / "build/machine/vmlinuz", "application/octet-stream"),
         "/initramfs.cpio.gz": (root / "build/machine/initramfs.cpio.gz", "application/octet-stream"),
+        "/runtime.squashfs": (root / "build/machine/runtime.squashfs", "application/octet-stream"),
         "/data-template.ext4": (root / "build/machine/data-template.ext4", "application/octet-stream"),
         "/build.json": (root / "build/machine/manifest.json", "application/json"),
         "/assets.json": (root / "web/assets.json", "application/json"),

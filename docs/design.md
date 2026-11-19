@@ -29,9 +29,14 @@ flowchart TB
 
 ## Shared system, distinct delivery profiles
 
-Both profiles boot the same Linux kernel and initramfs. The image contains a
-matching Emacs executable, portable dump, installed Lisp and data from one
-build. `system/packages.lock` pins the guest package closure;
+Both profiles boot the same Linux kernel, small initramfs and read-only
+SquashFS runtime disk. Initramfs contains the boot tools and fixed-machine
+driver dependencies. `/usr` is mounted from the second virtio disk before
+Emacs starts, so the guest reads runtime files as needed instead of unpacking
+the full installation during every boot. The disk contains a matching Emacs
+executable, portable dump, installed Lisp and data from one build. Lisp sources
+with bytecode partners and Info manuals are losslessly compressed; uncompiled
+startup sources remain directly loadable. `system/packages.lock` pins the guest package closure;
 `system/build-packages.lock` pins the compiler closure. The base container is
 digest-pinned. Package availability still depends on Alpine repositories;
 byte-identical rebuilding is not claimed.

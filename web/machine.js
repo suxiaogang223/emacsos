@@ -53,16 +53,25 @@ async function bootFiles() {
     const response = await fetch(new URL("./build.json", import.meta.url));
     if (!response.ok) throw new Error("The system is unavailable. Run make build and retry.");
     const manifest = await response.json();
-    const names = ["vmlinuz", "initramfs.cpio.gz", "data-template.ext4"];
+    const names = ["vmlinuz", "initramfs.cpio.gz", "runtime.squashfs", "data-template.ext4"];
     const progress = new Map(names.map(name => [name, { size: 0, total: 0 }]));
     const controller = new AbortController();
     try {
-        return await Promise.all(names.map(async name => {
+        const files = await Promise.all(names.map(async name => {
             const bytes = await download(name, progress, controller.signal);
             const actual = await checksum(bytes);
             if (actual !== manifest.artifacts?.[name]) throw new Error(`System checksum mismatch (${name}). Rebuild and retry.`);
             return { name, bytes };
         }));
+        // Decode on the host instead of spending emulated x86 CPU on gzip.
+        // Linux accepts the verified archive as an uncompressed initramfs.
+        const initrd = files.find(file => file.name === "initramfs.cpio.gz");
+        if (typeof DecompressionStream === "function") {
+            const stream = new Blob([initrd.bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+            initrd.bytes = await new Response(stream).arrayBuffer();
+            initrd.name = "initramfs.cpio";
+        }
+        return files;
     } catch (error) {
         controller.abort();
         throw error;
@@ -148,9 +157,10 @@ async function start() {
         const config = {
             arguments: ["-M", "pc", "-m", "1G", "-nic", "none", "-vga", "none", "-display", "none", "-monitor", "none",
                 "-serial", "stdio", "-L", "/pack-rom", "-accel", "tcg,tb-size=64",
-                "-kernel", "/vmlinuz", "-initrd", "/initramfs.cpio.gz",
+                "-kernel", "/vmlinuz", "-initrd", `/${files.find(file => file.name.startsWith("initramfs.")).name}`,
                 "-append", "console=ttyS0,115200 rdinit=/init panic=-1 quiet",
-                "-drive", "file=/data-template.ext4,format=raw,if=virtio", "-no-reboot"],
+                "-drive", "file=/data-template.ext4,format=raw,if=virtio",
+                "-drive", "file=/runtime.squashfs,format=raw,if=virtio,readonly=on", "-no-reboot"],
             locateFile: path => new URL(path, vendor).href,
             mainScriptUrlOrBlob: moduleUrl,
             getPreloadedPackage: () => bios,

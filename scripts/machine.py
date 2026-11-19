@@ -81,19 +81,21 @@ def build():
     container = subprocess.check_output(["docker", "image", "inspect", IMAGE, "--format", "{{.Id}}"], text=True).strip()
     key = {"inputs": selected_inputs, "fork_pin": pin, "container": container}
     receipt = OUT / "package-key.json"
-    artifacts = ("vmlinuz", "initramfs.cpio.gz", "packages.txt", "emacs.txt")
+    artifacts = ("vmlinuz", "initramfs.cpio.gz", "runtime.squashfs", "packages.txt", "emacs.txt")
     cached = json.loads(receipt.read_text()) if receipt.exists() else {}
     if cached.get("key") != key or any(not (OUT / name).exists() or digest(OUT / name) != cached.get("artifacts", {}).get(name) for name in artifacts):
         package = r'''
 set -eu
 set -o pipefail
 cp /boot/vmlinuz-virt /out/vmlinuz
-find bin etc home init lib media mnt opt root run sbin srv tmp usr var -xdev -print0 > /out/archive.list
-printf 'dev\0proc\0sys\0' >> /out/archive.list
+cp /boot/usr.squashfs /out/runtime.squashfs
+find bin etc home init lib media mnt opt root run sbin srv tmp var -xdev -print0 > /out/archive.list
+find usr/lib -xdev -print0 >> /out/archive.list
+printf 'dev\0proc\0sys\0usr\0' >> /out/archive.list
 sort -z /out/archive.list | cpio --null -o -H newc --owner=0:0 2>/out/cpio.log | gzip -n > /out/initramfs.cpio.gz
 apk list --installed > /out/packages.txt
 emacs --batch -Q --eval '(princ (format "%s\n%s\n" emacs-version system-configuration-options))' > /out/emacs.txt
-chown "$OUTPUT_UID:$OUTPUT_GID" /out/vmlinuz /out/initramfs.cpio.gz /out/packages.txt /out/emacs.txt /out/cpio.log /out/archive.list
+chown "$OUTPUT_UID:$OUTPUT_GID" /out/vmlinuz /out/initramfs.cpio.gz /out/runtime.squashfs /out/packages.txt /out/emacs.txt /out/cpio.log /out/archive.list
 '''
         run("docker", "run", "--rm", "--platform", "linux/amd64",
             "-e", f"OUTPUT_UID={os.getuid()}", "-e", f"OUTPUT_GID={os.getgid()}",
@@ -131,6 +133,7 @@ def command(disk):
             "-kernel", str(OUT / "vmlinuz"), "-initrd", str(OUT / "initramfs.cpio.gz"),
             "-append", "console=ttyS0,115200 rdinit=/init panic=-1 quiet",
             "-drive", f"file={disk},format=raw,if=virtio",
+            "-drive", f"file={OUT / 'runtime.squashfs'},format=raw,if=virtio,readonly=on",
             "-netdev", "user,id=net0", "-device", "virtio-net-pci,netdev=net0",
             "-display", "none", "-serial", "stdio", "-monitor", "none", "-no-reboot"]
 
