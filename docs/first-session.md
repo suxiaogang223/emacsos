@@ -1,11 +1,19 @@
 # Your first five minutes
 
-Start the [browser computer](../README.md#run-it-yourself), press POWER and wait
-for **Your workspace is ready.** Click the terminal before typing. The direct
+Open the [project website](https://suxiaogang223.github.io/emacsos/) and choose
+**Start emacsOS**, or [run locally](../README.md#run-it-yourself). In the browser
+computer, press POWER and wait for **Your workspace is ready.** Click the terminal before typing. The direct
 access keys below it send real Emacs keyboard input and return focus to the screen.
 
 `C-` means Control; `M-` means Alt or Option. On a Mac, use Control rather than
 Command. If you get stuck in a command, press CANCEL or `C-g`.
+
+## Find your way
+
+The home screen is a read-only Emacs buffer. TAB selects an entry and Enter
+opens it. Press `n` there to open the example Org notebook, or `a` for today's
+agenda. `C-c o` returns home from any buffer. `C-x b` switches buffers and
+`C-x 2` splits a window; the [workspace guide](workspace.md) covers each tool.
 
 ## Evaluate a little Lisp
 

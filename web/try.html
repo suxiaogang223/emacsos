@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en" data-machine-state="off">
+<head>
+  <meta charset="utf-8">
+  <base href="../">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#e2dece">
+  <meta name="description" content="Your personal Lisp computer. Start Emacs in your browser and make it your own.">
+  <title>emacsOS — Personal Lisp Computer</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='5' fill='%232c382d'/%3E%3Ctext x='6' y='24' font-family='monospace' font-size='26' fill='%23b9d49b'%3Ee%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./vendor/xterm.css">
+  <link rel="stylesheet" href="./terminal.css">
+  <script src="./isolation.js"></script>
+  <script src="./coi-serviceworker.js"></script>
+  <script src="./vendor/xterm.js" defer></script>
+  <script src="./vendor/xterm-pty.js" defer></script>
+  <script src="./machine.js?v=3" type="module"></script>
+</head>
+<body>
+  <header class="page-header">
+    <a class="project-name" href="./" aria-label="emacsOS home">emacsOS<span class="registered-mark" aria-hidden="true">▦</span></a>
+    <span class="edition"><a href="./">PROJECT HOME</a> / PERSONAL COMPUTING SYSTEM <span class="edition-divider">/</span> BROWSER EDITION</span>
+  </header>
+
+  <main class="computer" aria-label="emacsOS personal computer">
+    <div class="case-top" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+    <header class="nameplate">
+      <div class="machine-brand"><span class="brand-stripes" aria-hidden="true"><i></i><i></i><i></i></span><h1>emacsOS</h1><span class="brand-description">PERSONAL LISP<br>COMPUTER</span></div>
+      <div class="model-mark">MODEL <strong>01</strong><span>THE PROGRAMMABLE MACHINE</span></div>
+    </header>
+
+    <div class="machine-body">
+      <section class="display-unit" aria-label="Computer display">
+        <div class="monitor-shell" id="monitor">
+          <div class="monitor-topline"><span>EMACS DISPLAY SYSTEM</span><span class="display-indicator"><i aria-hidden="true"></i> SIGNAL</span></div>
+          <div class="screen-well">
+            <div class="screen" id="screen">
+              <div class="idle-screen" id="idle-screen">
+                <div class="splash-top"><span>EMACSOS PERSONAL SYSTEM</span><span>01</span></div>
+                <div class="splash-main"><div class="splash-logo" aria-hidden="true">e<span>_</span></div><p class="splash-title">Your machine.<br>Your Lisp.</p><p class="splash-instruction">Press POWER to begin<span class="cursor" aria-hidden="true"></span></p></div>
+                <div class="splash-bottom"><span>GNU EMACS 30.2</span><span>512 MiB MEMORY</span></div>
+              </div>
+              <div id="terminal" aria-label="emacsOS terminal"></div>
+            </div>
+          </div>
+          <div class="monitor-bottomline"><span id="screen-caption">80 COLUMNS × 24 LINES</span><span class="monitor-mark" aria-hidden="true">● <i></i></span></div>
+        </div>
+        <div class="key-strip" aria-label="Emacs shortcuts">
+          <div class="key-strip-label">DIRECT<br>ACCESS</div>
+          <button id="command-key" class="keycap" type="button" disabled><kbd>M-x</kbd><span>COMMAND</span></button>
+          <button id="eval-key" class="keycap" type="button" disabled><kbd>M-:</kbd><span>EVALUATE</span></button>
+          <button id="cancel-key" class="keycap keycap-cancel" type="button" disabled><kbd>C-g</kbd><span>CANCEL</span></button>
+          <button id="files-key" class="keycap" type="button" disabled><kbd>C-x d</kbd><span>FILES</span></button>
+          <button id="shell-key" class="keycap" type="button" disabled><kbd>Eshell</kbd><span>SHELL</span></button>
+          <span class="keyboard-note">CONTROL = CTRL<br>META = ALT / OPTION</span>
+        </div>
+      </section>
+
+      <aside class="front-panel" aria-label="Machine controls and disk bays">
+        <section class="control-panel" aria-labelledby="control-heading">
+          <h2 id="control-heading" class="panel-heading"><span>01</span> SYSTEM CONTROL</h2>
+          <div class="system-readout"><span class="readout-label"><i id="power-led" class="led" aria-hidden="true"></i> SYSTEM STATUS</span><p id="status" role="status" aria-live="polite">OFFLINE</p><progress id="boot-progress" max="100" value="0" aria-label="Boot image download" hidden></progress></div>
+          <button class="power-key" id="boot" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9M6.5 6.5a8 8 0 1 0 11 0"/></svg><span>POWER</span><span class="key-indicator" aria-hidden="true"></span></button>
+          <div class="secondary-controls"><button id="reset" class="small-key" type="button" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 5v5h5M4.4 9a6 6 0 1 1 .8 4"/></svg>RESTART</button><button id="fullscreen" class="small-key" type="button"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 7V3h4m6 0h4v4m0 6v4h-4m-6 0H3v-4"/></svg>FULL SCREEN</button></div>
+          <p id="error" class="machine-error" role="alert" hidden></p>
+        </section>
+
+        <section class="storage-panel" aria-labelledby="storage-heading">
+          <h2 id="storage-heading" class="panel-heading"><span>02</span> DISK SYSTEM</h2>
+          <div class="drive drive-system" data-drive="system">
+            <div class="drive-label"><span><b>A</b> SYSTEM</span><span class="drive-tag">READ ONLY</span></div>
+            <div class="drive-face" aria-hidden="true"><div class="drive-slot"></div><i id="activity-led" class="led"></i><span class="eject-block"></span></div>
+            <p class="drive-file">GNU Emacs 30.2</p>
+            <p class="drive-detail">Your programming environment</p>
+          </div>
+          <div class="drive drive-data" data-drive="data" aria-describedby="data-drive-note">
+            <div class="drive-label"><span><b>B</b> DATA</span><span class="drive-tag">THIS SESSION</span></div>
+            <div class="drive-face" aria-hidden="true"><div class="drive-slot"></div><i class="led"></i><span class="eject-block"></span></div>
+            <p class="drive-file">Your working files</p>
+            <p class="drive-detail" id="data-drive-note">Available while this computer is open.</p>
+          </div>
+        </section>
+        <div class="speaker" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <p class="panel-footnote">DESIGNED TO BE<br>REPROGRAMMED.</p>
+      </aside>
+    </div>
+
+    <footer class="case-footer"><span><i class="footer-square" aria-hidden="true"></i> A COMPUTER BUILT AROUND EMACS.</span><span>01 — WEB CONSOLE</span></footer>
+    <span class="case-screw screw-one" aria-hidden="true"></span><span class="case-screw screw-two" aria-hidden="true"></span>
+  </main>
+
+  <section class="operator-notes" aria-label="Operating notes">
+    <p class="volatile-note"><span class="note-symbol" aria-hidden="true">!</span> Working files live in memory. Closing or restarting this page discards them.</p>
+    <details class="quick-reference"><summary>OPERATOR'S QUICK REFERENCE <span aria-hidden="true">+</span></summary><div class="reference-content"><p>Click the screen before typing. On Mac, use <strong>Control</strong> for C- shortcuts and <strong>Option</strong> for M- shortcuts. <kbd>Esc</kbd> followed by <kbd>x</kbd> also opens the command prompt.</p><dl><div><dt><kbd>C-x C-f</kbd></dt><dd>Open or create a file in <code>~/work</code></dd></div><div><dt><kbd>C-x C-s</kbd></dt><dd>Save the current file</dd></div><div><dt><kbd>C-x C-e</kbd></dt><dd>Evaluate the expression before the cursor</dd></div><div><dt><kbd>C-g</kbd></dt><dd>Cancel the current command</dd></div></dl><p>Press <kbd>C-c o</kbd> to return to the text home buffer. There, press <kbd>n</kbd> for Org notes, <kbd>a</kbd> for today's agenda, or <kbd>l</kbd> for an editable Lisp example. Use FILES to browse your workspace, or SHELL to run commands in Eshell. <kbd>C-x C-c</kbd> ends the session. Saved files remain available during this session; restarting begins with a fresh workspace. <a href="https://github.com/suxiaogang223/emacsos/blob/main/docs/first-session.md" target="_blank" rel="noopener">Try the first-session walkthrough.</a></p></div></details>
+  </section>
+  <footer class="page-footer"><span><a href="https://github.com/suxiaogang223/emacsos" target="_blank" rel="noopener">EMACSOS PROJECT</a> <a href="./licenses.html" target="_blank" rel="noopener">RUNTIME NOTICES</a></span><span>CODE IS THE INTERFACE.</span></footer>
+</body>
+</html>

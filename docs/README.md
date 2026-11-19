@@ -6,8 +6,9 @@ what you want to do.
 ## Use the computer
 
 1. [First session](first-session.md): evaluate Lisp, save a command and explore files.
-2. [Browser hosting](web.md): local startup, remote access, memory and session lifetime.
-3. [Build and test](build-and-test.md): dependencies, commands and generated files.
+2. [Text workspace](workspace.md): notes, agenda, files, shell and Lisp commands.
+3. [Browser hosting](web.md): local startup, remote access, memory and session lifetime.
+4. [Build and test](build-and-test.md): dependencies, commands and generated files.
 
 ## Understand and extend it
 

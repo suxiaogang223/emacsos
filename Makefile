@@ -26,7 +26,7 @@ check: test lint test-guest
 
 WEB_HOST ?= 127.0.0.1
 WEB_PORT ?= 18082
-WEB_URL ?= http://$(WEB_HOST):$(WEB_PORT)/
+WEB_URL ?= http://$(WEB_HOST):$(WEB_PORT)/try/
 web-assets:
 	python3 scripts/fetch-web-assets.py
 

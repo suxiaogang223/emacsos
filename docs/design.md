@@ -47,9 +47,12 @@ are absent from the guest. A virtio random device supplies host-generated random
 bytes so early userspace does not wait for entropy from emulated interrupts.
 
 The parent `system/preload.el` prepares the standard site-init hook to include
-Dired, Info and Eshell libraries in the matching portable dump. It records an
-explicit dependency load order without changing the Emacs fork. User-dependent
-Eshell paths are initialized at runtime; no session or user files are dumped.
+Dired, Info, Eshell, Org and Org Agenda in the matching portable dump. It records an
+explicit dependency load order, including Calendar's early provide for its
+menu dependency, without changing the Emacs fork. Org scratch overlays are
+recreated after initialization because portable dumps cannot store overlays.
+User-dependent Eshell paths and Org mail-link defaults initialize at runtime;
+no session or user files are dumped.
 Info manuals use standard split files, so opening a node does not read a whole
 multi-megabyte manual. The browser's smaller guest RAM does not change the
 emulator's compiled Wasm address-space reservation.
@@ -98,6 +101,20 @@ fetches of system assets are host presentation activity. HTTPS additionally
 requires the runtime feature and certificate validation; having a socket API
 alone proves neither. Async HTTPS needs its own acceptance rather than being
 inferred from a synchronous request.
+
+## Text interaction
+
+The system interface stays in Emacs text buffers with standard commands, keys
+and window management. The home buffer adds text buttons and local entry keys;
+`C-c o` returns to it. Notes and planning use Org, files use Dired, the command
+environment uses Eshell, and Lisp tools use normal editing and evaluation.
+Examples are seeded only on first use without replacing existing files or
+visiting buffers. See the [workspace guide](workspace.md).
+
+The static project homepage introduces these workflows with actual browser
+screenshots. The runnable computer lives at `try/` and loads runtime assets
+from the project root. Visiting the homepage does not initialize an emulator
+or register the isolation service worker.
 
 ## Next focus
 

@@ -7,7 +7,8 @@ application and file operations execute in the guest.
 
 ## Open the public computer
 
-Visit [emacsOS](https://suxiaogang223.github.io/emacsos/) and press **POWER**.
+Visit the [project website](https://suxiaogang223.github.io/emacsos/), choose
+**Start emacsOS**, then press **POWER** in the computer at `try/`.
 The first visit may reload once to prepare browser isolation. Use a desktop
 browser and allow a few minutes for download and startup. The
 [first-session guide](first-session.md) starts with a short Lisp expression.
@@ -18,7 +19,7 @@ browser and allow a few minutes for download and startup. The
 make web
 ```
 
-Open `http://127.0.0.1:18082/`. This builds the system, verifies/downloads the
+Open `http://127.0.0.1:18082/try/`. This builds the system, verifies/downloads the
 pinned vendors and serves an explicit allowlist of UI, artifacts and notices.
 `make web-serve` serves an existing build. Set `WEB_PORT` or `WEB_HOST` to
 choose another address. The server never exposes the repository, native user

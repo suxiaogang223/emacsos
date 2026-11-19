@@ -13,7 +13,7 @@ The browser test driver is optional and described in [browser checks](web-browse
 | --- | --- |
 | `make build` | Compile the pinned runtime and package the Linux system |
 | `make run` | Build and boot the native reference with its retained home disk |
-| `make web` | Build, verify vendor assets and serve the browser computer |
+| `make web` | Build, verify vendors and serve the website and browser computer |
 | `make wasm` | Rebuild the source-pinned browser emulator and firmware |
 | `make web-serve` | Serve already built artifacts after verifying vendor assets |
 | `make test` | Run fast host tooling and HTTP/asset tests |
