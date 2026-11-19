@@ -22,9 +22,12 @@ The driver runs Chromium without its sandbox for this trusted local test.
 Checks include isolation headers, five viewport widths, session-disk wording,
 missing download/retry, actual Linux/Emacs startup, simulated Mac Option-x,
 command/cancel/evaluate keys, Ctrl-a and Ctrl-x Ctrl-e, ordinary file save/load,
-Eshell, Dired, compressed source lookup, the compressed Info manual, restart
+Eshell, Dired, source lookup, the Info manual, restart
 cancellation, fullscreen, exit and confirmed restart.
 An unsuitable browser context must fail visibly before VM initialization.
+The driver also checks preloaded libraries, the verified static-image cache,
+corrupt-cache recovery and a second boot with a fresh home disk. Its warm
+restart timing includes deliberately refetching the corrupted kernel fixture.
 Result markers are absent from typed input to reject serial echo false positives.
 
 The report records Web source/dirty state, system and vendor manifests, actual

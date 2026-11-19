@@ -50,32 +50,61 @@ function observe(bytes) {
 }
 
 async function bootFiles() {
-    const response = await fetch(new URL("./build.json", import.meta.url));
+    const response = await fetch(new URL("./build.json", import.meta.url), { cache: "no-store" });
     if (!response.ok) throw new Error("The system is unavailable. Run make build and retry.");
     const manifest = await response.json();
+    if (manifest.layout !== "squashfs-usr-v1") throw new Error("The system was updated. Reload this page and retry Power.");
     const names = ["vmlinuz", "initramfs.cpio.gz", "runtime.squashfs", "data-template.ext4"];
     const progress = new Map(names.map(name => [name, { size: 0, total: 0 }]));
     const controller = new AbortController();
+    let cache;
+    try { cache = await window.caches?.open("emacsos-boot-v1"); }
+    catch { /* Storage restrictions must not prevent a normal network boot. */ }
     try {
-        const files = await Promise.all(names.map(async name => {
-            const bytes = await download(name, progress, controller.signal);
+        return await Promise.all(names.map(async name => {
+            const expected = manifest.artifacts?.[name];
+            if (!/^[a-f0-9]{64}$/.test(expected || "")) throw new Error("The system manifest is incomplete. Reload and retry Power.");
+            const key = new URL(`./${name}?sha256=${expected}`, import.meta.url);
+            if (cache) {
+                try {
+                    const stored = await cache.match(key);
+                    if (stored) {
+                        const bytes = await stored.arrayBuffer();
+                        if (await checksum(bytes) === expected) {
+                            downloadProgress(name, 1, 1, progress);
+                            return { name, bytes };
+                        }
+                        await cache.delete(key);
+                    }
+                } catch { /* A missing or unreadable cache falls back to HTTP. */ }
+            }
+            const bytes = await download(name, expected, progress, controller.signal);
             const actual = await checksum(bytes);
-            if (actual !== manifest.artifacts?.[name]) throw new Error(`System checksum mismatch (${name}). Rebuild and retry.`);
+            if (actual !== expected) throw new Error(`System checksum mismatch (${name}). Rebuild and retry.`);
+            if (cache) {
+                try {
+                    await cache.put(key, new Response(bytes));
+                    // Keep one version of each static image. Never cache VM writes.
+                    for (const previous of await cache.keys()) {
+                        if (new URL(previous.url).pathname === key.pathname && previous.url !== key.href) {
+                            await cache.delete(previous);
+                        }
+                    }
+                } catch { /* Quota or private-mode failures leave this boot usable. */ }
+            }
+            downloadProgress(name, 1, 1, progress);
             return { name, bytes };
         }));
-        // Decode on the host instead of spending emulated x86 CPU on gzip.
-        // Linux accepts the verified archive as an uncompressed initramfs.
-        const initrd = files.find(file => file.name === "initramfs.cpio.gz");
-        if (typeof DecompressionStream === "function") {
-            const stream = new Blob([initrd.bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
-            initrd.bytes = await new Response(stream).arrayBuffer();
-            initrd.name = "initramfs.cpio";
-        }
-        return files;
     } catch (error) {
         controller.abort();
         throw error;
     }
+}
+
+function downloadProgress(name, size, total, progress) {
+    progress.set(name, { size, total });
+    const values = [...progress.values()];
+    element("boot-progress").value = 40 * values.reduce((sum, item) => sum + (item.total ? item.size / item.total : 0), 0) / values.length;
 }
 
 async function checksum(bytes) {
@@ -83,8 +112,8 @@ async function checksum(bytes) {
     return Array.from(hash, byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function download(name, progress, signal) {
-    const response = await fetch(new URL(`./${name}`, import.meta.url), { signal });
+async function download(name, expected, progress, signal) {
+    const response = await fetch(new URL(`./${name}?sha256=${expected}`, import.meta.url), { signal });
     if (!response.ok) throw new Error(`System download failed (${response.status}). Retry Power.`);
     const total = Number(response.headers.get("Content-Length"));
     const encoding = response.headers.get("Content-Encoding");
@@ -99,9 +128,7 @@ async function download(name, progress, signal) {
         if (done) break;
         chunks.push(value);
         size += value.byteLength;
-        progress.set(name, { size, total });
-        const values = [...progress.values()];
-        element("boot-progress").value = 40 * values.reduce((sum, item) => sum + (item.total ? item.size / item.total : 0), 0) / values.length;
+        downloadProgress(name, size, total, progress);
     }
     if (size !== total) throw new Error("The system download was incomplete. Retry Power.");
     const bytes = new Uint8Array(size);
@@ -157,7 +184,7 @@ async function start() {
         const config = {
             arguments: ["-M", "pc", "-m", "1G", "-nic", "none", "-vga", "none", "-display", "none", "-monitor", "none",
                 "-serial", "stdio", "-L", "/pack-rom", "-accel", "tcg,tb-size=64",
-                "-kernel", "/vmlinuz", "-initrd", `/${files.find(file => file.name.startsWith("initramfs.")).name}`,
+                "-kernel", "/vmlinuz", "-initrd", "/initramfs.cpio.gz",
                 "-append", "console=ttyS0,115200 rdinit=/init panic=-1 quiet",
                 "-drive", "file=/data-template.ext4,format=raw,if=virtio",
                 "-drive", "file=/runtime.squashfs,format=raw,if=virtio,readonly=on", "-no-reboot"],

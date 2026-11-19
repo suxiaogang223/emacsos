@@ -11,6 +11,9 @@ RUN ./autogen.sh && ./configure --prefix=/usr --without-all --without-x \
     --with-gnutls --with-zlib --with-threads --with-file-notification=inotify \
     --with-dumping=pdumper --without-compress-install --disable-build-details
 RUN make -j4 && make install DESTDIR=/runtime
+COPY preload.el /prepare-preload.el
+RUN src/emacs --batch -Q -l /prepare-preload.el \
+    && rm -f src/emacs.pdmp && make -C src emacs.pdmp && make install DESTDIR=/runtime
 
 FROM alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f AS runtime
 COPY packages.lock /tmp/packages.lock

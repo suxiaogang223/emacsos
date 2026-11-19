@@ -66,7 +66,7 @@ async function main() {
         });
     });
     let firstImage = true;
-    if (!hosted) await page.route('**/vmlinuz', async route => {
+    if (!hosted) await page.route('**/vmlinuz*', async route => {
         if (firstImage) {
             firstImage = false;
             await route.fulfill({ status: 404, body: 'Missing test image' });
@@ -130,12 +130,17 @@ async function main() {
         assert(await page.locator('#boot').isEnabled());
         assert(await page.locator('#boot svg').count());
         check('Missing boot image is visible and permits a pre-initialization retry');
+        await page.evaluate(async () => {
+            await caches.delete('emacsos-boot-v1');
+            window.__imageHashes = {};
+        });
         }
         const begin = Date.now();
         await page.click('#boot');
         await state('running');
         await waitSerial('Your working directory is ~/work.');
         record.bootSeconds = (Date.now() - begin) / 1000;
+        console.log('BOOT:', record.bootSeconds.toFixed(3), 'seconds');
         record.artifactHashes = await page.evaluate(async () => Object.fromEntries(await Promise.all(Object.entries(window.__imageHashes).map(async ([name, value]) => [name, await value]))));
         for (const [name, hash] of Object.entries(record.artifactHashes)) assert.equal(hash, record.guestBuild.artifacts[name]);
         assert.equal(Object.keys(record.artifactHashes).length, 4);
@@ -144,6 +149,9 @@ async function main() {
         check('Manifest-matched Linux and pinned Emacs boot in QEMU/Wasm');
         await page.waitForTimeout(250);
         await page.screenshot({ path: path.join(output, 'running.png'), fullPage: true });
+
+        await evaluate('(message "PRELOAD-%s" (if (and (featurep \'dired) (featurep \'info) (featurep \'esh-mode) (string-prefix-p "/home/emacs/" (expand-file-name eshell-directory-name))) "READY" "MISSING"))', 'PRELOAD-READY');
+        check('Quick-action libraries are preloaded with the guest user home');
 
         await page.locator('.xterm-screen').click({ position: { x: 100, y: 100 } });
         let start = await serialLength();
@@ -172,10 +180,10 @@ async function main() {
         await waitSerial('42', start);
         check('Ctrl-x Ctrl-e evaluates the expression before point');
 
-        await evaluate('(progn (require \'dired) (require \'find-func) (message "SOURCE-%s" (if (string-suffix-p ".el.gz" (buffer-file-name (car (find-function-noselect \'dired)))) "AVAILABLE" "MISSING")))', 'SOURCE-AVAILABLE');
-        check('Compressed Lisp source opens through find-function in the browser guest');
+        await evaluate('(progn (require \'dired) (require \'find-func) (message "SOURCE-%s" (if (string-suffix-p ".el" (buffer-file-name (car (find-function-noselect \'dired)))) "AVAILABLE" "MISSING")))', 'SOURCE-AVAILABLE');
+        check('Lisp source opens through find-function in the browser guest');
         await evaluate('(save-window-excursion (info "(emacs)Top") (message "MANUAL-%s" (if (and (eq major-mode \'Info-mode) (equal Info-current-node "Top")) "AVAILABLE" "MISSING")))', 'MANUAL-AVAILABLE');
-        check('Compressed Emacs manual opens in Info in the browser guest');
+        check('Emacs manual opens in Info in the browser guest');
 
         await page.keyboard.press('Control+x');
         await page.keyboard.press('Control+f');
@@ -226,6 +234,30 @@ async function main() {
         await state('off');
         assert.equal(await serialLength(), 0);
         check('Confirmed RESTART reloads a fresh powered-off page');
+
+        const cached = await page.evaluate(async () => {
+            const cache = await caches.open('emacsos-boot-v1');
+            const keys = await cache.keys();
+            return keys.map(key => new URL(key.url).pathname.split('/').pop()).sort();
+        });
+        assert.deepEqual(cached, ['data-template.ext4', 'initramfs.cpio.gz', 'runtime.squashfs', 'vmlinuz']);
+        check('Boot cache contains only the four verified static images');
+        await page.evaluate(async () => {
+            const cache = await caches.open('emacsos-boot-v1');
+            const key = (await cache.keys()).find(key => new URL(key.url).pathname.endsWith('/vmlinuz'));
+            await cache.put(key, new Response('Corrupt cache fixture'));
+        });
+        const warmBegin = Date.now();
+        await page.click('#boot');
+        await state('running');
+        await waitSerial('Your working directory is ~/work.');
+        record.warmRestartSeconds = (Date.now() - warmBegin) / 1000;
+        console.log('WARM RESTART:', record.warmRestartSeconds.toFixed(3), 'seconds');
+        const refetched = await page.evaluate(async () => Object.fromEntries(await Promise.all(Object.entries(window.__imageHashes || {}).map(async ([name, value]) => [name, await value]))));
+        assert.deepEqual(Object.keys(refetched), ['vmlinuz']);
+        assert.equal(refetched.vmlinuz, record.guestBuild.artifacts.vmlinuz);
+        await evaluate('(message "FRESH-%s" (if (file-exists-p "/home/emacs/work/browser-proof.el") "LEAKED" "EMPTY"))', 'FRESH-EMPTY');
+        check('Warm boot reuses verified images, repairs corrupt cache and starts with a fresh home');
         assert.deepEqual(errors, []);
 
         if (!hosted) {

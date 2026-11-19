@@ -33,7 +33,8 @@ belongs in the parent, even when installed under Emacs' Lisp directory.
 `make build` produces `build/machine/vmlinuz`, a small `initramfs.cpio.gz`,
 the read-only `/usr` disk `runtime.squashfs`, a fresh browser disk template and
 their manifest. `system/slim.sh` retains the fixed QEMU device-driver closure,
-compresses paired Lisp sources and manuals, and removes Emacs debug information.
+retains complete Lisp sources and manuals, and removes Emacs debug information.
+`system/preload.el` supplies the parent-owned portable-dump preload policy.
 `make run` uses the separate native
 `data.ext4`; `make web` serves those artifacts through the pinned emulator.
 Generated artifacts and downloaded vendors remain under ignored `build/`.

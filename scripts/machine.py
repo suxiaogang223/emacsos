@@ -90,7 +90,6 @@ set -o pipefail
 cp /boot/vmlinuz-virt /out/vmlinuz
 cp /boot/usr.squashfs /out/runtime.squashfs
 find bin etc home init lib media mnt opt root run sbin srv tmp var -xdev -print0 > /out/archive.list
-find usr/lib -xdev -print0 >> /out/archive.list
 printf 'dev\0proc\0sys\0usr\0' >> /out/archive.list
 sort -z /out/archive.list | cpio --null -o -H newc --owner=0:0 2>/out/cpio.log | gzip -n > /out/initramfs.cpio.gz
 apk list --installed > /out/packages.txt
@@ -109,6 +108,7 @@ chown "$OUTPUT_UID:$OUTPUT_GID" /out/vmlinuz /out/initramfs.cpio.gz /out/runtime
         raise RuntimeError("Build inputs changed during compilation; rebuild before recording identity")
     write_json(OUT / "manifest.json", {
         "parent": git("rev-parse", "HEAD"), "dirty": bool(git("status", "--porcelain")),
+        "layout": "squashfs-usr-v1",
         "fork_pin": pin, "runtime": "GNU Emacs 30.2, pinned fork; Alpine Linux 6.12.117",
         "container": container, "inputs": selected_inputs,
         "artifacts": {**cached["artifacts"], "data-template.ext4": digest(OUT / "data-template.ext4")},

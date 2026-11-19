@@ -185,9 +185,11 @@ def check(internet_url=None):
             result["boot_seconds"].append(round(time.monotonic() - guest.started, 3))
             assertion(guest, "interactive Linux Emacs as uid 1000",
                       "(and (eq system-type 'gnu/linux) (= (user-uid) 1000) (equal emacs-version \"30.2\"))")
-            assertion(guest, "compressed Lisp source remains available to find-function",
-                      "(progn (require 'dired) (require 'find-func) (string-suffix-p \".el.gz\" (buffer-file-name (car (find-function-noselect 'dired)))))")
-            assertion(guest, "compressed Emacs manual opens in Info",
+            assertion(guest, "quick-action libraries preloaded with runtime user paths",
+                      "(and (featurep 'dired) (featurep 'info) (featurep 'esh-mode) (string-prefix-p \"/home/emacs/\" (expand-file-name eshell-directory-name)) (string-prefix-p (expand-file-name eshell-directory-name) eshell-history-file-name) (stringp (documentation 'eshell)) (not (get-buffer \"*eshell*\")))")
+            assertion(guest, "Lisp source remains available to find-function",
+                      "(progn (require 'dired) (require 'find-func) (string-suffix-p \".el\" (buffer-file-name (car (find-function-noselect 'dired)))))")
+            assertion(guest, "Emacs manual opens in Info",
                       "(save-window-excursion (info \"(emacs)Top\") (and (eq major-mode 'Info-mode) (equal Info-current-node \"Top\")))")
             guest.evaluate('(progn (switch-to-buffer "*typing*") (erase-buffer) (message "LINUX-%s" "TYPE"))', "LINUX-TYPE")
             guest.send(b"typed inside Linux Emacs")

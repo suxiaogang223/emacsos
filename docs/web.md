@@ -56,13 +56,19 @@ paths and Wasm MIME type. The development server has no authentication.
 ## Display and lifecycle
 
 POWER downloads and verifies the kernel, initramfs, read-only runtime and disk
-template against the served system manifest, then starts one emulator. When
-available, the browser's native `DecompressionStream` expands the verified
-initramfs before boot; other browsers let Linux expand the gzip archive.
+template against the served system manifest, then starts one emulator.
 Emacs files stay in SquashFS and are read as needed. Download failures permit
 a retry. After emulator initialization begins, RESTART reloads the page to
 create a new machine. The progress indicator covers downloads, then becomes
 indeterminate during boot. The real guest startup marker enables input.
+
+The browser keeps a best-effort cache of the four verified static boot images.
+Each cached image is checked against the current manifest before use; a corrupt
+entry is fetched again. Versioned download URLs avoid mixing old HTTP-cache
+content with a new manifest. Storage restrictions or quota failures fall back
+to normal downloads. This cache contains the original blank disk template,
+never the running machine's writes. It does not retain a workspace or make
+offline boot available; the current manifest is fetched at each power-on.
 
 The direct keys send `M-x`, `M-:`, `C-g`, `C-x d` and `M-x eshell` and restore
 terminal focus. On Mac, Control supplies `C-` and Option supplies `M-`; `Esc`,
