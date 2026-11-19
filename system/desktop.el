@@ -68,7 +68,10 @@ saved once, with exclusive creation; subsequent edits use normal Emacs saves."
    ";;; hello.el --- My first command -*- lexical-binding: t; -*-\n\n;; Evaluate with M-x eval-buffer, then run M-x my-hello.\n;; Change the message, save with C-x C-s, and evaluate again.\n\n(defun my-hello ()\n  \"Say hello from my computer.\"\n  (interactive)\n  (message \"Hello from my Lisp computer.\"))\n\n;; C-h f describes a function. C-x 2 splits the window.\n"))
 
 (with-eval-after-load 'org
-  (setq org-directory emacsos-work-directory
+  ;; Keep first use focused on the offline workspace. Other standard Org
+  ;; integrations remain installed and can be enabled through org-modules.
+  (setq org-modules '(ol-info)
+        org-directory emacsos-work-directory
         org-agenda-files (list (expand-file-name "tasks.org" emacsos-work-directory))))
 
 (defvar emacsos-home-mode-map

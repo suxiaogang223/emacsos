@@ -21,6 +21,9 @@ then press Enter. The single-letter shortcuts below apply only in this buffer.
 | `l` | `emacsos-lisp` | An editable Emacs Lisp example |
 | `h` | `info` | The Emacs manual |
 
+The default Org integration enables links to Info manuals. Other standard Org
+link modules remain installed and can be enabled through `org-modules`.
+
 These small entry commands are parent system policy in `system/desktop.el`.
 They use GNU Emacs directly; extensions can use the same ordinary APIs.
 

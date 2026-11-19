@@ -91,8 +91,15 @@ async function main() {
     }
     async function capture(name) {
         // Use Emacs' own window command for a readable, unretouched app view.
-        await page.keyboard.press('Control+x');
-        await page.keyboard.press('1');
+        if (name === 'home') {
+            await page.keyboard.press('Control+c');
+            await page.keyboard.press('o');
+        } else {
+            await page.keyboard.press('Control+x');
+            await page.keyboard.press('1');
+            // Clear the single-window message with a normal movement command.
+            await page.keyboard.press('Control+a');
+        }
         await page.waitForTimeout(300);
         await page.locator('.xterm-screen').screenshot({ path: path.join(output, `${name}.png`) });
     }
@@ -157,7 +164,7 @@ async function main() {
         check('Manifest-matched Linux and pinned Emacs boot in QEMU/Wasm');
         await page.waitForTimeout(250);
         await page.screenshot({ path: path.join(output, 'running.png'), fullPage: true });
-        await evaluate('(message "PRELOAD-%s" (if (and (featurep \'dired) (featurep \'info) (featurep \'esh-mode) (featurep \'org) (featurep \'org-agenda) (equal org-directory "/home/emacs/work/") (equal org-agenda-files \'("/home/emacs/work/tasks.org")) (file-in-directory-p org-persist-directory temporary-file-directory) (file-writable-p org-persist-directory) (string-prefix-p "/home/emacs/" (expand-file-name eshell-directory-name))) "READY" "MISSING"))', 'PRELOAD-READY');
+        await evaluate('(message "PRELOAD-%s" (if (and (featurep \'dired) (featurep \'info) (featurep \'esh-mode) (featurep \'org) (featurep \'org-agenda) (equal org-modules \'(ol-info)) (equal org-directory "/home/emacs/work/") (equal org-agenda-files \'("/home/emacs/work/tasks.org")) (file-in-directory-p org-persist-directory temporary-file-directory) (file-writable-p org-persist-directory) (string-prefix-p "/home/emacs/" (expand-file-name eshell-directory-name))) "READY" "MISSING"))', 'PRELOAD-READY');
         check('Quick-action libraries are preloaded with the guest user home');
         await evaluate('(message "HOME-%s" (if (and (eq major-mode \'emacsos-home-mode) buffer-read-only (button-at (point))) "READY" "MISSING"))', 'HOME-READY');
         await capture('home');
@@ -239,13 +246,13 @@ async function main() {
 
         await page.keyboard.press('Control+x');
         await page.keyboard.press('Control+f');
-        await page.keyboard.type('/home/emacs/work/browser-proof.el', { delay: 3 });
+        await page.keyboard.type('/home/emacs/work/experiment.el', { delay: 3 });
         await page.keyboard.press('Enter');
         await page.waitForTimeout(300);
         await page.keyboard.type('(setq browser-proof 42)\n', { delay: 3 });
         await page.keyboard.press('Control+x');
         await page.keyboard.press('Control+s');
-        await evaluate('(progn (kill-buffer) (load-file "/home/emacs/work/browser-proof.el") (message "BROWSER-SAVED-%d" browser-proof))', 'BROWSER-SAVED-42');
+        await evaluate('(progn (kill-buffer) (load-file "/home/emacs/work/experiment.el") (message "BROWSER-SAVED-%d" browser-proof))', 'BROWSER-SAVED-42');
         check('Ctrl-x Ctrl-f / Ctrl-x Ctrl-s save source that the guest loads');
         start = await serialLength();
         const shellBegin = Date.now();
@@ -273,7 +280,7 @@ async function main() {
         await page.keyboard.press('Enter');
         // The home-button check visited Dired before these files were created.
         await page.keyboard.press('g');
-        await waitSerial('browser-proof.el', start);
+        await waitSerial('experiment.el', start);
         await evaluate('(message "FILES-MODE-%s" major-mode)', 'FILES-MODE-dired-mode');
         await capture('files');
         await page.waitForTimeout(250);
@@ -322,7 +329,7 @@ async function main() {
         const refetched = await page.evaluate(async () => Object.fromEntries(await Promise.all(Object.entries(window.__imageHashes || {}).map(async ([name, value]) => [name, await value]))));
         assert.deepEqual(Object.keys(refetched), ['vmlinuz']);
         assert.equal(refetched.vmlinuz, record.guestBuild.artifacts.vmlinuz);
-        await evaluate('(message "FRESH-%s" (if (file-exists-p "/home/emacs/work/browser-proof.el") "LEAKED" "EMPTY"))', 'FRESH-EMPTY');
+        await evaluate('(message "FRESH-%s" (if (file-exists-p "/home/emacs/work/experiment.el") "LEAKED" "EMPTY"))', 'FRESH-EMPTY');
         await evaluate('(message "EXAMPLES-%s" (if (or (file-exists-p "/home/emacs/work/notes.org") (file-exists-p "/home/emacs/work/tasks.org")) "LEAKED" "EMPTY"))', 'EXAMPLES-EMPTY');
         check('Warm boot reuses verified images, repairs corrupt cache and starts with a fresh home');
         assert.deepEqual(errors, []);

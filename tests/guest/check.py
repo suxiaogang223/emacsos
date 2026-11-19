@@ -186,7 +186,7 @@ def check(internet_url=None):
             assertion(guest, "interactive Linux Emacs as uid 1000",
                       "(and (eq system-type 'gnu/linux) (= (user-uid) 1000) (equal emacs-version \"30.2\"))")
             assertion(guest, "workflow libraries preloaded with runtime user paths",
-                      "(and (featurep 'dired) (featurep 'info) (featurep 'esh-mode) (featurep 'org) (featurep 'org-agenda) (equal org-directory \"/home/emacs/work/\") (equal org-agenda-files '(\"/home/emacs/work/tasks.org\")) (string-prefix-p \"/home/emacs/\" (expand-file-name eshell-directory-name)) (string-prefix-p (expand-file-name eshell-directory-name) eshell-history-file-name) (stringp (documentation 'eshell)) (not (get-buffer \"*eshell*\")))")
+                      "(and (featurep 'dired) (featurep 'info) (featurep 'esh-mode) (featurep 'org) (featurep 'org-agenda) (equal org-modules '(ol-info)) (equal org-directory \"/home/emacs/work/\") (equal org-agenda-files '(\"/home/emacs/work/tasks.org\")) (string-prefix-p \"/home/emacs/\" (expand-file-name eshell-directory-name)) (string-prefix-p (expand-file-name eshell-directory-name) eshell-history-file-name) (stringp (documentation 'eshell)) (not (get-buffer \"*eshell*\")))")
             assertion(guest, "text home uses ordinary buttons and standard commands",
                       "(and (eq major-mode 'emacsos-home-mode) buffer-read-only (button-at (point)) (eq (key-binding (kbd \"C-c o\")) 'emacsos-home) (eq (key-binding (kbd \"M-x\")) 'execute-extended-command))")
             assertion(guest, "preloaded Org recreates scratch overlays and runtime identity",

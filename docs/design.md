@@ -109,6 +109,8 @@ The system interface stays in Emacs text buffers with standard commands, keys
 and window management. The home buffer adds text buttons and local entry keys;
 `C-c o` returns to it. Notes and planning use Org, files use Dired, the command
 environment uses Eshell, and Lisp tools use normal editing and evaluation.
+Org initially enables the Info link integration for the offline workspace;
+other installed integrations can be selected through `org-modules`.
 Examples are seeded only on first use without replacing existing files or
 visiting buffers. See the [workspace guide](workspace.md).
 
