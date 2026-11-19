@@ -3,28 +3,28 @@
   "note": "Built from the pinned QEMU/Wasm source and supplied dependencies; see wasm-build.json and sources.json.",
   "assets": {
     "out.js": {
-      "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-demo-2026-11-18/out.js",
-      "sha256": "8dd10d95a55a636eaca7ed24e861f8167af8bd4e1d762edabe50f6c08a5b7c61",
+      "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-slim-2026-11-19/out.js",
+      "sha256": "35bf8b00d35d3c2a21285fd363a3d21fc87e25e07fee73e2f1b8acfd46125699",
       "license": "QEMU or firmware aggregate; see licenses.html"
     },
     "qemu-system-x86_64.wasm": {
-      "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-demo-2026-11-18/qemu-system-x86_64.wasm",
-      "sha256": "187adbc2e546d7362635fc1212b8076bd253e379279b12d60e17eacf3190aa77",
+      "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-slim-2026-11-19/qemu-system-x86_64.wasm",
+      "sha256": "8526bd3bfffd05b211074f26b0f9bd16cfe6cd386609e7ec85ef42f51c001718",
       "license": "QEMU or firmware aggregate; see licenses.html"
     },
     "qemu-system-x86_64.worker.js": {
-      "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-demo-2026-11-18/qemu-system-x86_64.worker.js",
+      "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-slim-2026-11-19/qemu-system-x86_64.worker.js",
       "sha256": "8efab02a9cb5ee63ced22e9853bce74cbb895d15a5fb3d5139fef855c50f62ea",
       "license": "QEMU or firmware aggregate; see licenses.html"
     },
     "load-rom.js": {
-      "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-demo-2026-11-18/load-rom.js",
+      "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-slim-2026-11-19/load-rom.js",
       "sha256": "e333085a6c8295e3b0d2747d09dc46c94c425e553dfbe94292a93b28d39821bd",
       "license": "QEMU or firmware aggregate; see licenses.html"
     },
     "load-rom.data": {
-      "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-demo-2026-11-18/load-rom.data",
-      "sha256": "9d70ccb5e6f98bd6e5e1f3c4712acc017c1c843bcb7d504be030b605d6fb1e57",
+      "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-slim-2026-11-19/load-rom.data",
+      "sha256": "2e66405cb1e136b973be0889169e07b39b4fe74891407f7e9b6c43027ce531a5",
       "license": "QEMU or firmware aggregate; see licenses.html"
     },
     "xterm.js": {

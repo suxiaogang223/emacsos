@@ -137,21 +137,28 @@ async function download(name, expected, progress, signal) {
     return bytes;
 }
 
+function vendorUrl(name, assets) {
+    const hash = assets[name]?.sha256;
+    if (!/^[a-f0-9]{64}$/.test(hash || "")) throw new Error(`Missing vendor identity (${name}). Reload and retry.`);
+    const url = new URL(name, vendor);
+    url.searchParams.set("sha256", hash);
+    return url.href;
+}
+
 async function biosPackage() {
     // The upstream loader throws outside its initialization promise on XHR
     // failures. Supply verified bytes instead so failures reach our UI.
-    const [response, pins] = await Promise.all([
-        fetch(new URL("load-rom.data", vendor)),
-        fetch(new URL("./assets.json", import.meta.url)),
-    ]);
-    if (!response.ok) throw new Error(`BIOS package request failed (${response.status}).`);
+    const pins = await fetch(new URL("./assets.json", import.meta.url), { cache: "no-store" });
     if (!pins.ok) throw new Error(`Asset manifest request failed (${pins.status}).`);
+    const assets = (await pins.json()).assets;
+    const response = await fetch(vendorUrl("load-rom.data", assets));
+    if (!response.ok) throw new Error(`BIOS package request failed (${response.status}).`);
     const bytes = await response.arrayBuffer();
-    const expected = (await pins.json()).assets["load-rom.data"].sha256;
+    const expected = assets["load-rom.data"].sha256;
     const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
     const actual = Array.from(digest, byte => byte.toString(16).padStart(2, "0")).join("");
     if (actual !== expected) throw new Error("The BIOS package checksum does not match. Run make web-assets and retry.");
-    return bytes;
+    return { bytes, assets };
 }
 
 async function start() {
@@ -165,7 +172,8 @@ async function start() {
         if (typeof Terminal !== "function" || typeof openpty !== "function") {
             throw new Error("Terminal assets are unavailable. Run make web-assets and reload.");
         }
-        const [files, bios] = await Promise.all([bootFiles(), biosPackage()]);
+        const [files, firmware] = await Promise.all([bootFiles(), biosPackage()]);
+        const { bytes: bios, assets } = firmware;
         terminal = new Terminal({
             cols: 80, rows: 24, cursorBlink: true, macOptionIsMeta: true,
             fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 16,
@@ -180,7 +188,7 @@ async function start() {
         const raw = () => slave.ioctl("TCSETS", { ...slave.ioctl("TCGETS"), iflag: 0, oflag: 0, lflag: 0 });
         raw();
         terminal.options.disableStdin = true;
-        const moduleUrl = new URL("out.js", vendor).href;
+        const moduleUrl = vendorUrl("out.js", assets);
         const config = {
             arguments: ["-M", "pc", "-m", "512M", "-nic", "none", "-vga", "none", "-display", "none", "-monitor", "none",
                 "-object", "rng-random,filename=/dev/urandom,id=rng0", "-device", "virtio-rng-pci,rng=rng0",
@@ -189,7 +197,7 @@ async function start() {
                 "-append", "console=ttyS0,115200 rdinit=/init panic=-1 quiet",
                 "-drive", "file=/data-template.ext4,format=raw,if=virtio",
                 "-drive", "file=/runtime.squashfs,format=raw,if=virtio,readonly=on", "-no-reboot"],
-            locateFile: path => new URL(path, vendor).href,
+            locateFile: path => vendorUrl(path, assets),
             mainScriptUrlOrBlob: moduleUrl,
             getPreloadedPackage: () => bios,
             pty: slave, preRun: [],
@@ -220,7 +228,7 @@ async function start() {
             import(moduleUrl),
             new Promise((resolve, reject) => {
                 const script = document.createElement("script");
-                script.src = new URL("load-rom.js", vendor).href;
+                script.src = vendorUrl("load-rom.js", assets);
                 script.onload = resolve;
                 script.onerror = () => reject(new Error("Could not load the BIOS package. Restart to retry."));
                 document.head.append(script);

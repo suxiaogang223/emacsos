@@ -1,9 +1,9 @@
 {
   "format": 1,
-  "release": "https://github.com/suxiaogang223/emacsos/releases/tag/browser-demo-2026-11-18",
+  "release": "https://github.com/suxiaogang223/emacsos/releases/tag/browser-slim-2026-11-19",
   "emulator": {
-    "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-demo-2026-11-18/emulator-sources.tar.gz",
-    "sha256": "4ecea7bbf9a525e1de524b64bdf614e04d70e88d5ea595ea66f2fa243f0491e0",
+    "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-slim-2026-11-19/emulator-sources.tar.gz",
+    "sha256": "2031e30a6d3ff0706f4e82a791e52874f2b3047465ce2d5e80f73776f626f51a",
     "description": "QEMU/Wasm, SeaBIOS, linked libraries, Emscripten runtime source, terminal source and build recipes"
   },
   "guest": {

@@ -67,7 +67,8 @@ indeterminate during boot. The real guest startup marker enables input.
 The browser keeps a best-effort cache of the four verified static boot images.
 Each cached image is checked against the current manifest before use; a corrupt
 entry is fetched again. Versioned download URLs avoid mixing old HTTP-cache
-content with a new manifest. Storage restrictions or quota failures fall back
+content with a new manifest. Emulator scripts, workers, firmware and Wasm also
+use their pinned hashes in request URLs across deployments. Storage restrictions or quota failures fall back
 to normal downloads. This cache contains the original blank disk template,
 never the running machine's writes. It does not retain a workspace or make
 offline boot available; the current manifest is fetched at each power-on.
