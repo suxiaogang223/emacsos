@@ -51,8 +51,9 @@ Dired, Info, Eshell, Org and Org Agenda in the matching portable dump. It record
 explicit dependency load order, including Calendar's early provide for its
 menu dependency, without changing the Emacs fork. Org scratch overlays are
 recreated after initialization because portable dumps cannot store overlays.
-User-dependent Eshell paths and Org mail-link defaults initialize at runtime;
-no session or user files are dumped.
+User-dependent Eshell paths and Org mail-link defaults initialize at runtime.
+Org creates its scratch cache directory after startup so no build directory
+is reused in the guest. No session or user files are dumped.
 Info manuals use standard split files, so opening a node does not read a whole
 multi-megabyte manual. The browser's smaller guest RAM does not change the
 emulator's compiled Wasm address-space reservation.

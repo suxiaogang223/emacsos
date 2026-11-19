@@ -190,7 +190,7 @@ def check(internet_url=None):
             assertion(guest, "text home uses ordinary buttons and standard commands",
                       "(and (eq major-mode 'emacsos-home-mode) buffer-read-only (button-at (point)) (eq (key-binding (kbd \"C-c o\")) 'emacsos-home) (eq (key-binding (kbd \"M-x\")) 'execute-extended-command))")
             assertion(guest, "preloaded Org recreates scratch overlays and runtime identity",
-                      '(and (overlayp org-tags-overlay) (overlayp org-date-ovl) (not (overlay-buffer org-date-ovl)) (eq (overlay-get org-date-ovl \'face) \'org-date-selected) (string-match-p (regexp-quote user-mail-address) org-link-from-user-regexp))')
+                      '(and (overlayp org-tags-overlay) (overlayp org-date-ovl) (not (overlay-buffer org-date-ovl)) (eq (overlay-get org-date-ovl \'face) \'org-date-selected) (string-match-p (regexp-quote user-mail-address) org-link-from-user-regexp) (file-in-directory-p org-persist-directory temporary-file-directory) (file-writable-p org-persist-directory))')
             assertion(guest, "Org notebook preserves user edits when reopened",
                       '(progn (emacsos-notes) (goto-char (point-max)) (insert "\\nMy retained notebook.\\n") (save-buffer) (emacsos-notes) (and (eq major-mode \'org-mode) (not (buffer-modified-p)) (file-exists-p (concat buffer-file-name "~")) (save-excursion (goto-char (point-min)) (search-forward "My retained notebook." nil t))))')
             assertion(guest, "Org daily agenda reads the workspace task file",

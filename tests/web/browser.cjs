@@ -157,7 +157,7 @@ async function main() {
         check('Manifest-matched Linux and pinned Emacs boot in QEMU/Wasm');
         await page.waitForTimeout(250);
         await page.screenshot({ path: path.join(output, 'running.png'), fullPage: true });
-        await evaluate('(message "PRELOAD-%s" (if (and (featurep \'dired) (featurep \'info) (featurep \'esh-mode) (featurep \'org) (featurep \'org-agenda) (equal org-directory "/home/emacs/work/") (equal org-agenda-files \'("/home/emacs/work/tasks.org")) (string-prefix-p "/home/emacs/" (expand-file-name eshell-directory-name))) "READY" "MISSING"))', 'PRELOAD-READY');
+        await evaluate('(message "PRELOAD-%s" (if (and (featurep \'dired) (featurep \'info) (featurep \'esh-mode) (featurep \'org) (featurep \'org-agenda) (equal org-directory "/home/emacs/work/") (equal org-agenda-files \'("/home/emacs/work/tasks.org")) (file-in-directory-p org-persist-directory temporary-file-directory) (file-writable-p org-persist-directory) (string-prefix-p "/home/emacs/" (expand-file-name eshell-directory-name))) "READY" "MISSING"))', 'PRELOAD-READY');
         check('Quick-action libraries are preloaded with the guest user home');
         await evaluate('(message "HOME-%s" (if (and (eq major-mode \'emacsos-home-mode) buffer-read-only (button-at (point))) "READY" "MISSING"))', 'HOME-READY');
         await capture('home');

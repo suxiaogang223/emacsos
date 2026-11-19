@@ -58,6 +58,21 @@
                               (setq ,variable overlay))))
                (current-buffer))
         (insert "\n")))
+    ;; org-persist creates its -Q scratch directory at library load time.
+    ;; That build directory must never enter a user's session. Run before the
+    ;; library's existing after-init load hook, after runtime paths are ready.
+    (prin1 '(add-hook 'after-init-hook
+                     (lambda ()
+                       (if (and org-persist--disable-when-emacs-Q
+                                (not user-init-file))
+                           (setq org-persist-directory
+                                 (make-temp-file "org-persist-" t))
+                         (unless org-persist--refresh-gc-lock-timer
+                           (setq org-persist--refresh-gc-lock-timer
+                                 (run-at-time nil org-persist-gc-lock-interval
+                                              #'org-persist--refresh-gc-lock))))))
+           (current-buffer))
+    (insert "\n")
     ;; Ordinary (non-pure) loads record build-tree paths. Keep source lookup
     ;; working after installing the matching libraries in the runtime image.
     (prin1 `(setq load-history
@@ -75,7 +90,7 @@
     (dolist (variable '(eshell-directory-name eshell-aliases-file
                        eshell-last-dir-ring-file-name eshell-history-file-name
                        eshell-login-script eshell-rc-script eshell-no-grep-available
-                       org-link-from-user-regexp))
+                       org-link-from-user-regexp org-persist-directory))
       (prin1 `(custom-initialize-delay ',variable
                                       (car (get ',variable 'standard-value)))
              (current-buffer))
