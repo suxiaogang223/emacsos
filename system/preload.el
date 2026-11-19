@@ -32,6 +32,19 @@
               (push name loaded)
               (prin1 `(load ,name nil t) (current-buffer))
               (insert "\n"))))))
+    ;; Ordinary (non-pure) loads record build-tree paths. Keep source lookup
+    ;; working after installing the matching libraries in the runtime image.
+    (prin1 `(setq load-history
+                  (mapcar (lambda (entry)
+                            (let ((file (car entry)))
+                              (if (and (stringp file) (string-prefix-p ,root file))
+                                  (cons (concat ,(format "/usr/share/emacs/%s/lisp/" emacs-version)
+                                                (substring file ,(length root)))
+                                        (cdr entry))
+                                entry)))
+                          load-history))
+           (current-buffer))
+    (insert "\n")
     ;; Preserve user-dependent defaults until normal startup has its real HOME.
     (dolist (variable '(eshell-directory-name eshell-aliases-file
                        eshell-last-dir-ring-file-name eshell-history-file-name
