@@ -45,11 +45,14 @@ The parent `system/preload.el` prepares the standard site-init hook to include
 Dired, Info and Eshell libraries in the matching portable dump. It records an
 explicit dependency load order without changing the Emacs fork. User-dependent
 Eshell paths are initialized at runtime; no session or user files are dumped.
+Info manuals use standard split files, so opening a node does not read a whole
+multi-megabyte manual. The browser's smaller guest RAM does not change the
+emulator's compiled Wasm address-space reservation.
 
 | Profile | Devices and data | Evidence boundary |
 | --- | --- | --- |
 | Native QEMU | 1 GiB RAM, COM1, virtio home disk, user-mode network | Real guest acceptance including clean two-boot retention and synchronous HTTPS |
-| Browser QEMU/Wasm | 1 GiB RAM, COM1, fresh virtio session disk, network disabled | Browser boot, keyboard, file and lifecycle acceptance; no storage retention or networking claim |
+| Browser QEMU/Wasm | 512 MiB RAM, COM1, read-only runtime disk, fresh virtio session disk, network disabled | Browser boot, keyboard, file and lifecycle acceptance; no storage retention or networking claim |
 
 A template disk is copied into each browser machine's memory. Guest writes do
 not mutate the served template or the native user's disk. Refreshing creates

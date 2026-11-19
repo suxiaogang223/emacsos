@@ -182,7 +182,7 @@ async function start() {
         terminal.options.disableStdin = true;
         const moduleUrl = new URL("out.js", vendor).href;
         const config = {
-            arguments: ["-M", "pc", "-m", "1G", "-nic", "none", "-vga", "none", "-display", "none", "-monitor", "none",
+            arguments: ["-M", "pc", "-m", "512M", "-nic", "none", "-vga", "none", "-display", "none", "-monitor", "none",
                 "-serial", "stdio", "-L", "/pack-rom", "-accel", "tcg,tb-size=64",
                 "-kernel", "/vmlinuz", "-initrd", "/initramfs.cpio.gz",
                 "-append", "console=ttyS0,115200 rdinit=/init panic=-1 quiet",

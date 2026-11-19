@@ -182,8 +182,12 @@ async function main() {
 
         await evaluate('(progn (require \'dired) (require \'find-func) (message "SOURCE-%s" (if (string-suffix-p ".el" (buffer-file-name (car (find-function-noselect \'dired)))) "AVAILABLE" "MISSING")))', 'SOURCE-AVAILABLE');
         check('Lisp source opens through find-function in the browser guest');
-        await evaluate('(save-window-excursion (info "(emacs)Top") (message "MANUAL-%s" (if (and (eq major-mode \'Info-mode) (equal Info-current-node "Top")) "AVAILABLE" "MISSING")))', 'MANUAL-AVAILABLE');
+        const infoBegin = Date.now();
+        await evaluate('(progn (info "(emacs)Top") (message "MANUAL-%s" (if (and (eq major-mode \'Info-mode) (equal Info-current-node "Top")) "AVAILABLE" "MISSING")))', 'MANUAL-AVAILABLE');
+        record.firstInfoSeconds = (Date.now() - infoBegin) / 1000;
         check('Emacs manual opens in Info in the browser guest');
+        await page.keyboard.press('q');
+        await evaluate('(message "HELP-%s" (if (eq major-mode \'Info-mode) "OPEN" "CLOSED"))', 'HELP-CLOSED');
 
         await page.keyboard.press('Control+x');
         await page.keyboard.press('Control+f');
@@ -196,9 +200,11 @@ async function main() {
         await evaluate('(progn (kill-buffer) (load-file "/home/emacs/work/browser-proof.el") (message "BROWSER-SAVED-%d" browser-proof))', 'BROWSER-SAVED-42');
         check('Ctrl-x Ctrl-f / Ctrl-x Ctrl-s save source that the guest loads');
         start = await serialLength();
+        const shellBegin = Date.now();
         await page.click('#shell-key');
         // First startup loads built-in modules before accepting commands.
         await waitSerial('~/work $ ', start, 120000);
+        record.firstShellSeconds = (Date.now() - shellBegin) / 1000;
         await evaluate('(message "SHELL-MODE-%s" major-mode)', 'SHELL-MODE-eshell-mode');
         await page.keyboard.type('echo hello-from-linux', { delay: 3 });
         start = await serialLength();

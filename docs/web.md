@@ -26,7 +26,7 @@ disk or build context and has no upload or remote-command API.
 
 Use a desktop browser with WebAssembly threads and available memory. The
 emulator reserves about 2.25 GiB of Wasm address space in addition to page and
-image overhead. The guest has 1 GiB RAM, a Linux kernel and small initramfs,
+image overhead. The guest has 512 MiB RAM, a Linux kernel and small initramfs,
 a read-only runtime disk, one fresh virtio session disk, COM1 and no network
 device or QEMU monitor.
 

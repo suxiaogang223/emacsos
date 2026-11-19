@@ -113,6 +113,7 @@ chown "$OUTPUT_UID:$OUTPUT_GID" /out/vmlinuz /out/initramfs.cpio.gz /out/runtime
         "container": container, "inputs": selected_inputs,
         "artifacts": {**cached["artifacts"], "data-template.ext4": digest(OUT / "data-template.ext4")},
         "machine": "QEMU pc, x86-64 TCG, 1 GiB, COM1, virtio data disk",
+        "browser_memory_mib": 512,
         "native_network": "QEMU user network", "browser_network": "disabled",
     })
     print(f"System ready: {OUT}", flush=True)
