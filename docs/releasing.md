@@ -10,7 +10,7 @@ home disk lasts for one powered-on session.
 
 ## What accompanies a release
 
-The [browser release](https://github.com/suxiaogang223/emacsos/releases/tag/browser-slim-2026-11-19)
+The [browser release](https://github.com/suxiaogang223/emacsos/releases/tag/browser-workspace-2026-11-19)
 provides the emulator, firmware, Linux guest image and corresponding source at
 the same download location. `web/assets.json`, `web/runtime.json` and
 `web/sources.json` pin the downloadable bytes. `web/wasm-build.json` records the

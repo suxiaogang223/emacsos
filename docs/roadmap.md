@@ -41,9 +41,9 @@ website can use a graphical layout to introduce real text sessions.
 4. **Browser transport:** select a supported network bridge and verify actual
    guest traffic. Validate asynchronous TLS separately on the pinned runtime
    before adding online applications or package downloads.
-5. **Distribution:** keep sources and binary releases paired. The new workspace
-   changes system inputs, so its runtime and corresponding source must be
-   released and the public runtime pin updated before deploying this website.
+5. **Distribution:** keep sources and binary releases paired. The text workspace
+   has a matching runtime and complete corresponding source release. Every future
+   system-input change needs a new runtime and updated public pin before deployment.
    See [release materials](releasing.md).
 
 ## Data-disk gate
