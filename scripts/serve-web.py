@@ -17,6 +17,9 @@ def routes(root):
     result = {
         "/": (root / "web/index.html", "text/html; charset=utf-8"),
         "/index.html": (root / "web/index.html", "text/html; charset=utf-8"),
+        "/try/": (root / "web/try.html", "text/html; charset=utf-8"),
+        "/try/index.html": (root / "web/try.html", "text/html; charset=utf-8"),
+        "/site.css": (root / "web/site.css", "text/css; charset=utf-8"),
         "/machine.js": (root / "web/machine.js", "text/javascript; charset=utf-8"),
         "/isolation.js": (root / "web/isolation.js", "text/javascript; charset=utf-8"),
         "/coi-serviceworker.js": (root / "web/coi-serviceworker.js", "text/javascript; charset=utf-8"),
@@ -34,6 +37,8 @@ def routes(root):
         "/licenses/sources.json": (root / "web/licenses/sources.json", "application/json"),
         "/licenses.html": (root / "web/licenses.html", "text/html; charset=utf-8"),
     }
+    for name in ("home", "notes", "agenda", "files", "shell", "lisp"):
+        result[f"/images/{name}.png"] = (root / f"docs/images/{name}.png", "image/png")
     types = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".wasm": "application/wasm"}
     for name in assets:
         if Path(name).name != name or name in (".", ".."):
@@ -70,6 +75,12 @@ def handler_for(root):
                 name = unquote(urlsplit(self.path).path, errors="strict")
             except (UnicodeError, ValueError):
                 self.send_error(400)
+                return
+            if name == "/try":
+                self.send_response(301)
+                self.send_header("Location", "/try/")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
                 return
             target = allowed.get(name)
             if target is None:

@@ -31,7 +31,7 @@ def package(root, destination):
                 **{"/" + name: manifest["artifacts"][name] for name in
                    ("vmlinuz", "initramfs.cpio.gz", "runtime.squashfs", "data-template.ext4")}}
     for route, (source, _mime) in server.routes(root).items():
-        if route == "/":
+        if route.endswith("/"):
             continue
         target = destination / route.lstrip("/")
         if route in expected:

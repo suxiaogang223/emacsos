@@ -32,7 +32,7 @@ class ServerTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temporary = tempfile.TemporaryDirectory()
         cls.root = Path(cls.temporary.name)
-        files = {"web/index.html": b"<title>emacsOS</title>", "web/machine.js": b"export {};", "web/terminal.css": b"body{}", "build/machine/vmlinuz": b"linux", "build/machine/initramfs.cpio.gz": b"root", "build/machine/data-template.ext4": b"disk", "build/machine/manifest.json": b"{}", "build/web-vendor/out.js": b"module", "build/web-vendor/machine.wasm": b"wasm", "build/web-vendor/rom.data": b"rom", "web/licenses/notice.txt": b"notice", ".git/config": b"must stay private", "AGENTS.md": b"must stay private"}
+        files = {"web/index.html": b"<title>emacsOS</title>", "web/try.html": b"<title>Computer</title>", "web/site.css": b"body{}", "docs/images/home.png": b"screenshot", "web/machine.js": b"export {};", "web/terminal.css": b"body{}", "build/machine/vmlinuz": b"linux", "build/machine/initramfs.cpio.gz": b"root", "build/machine/data-template.ext4": b"disk", "build/machine/manifest.json": b"{}", "build/web-vendor/out.js": b"module", "build/web-vendor/machine.wasm": b"wasm", "build/web-vendor/rom.data": b"rom", "web/licenses/notice.txt": b"notice", ".git/config": b"must stay private", "AGENTS.md": b"must stay private"}
         for name, data in files.items():
             target = cls.root / name
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -73,6 +73,15 @@ class ServerTests(unittest.TestCase):
     def test_head_preserves_length_without_body(self):
         status, headers, body = self.request("/data-template.ext4", "HEAD")
         self.assertEqual((status, headers["Content-Length"], body), (200, "4", b""))
+
+    def test_showcase_and_computer_use_separate_routes(self):
+        self.assertEqual(self.request("/try/")[2], b"<title>Computer</title>")
+        self.assertEqual(self.request("/try/index.html")[2], b"<title>Computer</title>")
+        status, headers, body = self.request("/try")
+        self.assertEqual((status, headers["Location"], body), (301, "/try/", b""))
+        self.assertEqual(self.request("/site.css")[1]["Content-Type"], "text/css; charset=utf-8")
+        self.assertEqual(self.request("/images/home.png")[1]["Content-Type"], "image/png")
+        self.assertEqual(self.request("/images/README.md")[0], 404)
 
     def test_read_only_system_disk_is_served(self):
         status, headers, body = self.request("/runtime.squashfs")
@@ -174,6 +183,9 @@ class PublicationTests(unittest.TestCase):
             destination = root / "public"
             publisher.package(root, destination)
             self.assertTrue((destination / "index.html").is_file())
+            self.assertTrue((destination / "try/index.html").is_file())
+            self.assertTrue((destination / "site.css").is_file())
+            self.assertTrue((destination / "images/home.png").is_file())
             self.assertTrue((destination / "coi-serviceworker.js").is_file())
             self.assertFalse((destination / "data.ext4").exists())
             self.assertFalse((destination / "build").exists())

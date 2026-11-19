@@ -1,12 +1,16 @@
 # Browser releases and GitHub Pages
 
+The static project homepage introduces the text workspace with actual guest
+screenshots. The runnable computer lives at `try/`; the homepage itself loads
+no emulator or guest image.
+
 The public computer runs entirely in the visitor's browser. GitHub Pages serves
 static files; it is not a shell server. The guest has no network device and its
 home disk lasts for one powered-on session.
 
 ## What accompanies a release
 
-The [browser release](https://github.com/suxiaogang223/emacsos/releases/tag/browser-slim-2026-11-19)
+The [browser release](https://github.com/suxiaogang223/emacsos/releases/tag/browser-workspace-2026-11-19)
 provides the emulator, firmware, Linux guest image and corresponding source at
 the same download location. `web/assets.json`, `web/runtime.json` and
 `web/sources.json` pin the downloadable bytes. `web/wasm-build.json` records the
@@ -103,7 +107,7 @@ without custom headers, then accept the deployed HTTPS site:
 
 ```sh
 python3 scripts/package-web.py build/pages
-EMACSOS_HOSTED=1 WEB_URL=https://suxiaogang223.github.io/emacsos/ make test-browser
+EMACSOS_HOSTED=1 WEB_URL=https://suxiaogang223.github.io/emacsos/try/ make test-browser
 ```
 
 Hosted mode checks actual isolation, boot, keyboard, Lisp, save/load, Eshell,

@@ -1,14 +1,14 @@
 {
   "format": 1,
-  "release": "https://github.com/suxiaogang223/emacsos/releases/tag/browser-slim-2026-11-19",
+  "release": "https://github.com/suxiaogang223/emacsos/releases/tag/browser-workspace-2026-11-19",
   "emulator": {
-    "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-slim-2026-11-19/emulator-sources.tar.gz",
+    "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-workspace-2026-11-19/emulator-sources.tar.gz",
     "sha256": "2031e30a6d3ff0706f4e82a791e52874f2b3047465ce2d5e80f73776f626f51a",
     "description": "QEMU/Wasm, SeaBIOS, linked libraries, Emscripten runtime source, terminal source and build recipes"
   },
   "guest": {
-    "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-slim-2026-11-19/guest-sources.tar.gz",
-    "sha256": "16b2d7b6a9b67389e24402497e6717c30db3447594adb2a7219d32324f6aba03",
+    "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-workspace-2026-11-19/guest-sources.tar.gz",
+    "sha256": "cfa8c72ea016d94240f9ba5c31fea3b3fc6443649c560a4d1fffd19a19ce921c",
     "description": "Complete source packages for 28 installed APK packages / 20 origins; Linux base source and stable patch, exact GNU Emacs source and parent image policy"
   },
   "isolation": {

@@ -1,7 +1,7 @@
 {
   "format": 1,
-  "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-slim-2026-11-19/guest-runtime.tar.gz",
-  "sha256": "5ccc7254b29043a9aa05602222fb0f5d4daa4c91521d8f173750c1129bb78a17",
-  "source_parent": "df376073dbc6c6bcfddb521eff7e58b7e7bfe647",
+  "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-workspace-2026-11-19/guest-runtime.tar.gz",
+  "sha256": "c77ac27dfc67722ea592bfd1e076c25b9c95b2f8227bce022bc3b2781aa21df5",
+  "source_parent": "13530170478e952159795095833b569e6afc0720",
   "fork_pin": "73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5"
 }

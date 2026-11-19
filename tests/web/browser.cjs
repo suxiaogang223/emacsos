@@ -6,7 +6,7 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 
 const hosted = process.env.EMACSOS_HOSTED === '1';
-const url = process.argv[2] || 'http://127.0.0.1:18082/';
+const url = process.argv[2] || 'http://127.0.0.1:18082/try/';
 const output = path.resolve(process.env.EMACSOS_WEB_REPORT || 'build/web-browser');
 fs.mkdirSync(output, { recursive: true });
 const checks = [];
@@ -81,13 +81,27 @@ async function main() {
         await page.waitForFunction(({ marker, start }) => (window.__serial || '').slice(start).includes(marker),
             { marker, start }, { timeout });
     }
-    async function evaluate(form, marker) {
+    async function evaluate(form, marker, timeout = 30000) {
         assert(!form.includes(marker), "Result marker must be absent from keyboard input");
         const start = await serialLength();
         await page.click('#eval-key');
         await page.keyboard.type(form, { delay: 2 });
         await page.keyboard.press('Enter');
-        await waitSerial(marker, start);
+        await waitSerial(marker, start, timeout);
+    }
+    async function capture(name) {
+        // Use Emacs' own window command for a readable, unretouched app view.
+        if (name === 'home') {
+            await page.keyboard.press('Control+c');
+            await page.keyboard.press('o');
+        } else {
+            await page.keyboard.press('Control+x');
+            await page.keyboard.press('1');
+            // Clear the single-window message with a normal movement command.
+            await page.keyboard.press('Control+a');
+        }
+        await page.waitForTimeout(300);
+        await page.locator('.xterm-screen').screenshot({ path: path.join(output, `${name}.png`) });
     }
     async function state(value, target = page) {
         await target.waitForFunction(value => document.documentElement.dataset.machineState === value ||
@@ -106,8 +120,9 @@ async function main() {
         assert.equal(response.headers()['cross-origin-opener-policy'], 'same-origin');
         assert.equal(response.headers()['cross-origin-embedder-policy'], 'require-corp');
         assert(await page.evaluate(() => isSecureContext && crossOriginIsolated));
-        record.guestBuild = await (await page.request.get(new URL('build.json', url).href)).json();
-        record.assets = await (await page.request.get(new URL('assets.json', url).href)).json();
+        const assetBase = await page.evaluate(() => document.baseURI);
+        record.guestBuild = await (await page.request.get(new URL('build.json', assetBase).href)).json();
+        record.assets = await (await page.request.get(new URL('assets.json', assetBase).href)).json();
         await state('off');
         assert(await page.locator('#reset').isDisabled());
         assert(await page.locator('#command-key').isDisabled());
@@ -149,9 +164,49 @@ async function main() {
         check('Manifest-matched Linux and pinned Emacs boot in QEMU/Wasm');
         await page.waitForTimeout(250);
         await page.screenshot({ path: path.join(output, 'running.png'), fullPage: true });
-
-        await evaluate('(message "PRELOAD-%s" (if (and (featurep \'dired) (featurep \'info) (featurep \'esh-mode) (string-prefix-p "/home/emacs/" (expand-file-name eshell-directory-name))) "READY" "MISSING"))', 'PRELOAD-READY');
+        await evaluate('(message "PRELOAD-%s" (if (and (featurep \'dired) (featurep \'info) (featurep \'esh-mode) (featurep \'org) (featurep \'org-agenda) (equal org-modules \'(ol-info)) (equal org-directory "/home/emacs/work/") (equal org-agenda-files \'("/home/emacs/work/tasks.org")) (file-in-directory-p org-persist-directory temporary-file-directory) (file-writable-p org-persist-directory) (string-prefix-p "/home/emacs/" (expand-file-name eshell-directory-name))) "READY" "MISSING"))', 'PRELOAD-READY');
         check('Quick-action libraries are preloaded with the guest user home');
+        await evaluate('(message "HOME-%s" (if (and (eq major-mode \'emacsos-home-mode) buffer-read-only (button-at (point))) "READY" "MISSING"))', 'HOME-READY');
+        await capture('home');
+        let homeStart = await serialLength();
+        await page.keyboard.press('Enter');
+        await waitSerial('/home/emacs/work', homeStart);
+        await evaluate('(message "HOME-OPEN-%s" major-mode)', 'HOME-OPEN-dired-mode');
+        await page.keyboard.press('Control+c');
+        await page.keyboard.press('o');
+        await page.keyboard.press('Tab');
+        homeStart = await serialLength();
+        const notesBegin = Date.now();
+        await page.keyboard.press('Enter');
+        await waitSerial('A computer I can change', homeStart, 120000);
+        record.firstNotesSeconds = (Date.now() - notesBegin) / 1000;
+        await evaluate('(message "NOTES-%s" (if (and (eq major-mode \'org-mode) (file-exists-p buffer-file-name) (not buffer-read-only)) "EDITABLE" "MISSING"))', 'NOTES-EDITABLE');
+        await capture('notes');
+        check('Text home buttons and C-c o open editable Org notes with standard keyboard input');
+        await page.keyboard.press('Control+End');
+        await page.keyboard.type('\nA note written in the browser.\n', { delay: 3 });
+        await page.keyboard.press('Control+x');
+        await page.keyboard.press('Control+s');
+        await evaluate('(progn (emacsos-notes) (message "NOTE-REOPEN-%s" (if (and (not (buffer-modified-p)) (save-excursion (goto-char (point-min)) (search-forward "A note written in the browser." nil t)) (file-exists-p (concat buffer-file-name "~"))) "PRESERVED" "MISSING")))', 'NOTE-REOPEN-PRESERVED');
+        check('Org notes preserve edits and ordinary save backups when reopened');
+        const agendaBegin = Date.now();
+        homeStart = await serialLength();
+        await page.click('#command-key');
+        await page.keyboard.type('emacsos-agenda');
+        await page.keyboard.press('Enter');
+        await waitSerial('Day-agenda', homeStart, 120000);
+        await evaluate('(message "AGENDA-%s" (if (and (eq major-mode \'org-agenda-mode) (save-excursion (goto-char (point-min)) (search-forward "Write my first note" nil t))) "READY" "MISSING"))', 'AGENDA-READY');
+        record.firstAgendaSeconds = (Date.now() - agendaBegin) / 1000;
+        await capture('agenda');
+        check('Org daily agenda reads a scheduled task from the real workspace');
+        await evaluate('(progn (emacsos-lisp) (eval-buffer) (message "LISP-%s" (if (and (eq major-mode \'emacs-lisp-mode) (commandp \'my-hello)) "READY" "MISSING")))', 'LISP-READY');
+        await capture('lisp');
+        homeStart = await serialLength();
+        await page.click('#command-key');
+        await page.keyboard.type('my-hello');
+        await page.keyboard.press('Enter');
+        await waitSerial('Hello from my Lisp computer.', homeStart);
+        check('Lisp example defines a command callable through standard M-x');
 
         await page.locator('.xterm-screen').click({ position: { x: 100, y: 100 } });
         let start = await serialLength();
@@ -191,13 +246,13 @@ async function main() {
 
         await page.keyboard.press('Control+x');
         await page.keyboard.press('Control+f');
-        await page.keyboard.type('/home/emacs/work/browser-proof.el', { delay: 3 });
+        await page.keyboard.type('/home/emacs/work/experiment.el', { delay: 3 });
         await page.keyboard.press('Enter');
         await page.waitForTimeout(300);
         await page.keyboard.type('(setq browser-proof 42)\n', { delay: 3 });
         await page.keyboard.press('Control+x');
         await page.keyboard.press('Control+s');
-        await evaluate('(progn (kill-buffer) (load-file "/home/emacs/work/browser-proof.el") (message "BROWSER-SAVED-%d" browser-proof))', 'BROWSER-SAVED-42');
+        await evaluate('(progn (kill-buffer) (load-file "/home/emacs/work/experiment.el") (message "BROWSER-SAVED-%d" browser-proof))', 'BROWSER-SAVED-42');
         check('Ctrl-x Ctrl-f / Ctrl-x Ctrl-s save source that the guest loads');
         start = await serialLength();
         const shellBegin = Date.now();
@@ -210,12 +265,24 @@ async function main() {
         start = await serialLength();
         await page.keyboard.press('Enter');
         await waitSerial('hello-from-linux', start);
+        await page.keyboard.type('ls');
+        start = await serialLength();
+        await page.keyboard.press('Enter');
+        await waitSerial('tasks.org', start);
+        await page.keyboard.type('(+ 20 22)');
+        start = await serialLength();
+        await page.keyboard.press('Enter');
+        await waitSerial('42', start);
+        await capture('shell');
         check('SHELL opens a real Eshell session');
         start = await serialLength();
         await page.click('#files-key');
         await page.keyboard.press('Enter');
-        await waitSerial('browser-proof.el', start);
+        // The home-button check visited Dired before these files were created.
+        await page.keyboard.press('g');
+        await waitSerial('experiment.el', start);
         await evaluate('(message "FILES-MODE-%s" major-mode)', 'FILES-MODE-dired-mode');
+        await capture('files');
         await page.waitForTimeout(250);
         await page.screenshot({ path: path.join(output, 'workspace.png'), fullPage: true });
         check('FILES opens the Linux working directory in Dired');
@@ -262,7 +329,8 @@ async function main() {
         const refetched = await page.evaluate(async () => Object.fromEntries(await Promise.all(Object.entries(window.__imageHashes || {}).map(async ([name, value]) => [name, await value]))));
         assert.deepEqual(Object.keys(refetched), ['vmlinuz']);
         assert.equal(refetched.vmlinuz, record.guestBuild.artifacts.vmlinuz);
-        await evaluate('(message "FRESH-%s" (if (file-exists-p "/home/emacs/work/browser-proof.el") "LEAKED" "EMPTY"))', 'FRESH-EMPTY');
+        await evaluate('(message "FRESH-%s" (if (file-exists-p "/home/emacs/work/experiment.el") "LEAKED" "EMPTY"))', 'FRESH-EMPTY');
+        await evaluate('(message "EXAMPLES-%s" (if (or (file-exists-p "/home/emacs/work/notes.org") (file-exists-p "/home/emacs/work/tasks.org")) "LEAKED" "EMPTY"))', 'EXAMPLES-EMPTY');
         check('Warm boot reuses verified images, repairs corrupt cache and starts with a fresh home');
         assert.deepEqual(errors, []);
 

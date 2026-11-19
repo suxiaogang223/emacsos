@@ -185,8 +185,20 @@ def check(internet_url=None):
             result["boot_seconds"].append(round(time.monotonic() - guest.started, 3))
             assertion(guest, "interactive Linux Emacs as uid 1000",
                       "(and (eq system-type 'gnu/linux) (= (user-uid) 1000) (equal emacs-version \"30.2\"))")
-            assertion(guest, "quick-action libraries preloaded with runtime user paths",
-                      "(and (featurep 'dired) (featurep 'info) (featurep 'esh-mode) (string-prefix-p \"/home/emacs/\" (expand-file-name eshell-directory-name)) (string-prefix-p (expand-file-name eshell-directory-name) eshell-history-file-name) (stringp (documentation 'eshell)) (not (get-buffer \"*eshell*\")))")
+            assertion(guest, "workflow libraries preloaded with runtime user paths",
+                      "(and (featurep 'dired) (featurep 'info) (featurep 'esh-mode) (featurep 'org) (featurep 'org-agenda) (equal org-modules '(ol-info)) (equal org-directory \"/home/emacs/work/\") (equal org-agenda-files '(\"/home/emacs/work/tasks.org\")) (string-prefix-p \"/home/emacs/\" (expand-file-name eshell-directory-name)) (string-prefix-p (expand-file-name eshell-directory-name) eshell-history-file-name) (stringp (documentation 'eshell)) (not (get-buffer \"*eshell*\")))")
+            assertion(guest, "text home uses ordinary buttons and standard commands",
+                      "(and (eq major-mode 'emacsos-home-mode) buffer-read-only (button-at (point)) (eq (key-binding (kbd \"C-c o\")) 'emacsos-home) (eq (key-binding (kbd \"M-x\")) 'execute-extended-command))")
+            assertion(guest, "preloaded Org recreates scratch overlays and runtime identity",
+                      '(and (overlayp org-tags-overlay) (overlayp org-date-ovl) (not (overlay-buffer org-date-ovl)) (eq (overlay-get org-date-ovl \'face) \'org-date-selected) (string-match-p (regexp-quote user-mail-address) org-link-from-user-regexp) (file-in-directory-p org-persist-directory temporary-file-directory) (file-writable-p org-persist-directory))')
+            assertion(guest, "Org notebook preserves user edits when reopened",
+                      '(progn (emacsos-notes) (goto-char (point-max)) (insert "\\nMy retained notebook.\\n") (save-buffer) (emacsos-notes) (and (eq major-mode \'org-mode) (not (buffer-modified-p)) (file-exists-p (concat buffer-file-name "~")) (save-excursion (goto-char (point-min)) (search-forward "My retained notebook." nil t))))')
+            assertion(guest, "Org daily agenda reads the workspace task file",
+                      '(progn (emacsos-agenda) (and (eq major-mode \'org-agenda-mode) (save-excursion (goto-char (point-min)) (search-forward "Write my first note" nil t))))')
+            assertion(guest, "opening notes preserves an unsaved visiting buffer",
+                      '(progn (emacsos-notes) (goto-char (point-max)) (insert "Unsaved work.\\n") (emacsos-notes) (let ((preserved (and (buffer-modified-p) (save-excursion (goto-char (point-min)) (search-forward "Unsaved work." nil t))))) (save-buffer) preserved))')
+            assertion(guest, "Lisp example defines an ordinary interactive command",
+                      "(progn (emacsos-lisp) (eval-buffer) (and (eq major-mode 'emacs-lisp-mode) (commandp 'my-hello)))")
             assertion(guest, "Lisp source remains available to find-function",
                       "(progn (require 'dired) (require 'find-func) (string-suffix-p \".el\" (buffer-file-name (car (find-function-noselect 'dired)))))")
             assertion(guest, "Emacs manual opens in Info",
@@ -242,6 +254,8 @@ def check(internet_url=None):
                       '(and (with-temp-buffer (insert-file-contents "/home/emacs/work/probe.el") (equal (buffer-string) %s)) (with-temp-buffer (insert-file-contents "/home/emacs/work/probe.el~") (equal (buffer-string) %s)))' % (json.dumps(source + ";; second revision\n"), json.dumps(source)))
             assertion(guest, "retained Elisp executes after reboot",
                       f'(progn (load-file "/home/emacs/work/probe.el") (equal linux-probe "{nonce}"))')
+            assertion(guest, "Org notebook and tasks survive a native clean reboot",
+                      '(progn (emacsos-notes) (and (save-excursion (goto-char (point-min)) (search-forward "My retained notebook." nil t)) (file-exists-p (expand-file-name "tasks.org" emacsos-work-directory))))')
             guest.shutdown()
             checks.append("second boot clean unmount and poweroff")
             result["passed"] = True

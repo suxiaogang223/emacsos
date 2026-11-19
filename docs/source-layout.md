@@ -9,7 +9,7 @@ emacsos/
 ├── tests/guest/           # Real Linux guest acceptance across two QEMU boots
 ├── tests/tooling/         # Contribution and build contract checks
 ├── tests/web/             # HTTP boundary and real-browser acceptance
-├── web/                   # Computer UI, terminal bridge and vendor identities/notices
+├── web/                   # Project homepage, computer UI and vendor identities/notices
 └── docs/                  # Current design, roadmap, build and acceptance contracts
 ```
 

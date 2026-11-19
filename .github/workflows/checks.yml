@@ -58,6 +58,7 @@ jobs:
             if curl -fsS http://127.0.0.1:18082/ >/dev/null; then break; fi
             sleep 1
           done
+          EMACSOS_PLAYWRIGHT="$PWD/build/web-browser-tools/node_modules/playwright" node tests/web/site.cjs
           make test-browser
       - name: Print source and image acceptance identity
         if: always()

@@ -7,9 +7,9 @@ Boot a small Linux system, open a real Emacs session, and make the environment
 your own: write a note, explore files, run a shell, or turn a Lisp function into
 your next tool.
 
-![The emacsOS browser computer running a real GNU Emacs session](docs/images/workspace.png)
+![The emacsOS browser computer running a real GNU Emacs session](docs/images/home.png)
 
-[**Try the live computer →**](https://suxiaogang223.github.io/emacsos/) · [Run locally](#run-it-yourself) · [First five minutes](docs/first-session.md) ·
+[**Project website**](https://suxiaogang223.github.io/emacsos/) · [**Start the computer**](https://suxiaogang223.github.io/emacsos/try/) · [Run locally](#run-it-yourself) · [First five minutes](docs/first-session.md) ·
 [Documentation](docs/README.md) · [Roadmap](docs/roadmap.md)
 
 ## A computer you can change
@@ -28,6 +28,9 @@ to the Web.
 
 | Try this | How |
 | --- | --- |
+| Open your notebook | Run `M-x emacsos-notes`, edit and save with `C-x C-s` |
+| Plan today | Run `M-x emacsos-agenda` |
+| Return to the text home | Press `C-c o`; use TAB and Enter to open an entry |
 | Ask your computer a question | Press **EVALUATE**, enter `(+ 20 22)`, then Enter |
 | Write and run your own command | Follow the [first-session walkthrough](docs/first-session.md) |
 | Explore your workspace | Press **FILES**, then Enter to open `~/work` in Dired |
@@ -57,7 +60,7 @@ cd emacsos
 make web
 ```
 
-Open **http://127.0.0.1:18082/** in a desktop browser and press **POWER**.
+Open **http://127.0.0.1:18082/try/** in a desktop browser and press **POWER**.
 The first build compiles the pinned Emacs source; later builds reuse Docker
 layers and verified artifacts. Startup can take a few minutes.
 
@@ -91,8 +94,10 @@ defines those boundaries. The public runtime is built from pinned sources;
 
 ## Build with us
 
-The next steps are a more useful Emacs workspace, browser workspace continuity,
-and a verified browser network transport. See the [roadmap](docs/roadmap.md).
+The text workspace brings together Dired, Org notes and agenda, Eshell, Lisp
+and Info. See the [workspace guide](docs/workspace.md). The next steps are
+browser workspace continuity and a verified browser network transport.
+See the [roadmap](docs/roadmap.md).
 System policy and the Web console live in this repository; `emacs/` pins a
 [GNU Emacs fork](https://github.com/suxiaogang223/emacs) that currently adds
 provenance only.
