@@ -3,6 +3,7 @@
 (require 'button)
 (defvar org-directory)
 (defvar org-agenda-files)
+(defvar org-modules)
 
 (setq inhibit-startup-screen t
       initial-scratch-message nil
