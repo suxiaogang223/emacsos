@@ -6,7 +6,7 @@ home disk lasts for one powered-on session.
 
 ## What accompanies a release
 
-The [browser release](https://github.com/suxiaogang223/emacsos/releases/tag/browser-demo-2026-11-18)
+The [browser release](https://github.com/suxiaogang223/emacsos/releases/tag/browser-slim-2026-11-19)
 provides the emulator, firmware, Linux guest image and corresponding source at
 the same download location. `web/assets.json`, `web/runtime.json` and
 `web/sources.json` pin the downloadable bytes. `web/wasm-build.json` records the
@@ -18,7 +18,10 @@ emulator build inputs, output hashes and firmware inventory.
 - `guest-sources.tar.gz`: every installed Alpine package's source, APKBUILD,
   patches and configuration, plus the exact GNU Emacs source archive. A package
   inventory records all installed versions, licenses and Alpine source commits.
-- `guest-runtime.tar.gz`: kernel, initramfs, fresh disk template and build manifest.
+  The Linux base source and stable patch are included separately, together with
+  the parent kernel configuration and build policy.
+- `guest-runtime.tar.gz`: kernel, small initramfs, read-only SquashFS runtime,
+  fresh disk template and build manifest.
   It contains no native retained home disk.
 - The tagged repository supplies the parent image recipe, init/session policy,
   Web presentation, tooling and license grant. The Emacs gitlink is unchanged.
@@ -58,7 +61,7 @@ followed by real guest acceptance before a new emulator is published.
 ## Prepare updated source materials
 
 `system/wasm/inputs.json` pins repositories, commits, source archives and hashes.
-To collect those inputs again, install Git and run:
+To collect those inputs again, install Git and GNU patch, then run:
 
 ```sh
 python3 scripts/prepare-wasm-sources.py

@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import subprocess
 import tarfile
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -81,8 +82,17 @@ def main():
         if data.count(original) != 1:
             raise ValueError("The no-install-blobs patch needs updating")
         add_bytes(output, "qemu/meson.build", data.replace(original, replacement), inputs["source_date_epoch"])
+        # Apply the parent cache policy to the exact pinned upstream source.
+        with tempfile.TemporaryDirectory(prefix="emacsos-wasm-patch-") as temporary:
+            path = Path(temporary) / "tcg/wasm32.c"
+            path.parent.mkdir()
+            path.write_bytes(subprocess.check_output([
+                "git", "-C", str(cache / qemu["checkout"]), "show", qemu["commit"] + ":tcg/wasm32.c"]))
+            subprocess.run(["patch", "--batch", "-p1", "-d", temporary],
+                           input=(ROOT / "system/wasm/bounded-cache.patch").read_bytes(), check=True)
+            add_bytes(output, "qemu/tcg/wasm32.c", path.read_bytes(), inputs["source_date_epoch"])
         add_bytes(output, "sources.json", (ROOT / "system/wasm/inputs.json").read_bytes(), inputs["source_date_epoch"])
-        for name in ("Toolchain.Dockerfile", "build.sh", "no-install-blobs.patch"):
+        for name in ("Toolchain.Dockerfile", "build.sh", "no-install-blobs.patch", "bounded-cache.patch"):
             add_bytes(output, name, (ROOT / "system/wasm" / name).read_bytes(), inputs["source_date_epoch"])
     print(json.dumps({"archive": str(args.output), "sha256": digest(args.output)}))
 

@@ -54,5 +54,13 @@
   "libfdt-BSD-2-Clause.txt": {
     "url": "https://github.com/qemu/dtc/tree/b6910bec11614980a21e46fbccc35934b671bd81",
     "sha256": "6313108c23efffa36948f8b2cff1560a5935373b527b0e1a837cc77e6ed1bacd"
+  },
+  "linux-COPYING.txt": {
+    "url": "https://raw.githubusercontent.com/torvalds/linux/v6.12/COPYING",
+    "sha256": "fb5a425bd3b3cd6071a3a9aff9909a859e7c1158d54d32e07658398cd67eb6a0"
+  },
+  "linux-GPL-2.0.txt": {
+    "url": "https://raw.githubusercontent.com/torvalds/linux/v6.12/LICENSES/preferred/GPL-2.0",
+    "sha256": "f6b78c087c3ebdf0f3c13415070dd480a3f35d8fc76f3d02180a407c1c812f79"
   }
 }

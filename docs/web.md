@@ -26,8 +26,11 @@ disk or build context and has no upload or remote-command API.
 
 Use a desktop browser with WebAssembly threads and available memory. The
 emulator reserves about 2.25 GiB of Wasm address space in addition to page and
-image overhead. The guest has 1 GiB RAM, a Linux kernel and initramfs, one fresh
-virtio session disk, COM1 and no network device or QEMU monitor.
+image overhead. The guest has 512 MiB RAM, a Linux kernel and small initramfs,
+a read-only runtime disk, one fresh virtio session disk, COM1 and no network
+device or QEMU monitor. A virtio random device uses the emulator host
+`/dev/urandom` backend, supplied by the browser cryptographic random API, to
+avoid waiting for entropy from emulated interrupt timing.
 
 ## Access from another computer
 
@@ -54,11 +57,21 @@ paths and Wasm MIME type. The development server has no authentication.
 
 ## Display and lifecycle
 
-POWER downloads and verifies the kernel, initramfs and disk template against
-the served system manifest, then starts one emulator. Download failures permit
+POWER downloads and verifies the kernel, initramfs, read-only runtime and disk
+template against the served system manifest, then starts one emulator.
+Emacs files stay in SquashFS and are read as needed. Download failures permit
 a retry. After emulator initialization begins, RESTART reloads the page to
 create a new machine. The progress indicator covers downloads, then becomes
 indeterminate during boot. The real guest startup marker enables input.
+
+The browser keeps a best-effort cache of the four verified static boot images.
+Each cached image is checked against the current manifest before use; a corrupt
+entry is fetched again. Versioned download URLs avoid mixing old HTTP-cache
+content with a new manifest. Emulator scripts, workers, firmware and Wasm also
+use their pinned hashes in request URLs across deployments. Storage restrictions or quota failures fall back
+to normal downloads. This cache contains the original blank disk template,
+never the running machine's writes. It does not retain a workspace or make
+offline boot available; the current manifest is fetched at each power-on.
 
 The direct keys send `M-x`, `M-:`, `C-g`, `C-x d` and `M-x eshell` and restore
 terminal focus. On Mac, Control supplies `C-` and Option supplies `M-`; `Esc`,
@@ -72,6 +85,24 @@ browser retention controls. Saves remain available while this machine runs;
 closing, refreshing or restarting discards them. Restart asks for confirmation,
 and leaving requests the browser's unload warning, which browsers may suppress.
 Native data retention does not imply browser retention.
+
+## Performance
+
+On one Linux development host with headless Chromium 141, the slim system
+started in 18.6 seconds from localhost and restarted in 17.6 seconds. That
+restart includes a deliberately corrupted-cache kernel refetch. First Eshell
+startup took 0.35 seconds; the first Info manual open still took 9.6 seconds.
+These are individual acceptance observations, not cross-device guarantees or
+Internet download timings. The same host's typing probe measured about 28 ms
+median from terminal input to rendering across 35 samples after warm-up.
+
+The fixed-machine kernel, built-in drivers, smaller userspace, preloaded common
+libraries and read-on-demand runtime avoid work at every boot. The QEMU/Wasm
+patch bounds cached function-table entries and evicts them directly instead of
+waiting for JavaScript finalization callbacks before admitting new code. The
+browser engine still manages reclamation of evicted code. Cold library and
+manual work can remain slow under CPU emulation; the old custom kernel's startup
+time has not been matched. Release reports bind measurements to actual images.
 
 ## Asset identity and notices
 

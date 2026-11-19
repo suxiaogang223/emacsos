@@ -1,0 +1,13 @@
+{
+  "version": "6.12.117",
+  "sources": {
+    "linux.tar.xz": {
+      "url": "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.12.tar.xz",
+      "sha256": "b1a2562be56e42afb3f8489d4c2a7ac472ac23098f1ef1c1e40da601f54625eb"
+    },
+    "linux.patch.xz": {
+      "url": "https://cdn.kernel.org/pub/linux/kernel/v6.x/patch-6.12.117.xz",
+      "sha256": "b58346588216384ff7ddeb552b1586c44b209c794500ecbace93a37b4bed847f"
+    }
+  }
+}

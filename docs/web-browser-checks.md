@@ -2,7 +2,8 @@
 
 The browser driver boots a fresh Linux machine in real QEMU/Wasm. It records
 actual serial writes, tests the user interface and matches the downloaded
-kernel, initramfs and template hashes against the served system manifest.
+kernel, initramfs, read-only runtime and template hashes against the served
+system manifest.
 Native networking and retained storage require separate guest acceptance.
 
 Start `make web` in another terminal, then install the optional driver:
@@ -21,8 +22,12 @@ The driver runs Chromium without its sandbox for this trusted local test.
 Checks include isolation headers, five viewport widths, session-disk wording,
 missing download/retry, actual Linux/Emacs startup, simulated Mac Option-x,
 command/cancel/evaluate keys, Ctrl-a and Ctrl-x Ctrl-e, ordinary file save/load,
-Eshell, Dired, restart cancellation, fullscreen, exit and confirmed restart.
+Eshell, Dired, source lookup, the Info manual, restart
+cancellation, fullscreen, exit and confirmed restart.
 An unsuitable browser context must fail visibly before VM initialization.
+The driver also checks preloaded libraries, the verified static-image cache,
+corrupt-cache recovery and a second boot with a fresh home disk. Its warm
+restart timing includes deliberately refetching the corrupted kernel fixture.
 Result markers are absent from typed input to reject serial echo false positives.
 
 The report records Web source/dirty state, system and vendor manifests, actual

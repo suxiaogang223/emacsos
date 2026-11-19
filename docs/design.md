@@ -7,8 +7,8 @@ actual file, network and process behavior.
 
 ## Selected route
 
-Boot an Alpine Linux virtual-machine kernel and a minimal userspace with
-BusyBox init, musl and GNU Emacs built from the pinned 30.2 fork. Init remains
+Build Linux for one virtual CPU, COM1 and the fixed virtio devices, and boot
+a minimal Alpine userspace with BusyBox init, musl and GNU Emacs built from the pinned 30.2 fork. Init remains
 PID 1 to reap children and coordinate shutdown. One trusted Emacs runs as
 UID 1000 and opens the interactive environment. The parent supplies system
 Elisp and the browser console. No desktop environment or host terminal server
@@ -29,17 +29,35 @@ flowchart TB
 
 ## Shared system, distinct delivery profiles
 
-Both profiles boot the same Linux kernel and initramfs. The image contains a
-matching Emacs executable, portable dump, installed Lisp and data from one
-build. `system/packages.lock` pins the guest package closure;
-`system/build-packages.lock` pins the compiler closure. The base container is
+Both profiles boot the same configured Linux kernel, small initramfs and read-only
+SquashFS runtime disk. Initramfs contains boot tools; the necessary drivers
+are built into the kernel. `/usr` is mounted from the second virtio disk before
+Emacs starts, so the guest reads runtime files as needed instead of unpacking
+the full installation during every boot. The disk contains a matching Emacs
+executable, portable dump, installed Lisp and data from one build. SquashFS
+compresses file blocks while retaining random access to complete Lisp sources
+and Info manuals. `system/packages.lock` pins the guest package closure;
+`system/build-packages.lock` and `system/kernel-build-packages.lock` pin the
+compiler closures. The base container is
 digest-pinned. Package availability still depends on Alpine repositories;
-byte-identical rebuilding is not claimed.
+byte-identical rebuilding is not claimed. `system/kernel.json` pins the Linux
+source and stable patch by hash, and `system/kernel.config` selects the fixed
+machine. Kernel modules, kmod and initramfs generators
+are absent from the guest. A virtio random device supplies host-generated random
+bytes so early userspace does not wait for entropy from emulated interrupts.
+
+The parent `system/preload.el` prepares the standard site-init hook to include
+Dired, Info and Eshell libraries in the matching portable dump. It records an
+explicit dependency load order without changing the Emacs fork. User-dependent
+Eshell paths are initialized at runtime; no session or user files are dumped.
+Info manuals use standard split files, so opening a node does not read a whole
+multi-megabyte manual. The browser's smaller guest RAM does not change the
+emulator's compiled Wasm address-space reservation.
 
 | Profile | Devices and data | Evidence boundary |
 | --- | --- | --- |
 | Native QEMU | 1 GiB RAM, COM1, virtio home disk, user-mode network | Real guest acceptance including clean two-boot retention and synchronous HTTPS |
-| Browser QEMU/Wasm | 1 GiB RAM, COM1, fresh virtio session disk, network disabled | Browser boot, keyboard, file and lifecycle acceptance; no storage retention or networking claim |
+| Browser QEMU/Wasm | 512 MiB RAM, COM1, read-only runtime disk, fresh virtio session disk, network disabled | Browser boot, keyboard, file and lifecycle acceptance; no storage retention or networking claim |
 
 A template disk is copied into each browser machine's memory. Guest writes do
 not mutate the served template or the native user's disk. Refreshing creates

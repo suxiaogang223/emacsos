@@ -71,20 +71,6 @@
       "license": "GPL-3.0-or-later"
     },
     {
-      "package": "cryptsetup-libs",
-      "version": "2.7.5-r1",
-      "origin": "cryptsetup",
-      "commit": "d63289c555dc047e5c39fcff691770ce9743b464",
-      "license": "GPL-2.0-or-later WITH cryptsetup-OpenSSL-exception"
-    },
-    {
-      "package": "device-mapper-libs",
-      "version": "2.03.32-r0",
-      "origin": "lvm2",
-      "commit": "cac22b1b3bd0fb3cda7e0d7d9d011f1fa5512dfd",
-      "license": "GPL-2.0-or-later AND LGPL-2.1-or-later AND BSD-2-Clause"
-    },
-    {
       "package": "gmp",
       "version": "6.3.0-r3",
       "origin": "gmp",
@@ -99,34 +85,6 @@
       "license": "LGPL-2.1-or-later"
     },
     {
-      "package": "json-c",
-      "version": "0.18-r1",
-      "origin": "json-c",
-      "commit": "fe078081479c2be15581196ce067bac15406a5d0",
-      "license": "MIT"
-    },
-    {
-      "package": "kmod",
-      "version": "34.2-r0",
-      "origin": "kmod",
-      "commit": "0f8b0736b11ab01346f98ccd73fb356050abedb6",
-      "license": "GPL-2.0-or-later"
-    },
-    {
-      "package": "kmod-libs",
-      "version": "34.2-r0",
-      "origin": "kmod",
-      "commit": "0f8b0736b11ab01346f98ccd73fb356050abedb6",
-      "license": "LGPL-2.1-or-later"
-    },
-    {
-      "package": "lddtree",
-      "version": "1.27-r0",
-      "origin": "lddtree",
-      "commit": "007305e7880a70d5c804019aa3da115da732776b",
-      "license": "GPL-2.0-only"
-    },
-    {
       "package": "libapk2",
       "version": "2.14.13-r0",
       "origin": "apk-tools",
@@ -134,25 +92,11 @@
       "license": "GPL-2.0-only"
     },
     {
-      "package": "libblkid",
-      "version": "2.41.6-r1",
-      "origin": "util-linux",
-      "commit": "b91fb14e28957c6f5a13c02eb9ec136c82ebd50e",
-      "license": "LGPL-2.1-or-later"
-    },
-    {
       "package": "libcrypto3",
       "version": "3.5.9-r0",
       "origin": "openssl",
       "commit": "b6d0d5c5639c0034e9073c39e9ff139e28e71818",
       "license": "Apache-2.0"
-    },
-    {
-      "package": "libeconf",
-      "version": "0.6.3-r0",
-      "origin": "libeconf",
-      "commit": "1e0aa723fba50417893fe5f6cf72f76d044b8192",
-      "license": "MIT"
     },
     {
       "package": "libffi",
@@ -195,34 +139,6 @@
       "origin": "libunistring",
       "commit": "22200a467cea998010743cc288889dbde0496d4a",
       "license": "GPL-2.0-or-later OR LGPL-3.0-or-later"
-    },
-    {
-      "package": "libuuid",
-      "version": "2.41.6-r1",
-      "origin": "util-linux",
-      "commit": "b91fb14e28957c6f5a13c02eb9ec136c82ebd50e",
-      "license": "BSD-3-Clause"
-    },
-    {
-      "package": "linux-virt",
-      "version": "6.12.117-r0",
-      "origin": "linux-lts",
-      "commit": "e30fb966aa1d9cec17dac8283b37f4e779575cc2",
-      "license": "GPL-2.0-only"
-    },
-    {
-      "package": "mdev-conf",
-      "version": "4.8-r0",
-      "origin": "mdev-conf",
-      "commit": "d92b19909d7b8e4061da5ceea5f0acc8ee83e32d",
-      "license": "MIT"
-    },
-    {
-      "package": "mkinitfs",
-      "version": "3.12.0-r0",
-      "origin": "mkinitfs",
-      "commit": "b8e5b649721d57677c1b49af92a65bb9f2aba094",
-      "license": "GPL-2.0-only"
     },
     {
       "package": "musl",
@@ -274,25 +190,11 @@
       "license": "GPL-2.0-only"
     },
     {
-      "package": "xz-libs",
-      "version": "5.8.4-r0",
-      "origin": "xz",
-      "commit": "4ad8da6dc8e2b7ed46653b9844835babc3a166ae",
-      "license": "GPL-2.0-or-later AND 0BSD AND Public-Domain AND LGPL-2.1-or-later"
-    },
-    {
       "package": "zlib",
       "version": "1.3.2-r1",
       "origin": "zlib",
       "commit": "121fc97db0e7c59db704891b6d7ef83ae5df2cc2",
       "license": "Zlib"
-    },
-    {
-      "package": "zstd-libs",
-      "version": "1.5.7-r0",
-      "origin": "zstd",
-      "commit": "fc7fd35c7bf99156ae31962877c074f679f45b73",
-      "license": "BSD-3-Clause OR GPL-2.0-or-later"
     }
   ],
   "source_packages": {
@@ -303,31 +205,34 @@
     "busybox-1.37.0-20.src.tar.gz": "2fb99c7b36a74f5a7cc17c373a6a7b5933cda1289ebb5ff671fbe36c2d34f4e7",
     "ca-certificates-20261020-0.src.tar.gz": "64afae7b7e38eb87c70ae71398dc6971a6692e0dfe40950238b1943996abc45b",
     "cpio-2.15-0.src.tar.gz": "bf8924dd169a70189b5f0b4119a27149a43c777bb37612f8daa4caf0dd820042",
-    "cryptsetup-2.7.5-1.src.tar.gz": "012ad1a83fbc775b50089df8197b9e19969986092329724b88de67244b445f38",
     "gmp-6.3.0-3.src.tar.gz": "3d0fb03b146a7c2d657b7492ec6f81e90810f59489a75acc793ad3a2f7013450",
     "gnutls-3.8.13-0.src.tar.gz": "cab020d08c47c70a21ca0d7aba86588f01d966c7658dd7e92f98925748ffbaec",
-    "json-c-0.18-1.src.tar.gz": "1bfa5efad16290f6e91a17b3cfb60ec57084b80188b72436a819fb8eeb5d6528",
-    "kmod-34.2-0.src.tar.gz": "28a23e1b363e977d8ad1fec036f7c0347b27d1e69593f615f2a995cadaa3540c",
-    "lddtree-1.27-0.src.tar.gz": "89f580b02cc570ee5bed188e8e7376e7006ce0e9c56e68a837bfb3b9a0d11e31",
-    "libeconf-0.6.3-0.src.tar.gz": "d3e764bef024645363ffc6817fbe23caafed477ea0333106dc859a777a0b5ba6",
     "libffi-3.4.8-0.src.tar.gz": "3946b1a543ffe5419d0edcb212985e872481376a40c439234392424779942aa2",
     "libidn2-2.3.7-0.src.tar.gz": "059e7fbc608748a5ac4df9738ef0b0a5a94a10fd23ceba25b87b1ee2651f3263",
     "libtasn1-4.21.0-0.src.tar.gz": "d56d84d630e0d05f2699e14964fc6988fab12cf2ca489019c9ba796bb2a62b19",
     "libunistring-1.3-0.src.tar.gz": "2bbb674ca7a68a96ea3e547572c305ba77583c8626a190d3c41855397c6a45a1",
-    "linux-lts-6.12.117-0.src.tar.gz": "c353052226e7cbcdfdd5f3edc3a56cfef69affd13ba70a752e9f509b8744943a",
-    "lvm2-2.03.32-0.src.tar.gz": "b83866bff1dad17245aeeb3f5364a546b2ca4ae67bd3025ce9b6b760d07e204f",
-    "mdev-conf-4.8-0.src.tar.gz": "1bc922570c717b6dc080543b4ed7382c6d0fa03bdd082b53e76a314660e8d6e9",
-    "mkinitfs-3.12.0-0.src.tar.gz": "ecfe94575b3d3b71d40ff185685ae3cc663c2aab1047ed78f536b17ee5687c5b",
     "musl-1.2.5-13.src.tar.gz": "584f68f54b7a94b41a67942ee2294f27a5148b4e0da8150206db0f44675ae060",
     "ncurses-6.5_p20250503-0.src.tar.gz": "c11094389c9bfe4687fe506759a3df08645ee13f9df71e2a002d2000917ac92a",
     "nettle-3.10.2-0.src.tar.gz": "f8abac97ee5c7838dec05fb318b05021988bbee1a8a3740895cec13df733eb6a",
     "openssl-3.5.9-0.src.tar.gz": "0720c69a48e20b2e86de583864532e9aca9898863a76f80e08dd17675d52d2a0",
     "p11-kit-0.26.2-0.src.tar.gz": "ab8c443c05467e68dd60add02d192bd1d684af6aeddef02484c06f266709eb7c",
     "pax-utils-1.3.8-1.src.tar.gz": "527d9e694989ff822d135a8d304fe22d4c0b26867d4c4aba916ddb60f3539809",
-    "util-linux-2.41.6-1.src.tar.gz": "300505f4cab0cd9b0d0f0107aa8aef0704bcbdb66403f230b76513a4988f5a8b",
-    "xz-5.8.4-0.src.tar.gz": "c5cfb76fe42ddf5b63c834c92af3f8100da8672828093a24b2059f376c3dfca8",
-    "zlib-1.3.2-1.src.tar.gz": "3591bc2625d7ac3881a08efafd733effc2b6e1a2e63ae51ef14bb4aa3b411a71",
-    "zstd-1.5.7-0.src.tar.gz": "c698d7ec879bb2218747535af2f2c979ea92493442ff88bdf98d6893c6eddc8a"
+    "zlib-1.3.2-1.src.tar.gz": "3591bc2625d7ac3881a08efafd733effc2b6e1a2e63ae51ef14bb4aa3b411a71"
   },
-  "emacs_gitlink": "73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5"
+  "emacs_gitlink": "73cefc0fc8dad3e6709c2d1070b6cfe93102b3a5",
+  "kernel": {
+    "version": "6.12.117",
+    "sources": {
+      "linux.tar.xz": {
+        "url": "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.12.tar.xz",
+        "sha256": "b1a2562be56e42afb3f8489d4c2a7ac472ac23098f1ef1c1e40da601f54625eb"
+      },
+      "linux.patch.xz": {
+        "url": "https://cdn.kernel.org/pub/linux/kernel/v6.x/patch-6.12.117.xz",
+        "sha256": "b58346588216384ff7ddeb552b1586c44b209c794500ecbace93a37b4bed847f"
+      }
+    },
+    "configuration_sha256": "c950b6ca6675a1e8fb945d541491bfa2981fe142ae62db3858eb7d9767b0480c",
+    "license": "GPL-2.0-only; individual file notices and Linux syscall exception apply"
+  }
 }

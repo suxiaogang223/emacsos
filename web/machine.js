@@ -50,17 +50,49 @@ function observe(bytes) {
 }
 
 async function bootFiles() {
-    const response = await fetch(new URL("./build.json", import.meta.url));
+    const response = await fetch(new URL("./build.json", import.meta.url), { cache: "no-store" });
     if (!response.ok) throw new Error("The system is unavailable. Run make build and retry.");
     const manifest = await response.json();
-    const names = ["vmlinuz", "initramfs.cpio.gz", "data-template.ext4"];
+    if (manifest.layout !== "squashfs-usr-v1") throw new Error("The system was updated. Reload this page and retry Power.");
+    const names = ["vmlinuz", "initramfs.cpio.gz", "runtime.squashfs", "data-template.ext4"];
     const progress = new Map(names.map(name => [name, { size: 0, total: 0 }]));
     const controller = new AbortController();
+    let cache;
+    try { cache = await window.caches?.open("emacsos-boot-v1"); }
+    catch { /* Storage restrictions must not prevent a normal network boot. */ }
     try {
         return await Promise.all(names.map(async name => {
-            const bytes = await download(name, progress, controller.signal);
+            const expected = manifest.artifacts?.[name];
+            if (!/^[a-f0-9]{64}$/.test(expected || "")) throw new Error("The system manifest is incomplete. Reload and retry Power.");
+            const key = new URL(`./${name}?sha256=${expected}`, import.meta.url);
+            if (cache) {
+                try {
+                    const stored = await cache.match(key);
+                    if (stored) {
+                        const bytes = await stored.arrayBuffer();
+                        if (await checksum(bytes) === expected) {
+                            downloadProgress(name, 1, 1, progress);
+                            return { name, bytes };
+                        }
+                        await cache.delete(key);
+                    }
+                } catch { /* A missing or unreadable cache falls back to HTTP. */ }
+            }
+            const bytes = await download(name, expected, progress, controller.signal);
             const actual = await checksum(bytes);
-            if (actual !== manifest.artifacts?.[name]) throw new Error(`System checksum mismatch (${name}). Rebuild and retry.`);
+            if (actual !== expected) throw new Error(`System checksum mismatch (${name}). Rebuild and retry.`);
+            if (cache) {
+                try {
+                    await cache.put(key, new Response(bytes));
+                    // Keep one version of each static image. Never cache VM writes.
+                    for (const previous of await cache.keys()) {
+                        if (new URL(previous.url).pathname === key.pathname && previous.url !== key.href) {
+                            await cache.delete(previous);
+                        }
+                    }
+                } catch { /* Quota or private-mode failures leave this boot usable. */ }
+            }
+            downloadProgress(name, 1, 1, progress);
             return { name, bytes };
         }));
     } catch (error) {
@@ -69,13 +101,19 @@ async function bootFiles() {
     }
 }
 
+function downloadProgress(name, size, total, progress) {
+    progress.set(name, { size, total });
+    const values = [...progress.values()];
+    element("boot-progress").value = 40 * values.reduce((sum, item) => sum + (item.total ? item.size / item.total : 0), 0) / values.length;
+}
+
 async function checksum(bytes) {
     const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
     return Array.from(hash, byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function download(name, progress, signal) {
-    const response = await fetch(new URL(`./${name}`, import.meta.url), { signal });
+async function download(name, expected, progress, signal) {
+    const response = await fetch(new URL(`./${name}?sha256=${expected}`, import.meta.url), { signal });
     if (!response.ok) throw new Error(`System download failed (${response.status}). Retry Power.`);
     const total = Number(response.headers.get("Content-Length"));
     const encoding = response.headers.get("Content-Encoding");
@@ -90,9 +128,7 @@ async function download(name, progress, signal) {
         if (done) break;
         chunks.push(value);
         size += value.byteLength;
-        progress.set(name, { size, total });
-        const values = [...progress.values()];
-        element("boot-progress").value = 40 * values.reduce((sum, item) => sum + (item.total ? item.size / item.total : 0), 0) / values.length;
+        downloadProgress(name, size, total, progress);
     }
     if (size !== total) throw new Error("The system download was incomplete. Retry Power.");
     const bytes = new Uint8Array(size);
@@ -101,21 +137,28 @@ async function download(name, progress, signal) {
     return bytes;
 }
 
+function vendorUrl(name, assets) {
+    const hash = assets[name]?.sha256;
+    if (!/^[a-f0-9]{64}$/.test(hash || "")) throw new Error(`Missing vendor identity (${name}). Reload and retry.`);
+    const url = new URL(name, vendor);
+    url.searchParams.set("sha256", hash);
+    return url.href;
+}
+
 async function biosPackage() {
     // The upstream loader throws outside its initialization promise on XHR
     // failures. Supply verified bytes instead so failures reach our UI.
-    const [response, pins] = await Promise.all([
-        fetch(new URL("load-rom.data", vendor)),
-        fetch(new URL("./assets.json", import.meta.url)),
-    ]);
-    if (!response.ok) throw new Error(`BIOS package request failed (${response.status}).`);
+    const pins = await fetch(new URL("./assets.json", import.meta.url), { cache: "no-store" });
     if (!pins.ok) throw new Error(`Asset manifest request failed (${pins.status}).`);
+    const assets = (await pins.json()).assets;
+    const response = await fetch(vendorUrl("load-rom.data", assets));
+    if (!response.ok) throw new Error(`BIOS package request failed (${response.status}).`);
     const bytes = await response.arrayBuffer();
-    const expected = (await pins.json()).assets["load-rom.data"].sha256;
+    const expected = assets["load-rom.data"].sha256;
     const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
     const actual = Array.from(digest, byte => byte.toString(16).padStart(2, "0")).join("");
     if (actual !== expected) throw new Error("The BIOS package checksum does not match. Run make web-assets and retry.");
-    return bytes;
+    return { bytes, assets };
 }
 
 async function start() {
@@ -129,7 +172,8 @@ async function start() {
         if (typeof Terminal !== "function" || typeof openpty !== "function") {
             throw new Error("Terminal assets are unavailable. Run make web-assets and reload.");
         }
-        const [files, bios] = await Promise.all([bootFiles(), biosPackage()]);
+        const [files, firmware] = await Promise.all([bootFiles(), biosPackage()]);
+        const { bytes: bios, assets } = firmware;
         terminal = new Terminal({
             cols: 80, rows: 24, cursorBlink: true, macOptionIsMeta: true,
             fontFamily: "ui-monospace, Menlo, Consolas, monospace", fontSize: 16,
@@ -144,14 +188,16 @@ async function start() {
         const raw = () => slave.ioctl("TCSETS", { ...slave.ioctl("TCGETS"), iflag: 0, oflag: 0, lflag: 0 });
         raw();
         terminal.options.disableStdin = true;
-        const moduleUrl = new URL("out.js", vendor).href;
+        const moduleUrl = vendorUrl("out.js", assets);
         const config = {
-            arguments: ["-M", "pc", "-m", "1G", "-nic", "none", "-vga", "none", "-display", "none", "-monitor", "none",
+            arguments: ["-M", "pc", "-m", "512M", "-nic", "none", "-vga", "none", "-display", "none", "-monitor", "none",
+                "-object", "rng-random,filename=/dev/urandom,id=rng0", "-device", "virtio-rng-pci,rng=rng0",
                 "-serial", "stdio", "-L", "/pack-rom", "-accel", "tcg,tb-size=64",
                 "-kernel", "/vmlinuz", "-initrd", "/initramfs.cpio.gz",
                 "-append", "console=ttyS0,115200 rdinit=/init panic=-1 quiet",
-                "-drive", "file=/data-template.ext4,format=raw,if=virtio", "-no-reboot"],
-            locateFile: path => new URL(path, vendor).href,
+                "-drive", "file=/data-template.ext4,format=raw,if=virtio",
+                "-drive", "file=/runtime.squashfs,format=raw,if=virtio,readonly=on", "-no-reboot"],
+            locateFile: path => vendorUrl(path, assets),
             mainScriptUrlOrBlob: moduleUrl,
             getPreloadedPackage: () => bios,
             pty: slave, preRun: [],
@@ -182,7 +228,7 @@ async function start() {
             import(moduleUrl),
             new Promise((resolve, reject) => {
                 const script = document.createElement("script");
-                script.src = new URL("load-rom.js", vendor).href;
+                script.src = vendorUrl("load-rom.js", assets);
                 script.onload = resolve;
                 script.onerror = () => reject(new Error("Could not load the BIOS package. Restart to retry."));
                 document.head.append(script);

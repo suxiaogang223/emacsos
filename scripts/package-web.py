@@ -29,7 +29,7 @@ def package(root, destination):
             raise ValueError(f"Emulator asset and build receipt disagree: {name}")
     expected = {**{"/vendor/" + name: item["sha256"] for name, item in assets["assets"].items()},
                 **{"/" + name: manifest["artifacts"][name] for name in
-                   ("vmlinuz", "initramfs.cpio.gz", "data-template.ext4")}}
+                   ("vmlinuz", "initramfs.cpio.gz", "runtime.squashfs", "data-template.ext4")}}
     for route, (source, _mime) in server.routes(root).items():
         if route == "/":
             continue
