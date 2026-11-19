@@ -7,9 +7,9 @@
     "description": "QEMU/Wasm, SeaBIOS, linked libraries, Emscripten runtime source, terminal source and build recipes"
   },
   "guest": {
-    "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-demo-2026-11-18/guest-sources.tar.gz",
-    "sha256": "f78559e7c75d1ea8c899f3cc12e02e9e9afa5f82113322723234baf73c9d04a8",
-    "description": "Complete source packages for 42 installed APK packages / 32 origins; exact GNU Emacs source and parent image policy"
+    "url": "https://github.com/suxiaogang223/emacsos/releases/download/browser-slim-2026-11-19/guest-sources.tar.gz",
+    "sha256": "16b2d7b6a9b67389e24402497e6717c30db3447594adb2a7219d32324f6aba03",
+    "description": "Complete source packages for 28 installed APK packages / 20 origins; Linux base source and stable patch, exact GNU Emacs source and parent image policy"
   },
   "isolation": {
     "url": "https://raw.githubusercontent.com/gzuidhof/coi-serviceworker/7b1d2a092d0d2dd2b7270b6f12f13605de26f214/coi-serviceworker.js",
