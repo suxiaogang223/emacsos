@@ -18,6 +18,8 @@ emulator build inputs, output hashes and firmware inventory.
 - `guest-sources.tar.gz`: every installed Alpine package's source, APKBUILD,
   patches and configuration, plus the exact GNU Emacs source archive. A package
   inventory records all installed versions, licenses and Alpine source commits.
+  The Linux base source and stable patch are included separately, together with
+  the parent kernel configuration and build policy.
 - `guest-runtime.tar.gz`: kernel, small initramfs, read-only SquashFS runtime,
   fresh disk template and build manifest.
   It contains no native retained home disk.
@@ -59,7 +61,7 @@ followed by real guest acceptance before a new emulator is published.
 ## Prepare updated source materials
 
 `system/wasm/inputs.json` pins repositories, commits, source archives and hashes.
-To collect those inputs again, install Git and run:
+To collect those inputs again, install Git and GNU patch, then run:
 
 ```sh
 python3 scripts/prepare-wasm-sources.py

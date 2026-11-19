@@ -10,6 +10,7 @@ import tarfile
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ("out.js", "qemu-system-x86_64.wasm", "qemu-system-x86_64.worker.js", "load-rom.js", "load-rom.data")
+RECIPES = ("Toolchain.Dockerfile", "build.sh", "no-install-blobs.patch", "bounded-cache.patch")
 
 
 def digest(path):
@@ -33,7 +34,7 @@ def main():
     with tarfile.open(archive) as bundle:
         bundle.extractall(output / "source", filter="data")
     source_root = output / "source/emulator"
-    for name in ("Toolchain.Dockerfile", "build.sh", "no-install-blobs.patch"):
+    for name in RECIPES:
         if digest(source_root / name) != digest(ROOT / "system/wasm" / name):
             raise ValueError(f"Source bundle and checkout disagree: {name}")
     image = "emacsos-wasm-builder:3.1.50"
@@ -48,7 +49,7 @@ def main():
     receipt = {"source_archive_sha256": source["sha256"],
                "toolchain_image": subprocess.check_output(["docker", "image", "inspect", image, "--format", "{{.Id}}"], text=True).strip(),
                "sources": json.loads((source_root / "sources.json").read_text()),
-               "recipe": {name: digest(source_root / name) for name in ("Toolchain.Dockerfile", "build.sh", "no-install-blobs.patch")},
+               "recipe": {name: digest(source_root / name) for name in RECIPES},
                "tool_versions": (artifacts / "tool-versions.txt").read_text(),
                "artifacts": {name: digest(artifacts / name) for name in ASSETS},
                "firmware": {path.name: digest(path) for path in sorted((artifacts / "firmware").glob("*.bin"))}}

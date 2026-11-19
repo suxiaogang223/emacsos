@@ -18,10 +18,22 @@ RUN find info -type f -name '*.info' -delete \
     && make -j4 info INFO_OPTS=--split-size=131072 \
     && make install-info DESTDIR=/runtime INFO_OPTS=--split-size=131072
 
+FROM builder AS kernel
+COPY kernel-build-packages.lock /tmp/kernel-packages.lock
+RUN xargs apk add --no-cache < /tmp/kernel-packages.lock
+COPY linux.tar.xz linux.patch.xz /tmp/
+RUN mkdir /kernel && tar -xJf /tmp/linux.tar.xz -C /kernel --strip-components=1 \
+    && xz -dc /tmp/linux.patch.xz | patch -d /kernel -p1
+COPY kernel.config /kernel/.config
+RUN make -C /kernel olddefconfig \
+    && make -C /kernel -j4 KBUILD_BUILD_USER=emacsos KBUILD_BUILD_HOST=builder \
+       KBUILD_BUILD_TIMESTAMP="$(date -u -d @$SOURCE_DATE_EPOCH)" bzImage
+
 FROM alpine:3.22@sha256:49340b346798875b5592e5d420241f2f9cfba5f47e62ebb1446a1b34734e898f AS runtime
 COPY packages.lock /tmp/packages.lock
 RUN xargs apk add --no-cache < /tmp/packages.lock
 COPY --from=builder /runtime/ /
+COPY --from=kernel /kernel/arch/x86/boot/bzImage /boot/vmlinuz-emacsos
 RUN adduser -D -u 1000 -h /home/emacs emacs \
     && mkdir -p /etc/emacsos /usr/share/emacs/site-lisp /home /run \
     && rm -f /boot/initramfs-virt

@@ -8,9 +8,7 @@ mount -t devpts devpts /dev/pts
 chmod 1777 /tmp
 hostname emacsos-linux
 
-while IFS= read -r module; do
-    /bin/busybox insmod "$module"
-done < /etc/emacsos/modules
+# The fixed machine's drivers are built into the kernel.
 mount -t squashfs -o ro /dev/vdb /usr
 mount -t ext4 -o rw /dev/vda /home
 test -d /home/emacs/work

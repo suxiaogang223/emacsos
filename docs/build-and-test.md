@@ -32,7 +32,8 @@ LINUX_INTERNET_URL=https://example.org/ make test-guest
 ## Reuse and identity
 
 Docker caches the pinned compiler, archived Emacs source, configure/build and
-system overlay separately. System packaging reuses artifacts only when input,
+system overlay separately. Linux source downloads are cached and SHA-256 checked
+against `system/kernel.json`; the kernel is built in its own Docker stage. System packaging reuses artifacts only when input,
 source pin, container identity and artifact hashes match. A parent revision
 change refreshes the manifest without rewriting unchanged runtime bytes.
 Existing native home disks are never formatted by the build.
@@ -47,7 +48,7 @@ Compilation, emulator startup and interactive acceptance remain separate claims.
 All generated files live under `build/`:
 
 - `machine/manifest.json`: source and system artifact identity.
-- `machine/initramfs.cpio.gz`: boot tools and required kernel drivers.
+- `machine/initramfs.cpio.gz`: boot tools; device drivers are built into the kernel.
 - `machine/runtime.squashfs`: read-only Emacs, libraries, source and manuals.
 - `machine/data.ext4`: native user's disk; preserve it when cleaning builds.
 - `machine/data-template.ext4`: fresh template copied into each browser VM.

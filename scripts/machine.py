@@ -64,13 +64,22 @@ def build():
         raise RuntimeError("Initialize a clean Emacs checkout matching the parent gitlink")
     context = OUT / "context"
     context.mkdir(exist_ok=True)
+    kernel = json.loads((SYSTEM / "kernel.json").read_text())
     system_files = [path for path in SYSTEM.iterdir() if path.is_file()]
-    retained = {path.name for path in system_files} | {"source.tar", "source-pin"}
+    retained = {path.name for path in system_files} | {"source.tar", "source-pin"} | set(kernel["sources"])
     for path in context.iterdir():
         if path.name not in retained and path.is_file():
             path.unlink()
     for path in system_files:
         shutil.copyfile(path, context / path.name)
+    for name, source_input in kernel["sources"].items():
+        target = context / name
+        if not target.is_file() or digest(target) != source_input["sha256"]:
+            partial = target.with_suffix(target.suffix + ".partial")
+            run("curl", "--fail", "--location", "--retry", "3", source_input["url"], "-o", partial)
+            if digest(partial) != source_input["sha256"]:
+                raise RuntimeError(f"Kernel source checksum mismatch: {name}")
+            partial.replace(target)
     source = context / "source.tar"
     if not source.exists() or not (context / "source-pin").exists() or (context / "source-pin").read_text() != pin:
         with source.open("wb") as stream:
@@ -87,7 +96,7 @@ def build():
         package = r'''
 set -eu
 set -o pipefail
-cp /boot/vmlinuz-virt /out/vmlinuz
+cp /boot/vmlinuz-emacsos /out/vmlinuz
 cp /boot/usr.squashfs /out/runtime.squashfs
 find bin etc home init lib media mnt opt root run sbin srv tmp var -xdev -print0 > /out/archive.list
 printf 'dev\0proc\0sys\0usr\0' >> /out/archive.list
@@ -109,7 +118,7 @@ chown "$OUTPUT_UID:$OUTPUT_GID" /out/vmlinuz /out/initramfs.cpio.gz /out/runtime
     write_json(OUT / "manifest.json", {
         "parent": git("rev-parse", "HEAD"), "dirty": bool(git("status", "--porcelain")),
         "layout": "squashfs-usr-v1",
-        "fork_pin": pin, "runtime": "GNU Emacs 30.2, pinned fork; Alpine Linux 6.12.117",
+        "fork_pin": pin, "runtime": f"GNU Emacs 30.2, pinned fork; Linux {kernel['version']}-emacsos",
         "container": container, "inputs": selected_inputs,
         "artifacts": {**cached["artifacts"], "data-template.ext4": digest(OUT / "data-template.ext4")},
         "machine": "QEMU pc, x86-64 TCG, 1 GiB, COM1, virtio data disk",
@@ -131,6 +140,7 @@ def verify():
 
 def command(disk):
     return ["qemu-system-x86_64", "-machine", "pc", "-accel", "tcg", "-m", "1024",
+            "-object", "rng-random,filename=/dev/urandom,id=rng0", "-device", "virtio-rng-pci,rng=rng0",
             "-kernel", str(OUT / "vmlinuz"), "-initrd", str(OUT / "initramfs.cpio.gz"),
             "-append", "console=ttyS0,115200 rdinit=/init panic=-1 quiet",
             "-drive", f"file={disk},format=raw,if=virtio",

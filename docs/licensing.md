@@ -15,8 +15,9 @@ their original licenses. The parent license does not relicense those components.
 | Component | Source and license location |
 | --- | --- |
 | GNU Emacs | Pinned `emacs/` submodule; `emacs/COPYING` and individual file notices |
-| Linux and Alpine packages | Pinned package closure in `system/packages.lock`; upstream package licenses |
-| Compiler dependencies | `system/build-packages.lock`; kept outside the guest image |
+| Linux | Pinned source and stable patch in `system/kernel.json`; GPL-2.0-only and individual file notices |
+| Alpine userspace | Pinned package closure in `system/packages.lock`; upstream package licenses |
+| Compiler dependencies | `system/build-packages.lock` and `system/kernel-build-packages.lock`; kept outside the guest image |
 | Browser terminal | xterm.js and xterm-pty; [runtime notices](../web/licenses.html) |
 | QEMU/Wasm and firmware | Pinned source build in `system/wasm/`; hashes in `web/assets.json`; [runtime notices](../web/licenses.html) |
 
@@ -31,7 +32,7 @@ sources. Its [release materials](releasing.md) provide complete source archives,
 original notices, build instructions and output identities alongside the
 binaries. `web/sources.json` pins source downloads; `web/wasm-build.json` records
 the actual build. The guest source bundle covers every installed Alpine origin
-and the exact Emacs gitlink.
+and the exact Emacs gitlink, plus the pinned Linux source and stable patch.
 
 QEMU is an aggregate of components under their original GPL, LGPL and
 permissive licenses. SeaBIOS and the small QEMU boot ROMs are built separately

@@ -183,6 +183,7 @@ async function start() {
         const moduleUrl = new URL("out.js", vendor).href;
         const config = {
             arguments: ["-M", "pc", "-m", "512M", "-nic", "none", "-vga", "none", "-display", "none", "-monitor", "none",
+                "-object", "rng-random,filename=/dev/urandom,id=rng0", "-device", "virtio-rng-pci,rng=rng0",
                 "-serial", "stdio", "-L", "/pack-rom", "-accel", "tcg,tb-size=64",
                 "-kernel", "/vmlinuz", "-initrd", "/initramfs.cpio.gz",
                 "-append", "console=ttyS0,115200 rdinit=/init panic=-1 quiet",
